@@ -118,6 +118,120 @@ async function updateWithAiResults(id, ai) {
   );
 }
 
+
+function platformContext(platform, detected) {
+  const defaults = {
+    Windows: {
+      affects: 'Windows PCs / cumulative updates / security fixes / system stability / enterprise deployment',
+      verdict: 'Review the KB notes and early install reports before broad rollout; security fixes usually make this worth scheduling quickly.',
+      reasoning: 'Windows cumulative updates can include security patches, servicing-stack changes, driver interactions, and known issues. PatchTicker tracks the official Microsoft support article and watches for rollback or install-failure patterns.',
+    },
+    NVIDIA: {
+      affects: 'NVIDIA GeForce GPUs / Game Ready driver / DLSS / game compatibility / creator workflows',
+      verdict: 'Install if the listed game support or fixes apply; wait if your current driver is stable and you do not need the new profile support.',
+      reasoning: 'NVIDIA Game Ready drivers often improve new-game support and fix GPU-specific issues, but driver updates can affect performance, overlays, capture tools, and multi-monitor setups.',
+    },
+    AMD: {
+      affects: 'AMD Radeon GPUs / Adrenalin driver / Windows gaming performance / game compatibility',
+      verdict: 'Check game-specific fixes and known issues before updating, especially if your current Radeon driver is stable.',
+      reasoning: 'AMD Adrenalin releases can improve game support and fix crashes, but driver updates may also introduce regressions for specific GPU families or titles.',
+    },
+    Apple: {
+      affects: 'iPhone / iPad / WebKit / system security / app compatibility',
+      verdict: 'Prioritize this update when it includes security fixes, especially for WebKit, kernel, or actively exploited vulnerabilities.',
+      reasoning: 'Apple security updates frequently include CVE fixes that are safest to apply promptly after checking device eligibility and app compatibility.',
+    },
+    macOS: {
+      affects: 'Mac / macOS / Safari-WebKit / system security / device stability',
+      verdict: 'Prioritize security updates, but confirm compatibility for work-critical apps, extensions, VPNs, and device-management tools.',
+      reasoning: 'macOS releases can affect security posture, Safari/WebKit behavior, kernel extensions, peripherals, and managed-device workflows.',
+    },
+    Steam: {
+      affects: 'Steam client / SteamOS / Steam Deck / game library / downloads / compatibility layers',
+      verdict: 'Good candidate for Steam Deck or Steam client users unless early reports mention install, compatibility, or download regressions.',
+      reasoning: 'Steam and SteamOS updates can change handheld behavior, controller input, Proton compatibility, downloads, library management, and client stability.',
+    },
+    Switch: {
+      affects: 'Nintendo Switch / system firmware / eShop / online play / controller behavior',
+      verdict: 'Install for online services and compatibility unless early reports flag firmware or controller regressions.',
+      reasoning: 'Switch firmware updates can affect online play, eShop access, Joy-Con behavior, system stability, and game compatibility.',
+    },
+    Discord: {
+      affects: 'Discord desktop / voice chat / overlay / streaming / API and gateway services',
+      verdict: 'Safe for most users, but verify overlay and voice behavior if Discord is part of your gaming setup.',
+      reasoning: 'Discord incidents and client changes can affect voice chat, overlay, streaming, notifications, and rich presence during gaming sessions.',
+    },
+    BattleNet: {
+      affects: 'Battle.net desktop app / Blizzard games / login / patch downloads / launcher services',
+      verdict: 'Watch login and patch-download reports before major game sessions; launcher issues can block play even when games are stable.',
+      reasoning: 'Battle.net changes can affect authentication, patch delivery, game launch, social features, and service availability for Blizzard titles.',
+    },
+    GOG: {
+      affects: 'GOG Galaxy / library sync / cloud saves / cross-store integrations / Windows and macOS client',
+      verdict: 'Safe for most users, but check cloud-save and library-sync behavior if you use GOG Galaxy as a launcher hub.',
+      reasoning: 'GOG Galaxy updates can affect library sync, cloud saves, installed-game detection, and integrations with other storefronts.',
+    },
+    PS5: {
+      affects: 'PlayStation 5 / system software / online services / controller and game compatibility',
+      verdict: 'Install for online play and system security unless early user reports flag a PS5-specific regression.',
+      reasoning: 'PS5 system updates can affect online play, firmware behavior, controller support, rest mode, and system stability.',
+    },
+    Xbox: {
+      affects: 'Xbox Series X|S / Xbox One / dashboard / network services / controller and game compatibility',
+      verdict: 'Install for normal console use unless community reports show dashboard, network, or game-launch regressions.',
+      reasoning: 'Xbox system updates can change dashboard behavior, networking, controller handling, game launch, and store/service reliability.',
+    },
+    Intel: {
+      affects: 'Intel Arc GPUs / Core Ultra Arc graphics / Windows graphics driver / game compatibility',
+      verdict: 'Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies.',
+      reasoning: 'Intel graphics drivers often bundle game optimizations, device support, display fixes, and compatibility updates for Arc and Core Ultra graphics.',
+    },
+    Epic: {
+      affects: 'Epic Games Launcher / store services / game downloads / account login',
+      verdict: 'Wait for user reports if the launcher update affects downloads, sign-in, or game launch before a planned session.',
+      reasoning: 'Epic launcher or service changes can affect sign-in, game downloads, cloud saves, and library access.',
+    },
+  }[platform] || {};
+  const verdict = detected.verdict || defaults.verdict || `New ${platform} update available: ${detected.name}`;
+  const reasoning = detected.reasoning || defaults.reasoning || `PatchTicker detected a new ${platform} release from the vendor source and is tracking user reports, known issues, and install confidence as more evidence arrives.`;
+  return {
+    affects: detected.affects || defaults.affects || `${platform} devices, software, and related services`,
+    verdict,
+    reasoning,
+    changelog: detected.changelog?.length ? detected.changelog : [reasoning],
+    knownIssues: detected.knownIssues || [],
+    riskFactors: detected.riskFactors || [],
+    evidence: detected.evidence || (detected.sourceUrl ? [{ source: platform, url: detected.sourceUrl, text: `Current ${platform} update verified from official source` }] : []),
+  };
+}
+
+async function updateExistingMetadata(platform, version, detected) {
+  const context = platformContext(platform, detected);
+  await db.query(
+    `UPDATE software_updates SET
+       affects = COALESCE($3, affects),
+       verdict = COALESCE($4, verdict),
+       reasoning = COALESCE($5, reasoning),
+       changelog = CASE WHEN $6::jsonb <> '[]'::jsonb THEN $6::jsonb ELSE changelog END,
+       known_issues = CASE WHEN $7::jsonb <> '[]'::jsonb THEN $7::jsonb ELSE known_issues END,
+       risk_factors = CASE WHEN $8::jsonb <> '[]'::jsonb THEN $8::jsonb ELSE risk_factors END,
+       evidence = CASE WHEN $9::jsonb <> '[]'::jsonb THEN $9::jsonb ELSE evidence END,
+       updated_at = now()
+     WHERE platform = $1 AND version = $2`,
+    [
+      platform,
+      version,
+      context.affects,
+      context.verdict,
+      context.reasoning,
+      JSON.stringify(context.changelog),
+      JSON.stringify(context.knownIssues),
+      JSON.stringify(context.riskFactors),
+      JSON.stringify(context.evidence),
+    ]
+  );
+}
+
 // ── Status deriver ────────────────────────────────────────────────────────────
 // Before AI runs we need a rough status to store. AI will refine it.
 
@@ -168,7 +282,8 @@ async function processPlatform(platform) {
 
   const knownVersion = await getLatestKnownVersion(platform);
   if (knownVersion === detected.version) {
-    logger.info('[pipeline] Version unchanged', { ...logCtx, knownVersion });
+    await updateExistingMetadata(platform, detected.version, detected);
+    logger.info('[pipeline] Version unchanged — metadata refreshed', { ...logCtx, knownVersion });
     return { platform, status: 'unchanged', version: detected.version };
   }
 
@@ -176,6 +291,7 @@ async function processPlatform(platform) {
 
   // 3. Build initial update row with placeholder score
   const id = makeUpdateId(platform, detected.version);
+  const context = platformContext(platform, detected);
   const initialUpdate = {
     id,
     platform,
@@ -185,12 +301,13 @@ async function processPlatform(platform) {
     status:      'caution',   // default until AI refines
     score:       5.0,
     bugCount:    0,
-    changelog:   detected.changelog || [],
-    knownIssues: [],
-    riskFactors: [],
-    evidence:    detected.sourceUrl
-      ? [{ source: platform, url: detected.sourceUrl, text: `New ${platform} update detected` }]
-      : [],
+    affects:     context.affects,
+    verdict:     context.verdict,
+    reasoning:   context.reasoning,
+    changelog:   context.changelog,
+    knownIssues: context.knownIssues,
+    riskFactors: context.riskFactors,
+    evidence:    context.evidence,
     subreddits:  PLATFORM_SUBREDDITS[platform] || [],
   };
 
