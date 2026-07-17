@@ -417,7 +417,7 @@ GRANT EXECUTE ON FUNCTION cleanup_expired_auth_tokens() TO patchticker_app;
 
 CREATE TABLE IF NOT EXISTS community_posts (
   id          BIGSERIAL PRIMARY KEY,
-  user_id     INTEGER       NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id     UUID          NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body        TEXT          NOT NULL CHECK (char_length(body) BETWEEN 1 AND 280),
   platform    VARCHAR(32),  -- optional tag: AMD, NVIDIA, etc.
   created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
