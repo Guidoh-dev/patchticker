@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+  <url>
+    <loc>https://patchticker.app/</loc>
+    <changefreq>hourly</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <url>
+    <loc>https://patchticker.app/#/pricing</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Platform pages -->
+  <url><loc>https://patchticker.app/#/platform/NVIDIA</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://patchticker.app/#/platform/AMD</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://patchticker.app/#/platform/Intel</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://patchticker.app/#/platform/Windows</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://patchticker.app/#/platform/Apple</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://patchticker.app/#/platform/macOS</loc><changefreq>daily</changefreq><priority>0.9</priority></url>
+  <url><loc>https://patchticker.app/#/platform/Steam</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://patchticker.app/#/platform/Epic</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://patchticker.app/#/platform/Xbox</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://patchticker.app/#/platform/PS5</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+
+</urlset>

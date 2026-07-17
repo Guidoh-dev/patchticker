@@ -1,0 +1,128 @@
+# .github/dependabot.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# DEPENDABOT CONFIGURATION
+#
+# Dependabot opens automated PRs when dependencies have new versions available.
+# Each PR runs through the full CI pipeline (audit + test + CodeQL) before
+# you merge, giving you confidence that updates don't break anything.
+#
+# UPDATE STRATEGY
+# ────────────────
+# - npm packages: weekly on Monday (matches the scheduled-audit.yml cadence)
+# - GitHub Actions: monthly (Actions don't change as frequently)
+#
+# GROUPING
+# ─────────
+# Related packages are grouped into a single PR to reduce review noise:
+#   security-patches: all patch-level security fixes → one PR
+#   logging:          winston + morgan + daily-rotate → one PR
+#   test-tooling:     jest + nodemon → one PR
+#   build-tooling:    vite → one PR
+#
+# NON-GROUPED packages get individual PRs so each can be reviewed in isolation:
+#   express, helmet, argon2, jsonwebtoken, zod — critical security deps
+#
+# IGNORE LIST
+# ────────────
+# None by default. If a specific upgrade is intentionally deferred (e.g. a
+# major version requiring migration work), add it here:
+#
+#   ignore:
+#     - dependency-name: "some-package"
+#       versions: ["2.x"]
+#       reason: "Requires migration to new API — tracked in issue #123"
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: 2
+
+updates:
+
+  # ── Backend npm packages ──────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - backend
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+
+    groups:
+      # Patch-level security fixes grouped together
+      security-patches:
+        applies-to: security-updates
+        update-types:
+          - patch
+
+      # Logging stack — usually safe to update together
+      logging:
+        patterns:
+          - "winston"
+          - "winston-daily-rotate-file"
+          - "morgan"
+
+      # Test tooling — separate from production deps
+      test-tooling:
+        patterns:
+          - "jest"
+          - "nodemon"
+          - "supertest"
+          - "eslint"
+
+    # These critical security packages get individual PRs so changes are
+    # reviewed carefully before merging.
+    # (Dependabot uses individual PRs for packages not covered by a group)
+
+  # ── Frontend npm packages ─────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - frontend
+    commit-message:
+      prefix: "chore(deps)"
+
+  # ── Root npm packages (concurrently) ─────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: "08:00"
+      timezone: "UTC"
+    labels:
+      - dependencies
+      - root
+    commit-message:
+      prefix: "chore(deps)"
+
+  # ── GitHub Actions ────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: "08:00"
+      timezone: "UTC"
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      # All CI action updates in one PR — less noise
+      github-actions:
+        patterns:
+          - "*"

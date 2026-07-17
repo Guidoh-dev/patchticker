@@ -1,0 +1,19 @@
+{
+  "name": "patchticker-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "vite --port 3000",
+    "build": "vite build",
+    "preview": "vite preview",
+    "audit:check": "npm audit --audit-level=moderate"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "vite": "7.0.6"
+  }
+}

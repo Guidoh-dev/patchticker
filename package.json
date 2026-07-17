@@ -1,0 +1,23 @@
+{
+  "name": "patchticker",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": ["backend", "frontend"],
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "audit": "npm audit --workspaces --audit-level=moderate",
+    "audit:fix": "npm audit fix --workspaces",
+    "test": "cd backend && npm test"
+  },
+  "devDependencies": {
+    "concurrently": "9.2.1"
+  }
+}

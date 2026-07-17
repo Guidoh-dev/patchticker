@@ -1,0 +1,284 @@
+# .github/workflows/ci.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# PATCHPULSE CI PIPELINE
+#
+# Triggers:
+#   push  → main, develop
+#   pull_request → main, develop
+#
+# Jobs (run in parallel where possible):
+#   1. audit      — npm audit on every workspace (fails on moderate+)
+#   2. lint       — ESLint on backend source
+#   3. test       — Jest test suite with coverage
+#   4. osv-scan   — Google OSV Scanner (CVE database, broader than npm audit)
+#   5. codeql     — GitHub CodeQL static analysis (SAST)
+#
+# SECURITY PHILOSOPHY
+# ────────────────────
+# Defence-in-depth on the supply chain:
+#
+#   npm audit          Checks advisories in the npm advisory database.
+#                      Fast, always available, but only covers JS packages
+#                      and only advisories that npm have received reports for.
+#
+#   OSV Scanner        Checks the Open Source Vulnerabilities database
+#                      (https://osv.dev). Broader than npm — covers CVEs
+#                      from NVD, GitHub Advisories, and distro security teams.
+#                      Catches vulnerabilities that npm audit misses.
+#
+#   CodeQL (SAST)      Static application security testing. Scans source code
+#                      for injection flaws, credential leakage, path traversal,
+#                      ReDoS, prototype pollution, and 200+ other query types.
+#                      Does not rely on known-CVE databases — catches novel bugs.
+#
+# Together these three cover:
+#   - Known CVEs in direct dependencies           (npm audit + OSV)
+#   - Known CVEs in transitive dependencies       (npm audit + OSV)
+#   - Vulnerabilities not yet in npm's database   (OSV)
+#   - Logic and code-level security flaws         (CodeQL)
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Cancel any in-progress run for the same ref — avoids wasting runner minutes
+# when you push multiple commits quickly.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimum permissions by default — jobs declare only what they need.
+permissions:
+  contents: read
+
+jobs:
+
+  # ── 1. Dependency Vulnerability Audit (npm) ───────────────────────────────
+  audit:
+    name: npm audit
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package.json
+            frontend/package.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci --ignore-scripts
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # --audit-level=moderate: fails the job on any moderate, high, or critical
+      # vulnerability. Low severity issues are reported but don't fail.
+      # Change to --audit-level=low to be stricter.
+      - name: Audit backend dependencies
+        working-directory: backend
+        run: npm audit --audit-level=moderate
+
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=moderate
+
+      # Save audit reports as artefacts so security team can review details
+      # even when CI passes (for context) or when triage is needed.
+      - name: Save audit reports
+        if: always()
+        run: |
+          npm audit --json --prefix backend > backend-audit.json 2>/dev/null || true
+          npm audit --json --prefix frontend > frontend-audit.json 2>/dev/null || true
+
+      - name: Upload audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-reports-${{ github.sha }}
+          path: |
+            backend-audit.json
+            frontend-audit.json
+          retention-days: 90
+
+  # ── 2. Lint ───────────────────────────────────────────────────────────────
+  lint:
+    name: ESLint
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: backend/package.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci --ignore-scripts
+
+      - name: Run ESLint
+        working-directory: backend
+        run: npm run lint
+
+  # ── 3. Test Suite ─────────────────────────────────────────────────────────
+  test:
+    name: Jest Tests
+    runs-on: ubuntu-24.04
+
+    # Tests run against multiple Node.js versions to catch compatibility issues
+    # and ensure we're not accidentally using APIs removed in newer versions.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: backend/package.json
+
+      - name: Install dependencies
+        working-directory: backend
+        # --ignore-scripts: prevents postinstall scripts from running.
+        # Safe for our deps; argon2 uses node-gyp but prebuilt binaries are available.
+        run: npm ci --ignore-scripts
+
+      - name: Run tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          # Safe test-only secrets — never use real secrets in CI env vars
+          JWT_ACCESS_SECRET: ${{ secrets.CI_JWT_ACCESS_SECRET || 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }}
+          JWT_REFRESH_SECRET: ${{ secrets.CI_JWT_REFRESH_SECRET || 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }}
+          CSRF_SECRET: ${{ secrets.CI_CSRF_SECRET || 'cccccccccccccccccccccccccccccccc' }}
+          JWT_ACCESS_EXPIRES_IN: '900'
+          JWT_REFRESH_EXPIRES_IN: '604800'
+          LOCKOUT_MAX_ATTEMPTS: '5'
+          LOCKOUT_DURATION_SECONDS: '900'
+          ALLOWED_ORIGINS: 'http://localhost:3000'
+          HTTPS_REDIRECT: 'false'
+          HSTS_MAX_AGE: '31536000'
+          HSTS_PRELOAD: 'false'
+          TRUST_PROXY: '1'
+        run: npm test -- --coverage --coverageReporters=text --coverageReporters=lcov
+
+      - name: Upload coverage report
+        if: matrix.node-version == '22'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ github.sha }}
+          path: backend/coverage/
+          retention-days: 30
+
+  # ── 4. OSV Scanner (broader CVE database) ────────────────────────────────
+  osv-scan:
+    name: OSV Vulnerability Scan
+    runs-on: ubuntu-24.04
+    # OSV scanner needs write access to upload SARIF results to Security tab
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install backend dependencies (for lockfile)
+        working-directory: backend
+        run: npm ci --ignore-scripts
+
+      - name: Install frontend dependencies (for lockfile)
+        working-directory: frontend
+        run: npm ci
+
+      # OSV Scanner checks package-lock.json against the Open Source
+      # Vulnerabilities database — catches CVEs that npm audit misses.
+      - name: Run OSV Scanner
+        uses: google/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --lockfile=backend/package-lock.json
+            --lockfile=frontend/package-lock.json
+            --format=sarif
+            --output=osv-results.sarif
+        continue-on-error: true
+
+      # Upload SARIF to GitHub Security tab — visible in the repository's
+      # "Security" → "Code scanning alerts" view.
+      - name: Upload OSV SARIF results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: osv-results.sarif
+          category: osv-scanner
+        continue-on-error: true
+
+      # Also save raw results as an artefact for offline review
+      - name: Upload OSV raw results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: osv-scan-results-${{ github.sha }}
+          path: osv-results.sarif
+          retention-days: 90
+
+  # ── 5. CodeQL SAST ────────────────────────────────────────────────────────
+  codeql:
+    name: CodeQL Static Analysis
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Initialize CodeQL with JavaScript/TypeScript queries.
+      # 'security-extended' includes the default security queries plus
+      # additional ones for injection, path traversal, and prototype pollution.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          queries: security-extended
+
+      # For JavaScript, CodeQL uses autobuild — no compile step needed.
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      # Performs the analysis and uploads results to GitHub Security tab.
+      # Results appear under Security → Code scanning alerts.
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: codeql-javascript

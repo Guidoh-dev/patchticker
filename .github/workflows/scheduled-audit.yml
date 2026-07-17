@@ -1,0 +1,179 @@
+# .github/workflows/scheduled-audit.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# SCHEDULED WEEKLY DEPENDENCY AUDIT
+#
+# Why this exists separately from ci.yml:
+#   The CI audit only runs on push/PR. A CVE can be disclosed at any time —
+#   your dependency tree may be safe when you merge a PR on Monday but
+#   vulnerable by Wednesday when a new advisory is published.
+#
+#   This workflow runs every Monday at 09:00 UTC (before the work week starts)
+#   and creates a GitHub Issue if any vulnerabilities are found. This ensures
+#   the team is notified of new CVEs even with no recent code changes.
+#
+# Can also be triggered manually via the Actions tab.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Scheduled Dependency Audit
+
+on:
+  # Every Monday at 09:00 UTC
+  schedule:
+    - cron: '0 9 * * 1'
+  # Allow manual trigger from the Actions tab
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write   # Required to create the report issue
+
+jobs:
+  weekly-audit:
+    name: Weekly npm audit + OSV scan
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci --ignore-scripts
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # Run audit and capture exit code without failing the job immediately
+      - name: Run backend npm audit
+        id: backend_audit
+        working-directory: backend
+        run: |
+          npm audit --audit-level=moderate --json > /tmp/backend-audit.json 2>&1
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Run frontend npm audit
+        id: frontend_audit
+        working-directory: frontend
+        run: |
+          npm audit --audit-level=moderate --json > /tmp/frontend-audit.json 2>&1
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      # Parse audit JSON and build a human-readable summary for the issue body
+      - name: Parse audit results
+        id: parse
+        run: |
+          BACKEND_CODE=${{ steps.backend_audit.outputs.exit_code }}
+          FRONTEND_CODE=${{ steps.frontend_audit.outputs.exit_code }}
+
+          if [ "$BACKEND_CODE" = "0" ] && [ "$FRONTEND_CODE" = "0" ]; then
+            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+            echo "summary=No vulnerabilities found." >> $GITHUB_OUTPUT
+          else
+            echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
+
+            # Extract vulnerability counts from JSON
+            BACKEND_TOTAL=$(cat /tmp/backend-audit.json | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          v=d.get('metadata',{}).get('vulnerabilities',{})
+          print(v.get('moderate',0)+v.get('high',0)+v.get('critical',0))
+          " 2>/dev/null || echo "?")
+
+            FRONTEND_TOTAL=$(cat /tmp/frontend-audit.json | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)
+          v=d.get('metadata',{}).get('vulnerabilities',{})
+          print(v.get('moderate',0)+v.get('high',0)+v.get('critical',0))
+          " 2>/dev/null || echo "?")
+
+            echo "summary=Backend: $BACKEND_TOTAL moderate+ vulnerabilities. Frontend: $FRONTEND_TOTAL moderate+ vulnerabilities." >> $GITHUB_OUTPUT
+          fi
+
+      # Run OSV scanner as a second scan source
+      - name: Run OSV Scanner
+        uses: google/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --lockfile=backend/package-lock.json
+            --lockfile=frontend/package-lock.json
+        continue-on-error: true
+
+      # Upload audit artefacts regardless of pass/fail
+      - name: Upload audit reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-audit-${{ github.run_id }}
+          path: |
+            /tmp/backend-audit.json
+            /tmp/frontend-audit.json
+          retention-days: 90
+
+      # Create a GitHub Issue only when vulnerabilities are found.
+      # The issue is labelled 'security' and assigned to help with triage.
+      # Uses the built-in GITHUB_TOKEN — no additional secrets needed.
+      - name: Create vulnerability issue
+        if: steps.parse.outputs.has_vulnerabilities == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = `${{ steps.parse.outputs.summary }}`;
+            const runUrl = `https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const date = new Date().toISOString().split('T')[0];
+
+            const body = [
+              `## 🔴 Dependency Vulnerabilities Found — ${date}`,
+              ``,
+              `**Summary:** ${summary}`,
+              ``,
+              `### What to do`,
+              `1. Review the audit reports in the [workflow run](${runUrl})`,
+              `2. Run \`npm audit --audit-level=moderate\` locally in \`backend/\` and \`frontend/\``,
+              `3. Run \`npm audit fix\` where safe to do so`,
+              `4. For breaking-change fixes, review changelog and update manually`,
+              `5. Check [npm advisories](https://www.npmjs.com/advisories) for context`,
+              ``,
+              `### Quick commands`,
+              `\`\`\`bash`,
+              `# Check details`,
+              `cd backend && npm audit`,
+              `cd frontend && npm audit`,
+              ``,
+              `# Fix automatically (non-breaking only)`,
+              `cd backend && npm audit fix`,
+              `cd frontend && npm audit fix`,
+              `\`\`\``,
+              ``,
+              `---`,
+              `*This issue was created automatically by the [scheduled audit workflow](${runUrl}).*`,
+            ].join('\n');
+
+            // Check if an open issue already exists for this week to avoid duplicates
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'security,automated',
+              state: 'open',
+            });
+
+            const alreadyExists = existing.data.some(i =>
+              i.title.includes('Dependency Vulnerabilities Found') &&
+              i.title.includes(date)
+            );
+
+            if (!alreadyExists) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `🔴 Dependency Vulnerabilities Found — ${date}`,
+                body,
+                labels: ['security', 'automated', 'dependencies'],
+              });
+            }

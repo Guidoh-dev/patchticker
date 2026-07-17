@@ -1,0 +1,17 @@
+# Backend-level .gitignore — redundant safety net on top of root .gitignore
+# The root .gitignore already covers these, but having it here means even if
+# someone runs git init inside backend/ separately, secrets stay protected.
+
+.env
+.env.*
+!.env.example
+
+node_modules/
+logs/
+*.log
+build/
+coverage/
+audit-report*.json
+osv-scanner-results.json
+*.pem
+*.key

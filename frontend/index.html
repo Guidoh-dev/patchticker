@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Primary SEO -->
+  <title>PatchTicker — Software Update Intelligence</title>
+  <meta name="description" content="Clear install guidance for software updates across NVIDIA, AMD, Windows, Apple, PlayStation, Xbox, Steam, Switch and more. Know before you update." />
+  <meta name="theme-color" content="#0a0a0a" />
+
+  <!-- Open Graph (social sharing) -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:url"         content="https://patchticker.app/" />
+  <meta property="og:title"       content="PatchTicker — Software Update Intelligence" />
+  <meta property="og:description" content="Clear install guidance for software updates across NVIDIA, AMD, Windows, Apple, PlayStation, Xbox, Steam, Switch and more. Know before you update." />
+  <meta property="og:image"       content="https://patchticker.app/og-image.png" />
+
+  <!-- Twitter card -->
+  <meta name="twitter:card"        content="summary_large_image" />
+  <meta name="twitter:title"       content="PatchTicker — Software Update Intelligence" />
+  <meta name="twitter:description" content="Clear install guidance for software updates. Know before you update." />
+  <meta name="twitter:image"       content="https://patchticker.app/og-image.png" />
+
+  <!-- Canonical -->
+  <link rel="canonical" href="https://patchticker.app/" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/styles.css" />
+
+  <!--
+    hCaptcha widget script — loaded async, does not block page render.
+    The widget is rendered into #hcaptcha-widget inside the register form
+    by main.js after the view mounts. The site key is injected at build
+    time by Vite (__HCAPTCHA_SITE_KEY__) and falls back to the hardcoded
+    public key. The secret key never appears here — backend only.
+  -->
+  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+
+  <!--
+    AdSense script is NOT loaded here.
+    It is injected dynamically at runtime by main.js (loadAdScript) only
+    after confirming the user is on the free tier. Premium users never
+    trigger a request to googlesyndication.com.
+  -->
+</head>
+<body>
+  <div id="app"></div>
+  <!--
+    STRIPE_PUBLISHABLE_KEY is injected at build time by Vite (see vite.config.js).
+    It is safe to expose in the frontend — it cannot perform charges.
+    The server-side STRIPE_SECRET_KEY is never sent to the client.
+  -->
+  <script>
+    window.__STRIPE_PRICE_MONTHLY__ = '%VITE_STRIPE_PRICE_MONTHLY%';
+    window.__STRIPE_PRICE_ANNUAL__  = '%VITE_STRIPE_PRICE_ANNUAL%';
+  </script>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

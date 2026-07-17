@@ -1,0 +1,8 @@
+# Frontend-level .gitignore
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+*.log
