@@ -1725,6 +1725,30 @@ async function renderDashboard() {
     });
   });
 
+  function renderOfflineRails(message = 'Live patch feed is reconnecting. Showing recent PatchTicker coverage.') {
+    const fallback = typeof getStaticUpdates === 'function' ? getStaticUpdates() : [];
+    const featureGrid = document.getElementById('dash-feature-grid');
+    const radarGrid = document.getElementById('dash-radar-grid');
+    const listEl = document.getElementById('updates-list');
+    if (featureGrid) {
+      featureGrid.innerHTML = fallback.slice(0, 3).map(renderMiniUpdateCard).join('') || `<p class="dash-empty-copy">${H(message)}</p>`;
+    }
+    if (radarGrid) {
+      const newest = fallback.slice(0, 9);
+      const servicePlatforms = new Set(['Steam', 'Discord', 'BattleNet', 'GOG', 'Switch', 'PS5', 'Xbox', 'Epic']);
+      const pcPlatforms = new Set(['AMD', 'NVIDIA', 'Intel', 'Windows', 'Apple', 'macOS']);
+      radarGrid.innerHTML = [
+        renderRadarCard('Recent coverage', message, newest.slice(0, 3)),
+        renderRadarCard('Apps and consoles', 'Launcher, storefront, console, and handheld patches worth checking.', newest.filter(u => servicePlatforms.has(u.platform)).slice(0, 3)),
+        renderRadarCard('PC essentials', 'Drivers and operating-system updates that can change performance or stability.', newest.filter(u => pcPlatforms.has(u.platform)).slice(0, 3)),
+      ].join('');
+    }
+    if (listEl && fallback.length) {
+      _allUpdates = fallback;
+      applyFilters();
+    }
+  }
+
   // ── Initial data load ─────────────────────────────────────────────────────
   async function loadUpdates() {
     const listEl = document.getElementById('updates-list');
@@ -1734,11 +1758,7 @@ async function renderDashboard() {
       renderHomepageRails(_allUpdates);
       applyFilters();
     } catch (err) {
-      listEl.innerHTML = `<p class="error-state">Failed to load updates: ${H(err.message)}</p>`;
-      const featureGrid = document.getElementById('dash-feature-grid');
-      const radarGrid = document.getElementById('dash-radar-grid');
-      if (featureGrid) featureGrid.innerHTML = '<p class="error-state">Worth a look unavailable right now.</p>';
-      if (radarGrid) radarGrid.innerHTML = '<p class="error-state">Radar lanes unavailable right now.</p>';
+      renderOfflineRails(`Live patch feed is reconnecting: ${err.message}`);
     }
   }
 

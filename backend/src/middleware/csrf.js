@@ -50,7 +50,7 @@ const secrets = require('../config/secrets');
 const isProd = process.env.NODE_ENV === 'production';
 
 const {
-  generateToken,
+  generateCsrfToken,
   doubleCsrfProtection,
 } = doubleCsrf({
   // Return all valid secrets so csrf-csrf tries each one during validation.
@@ -58,6 +58,7 @@ const {
   // tokens signed with the old secret remain valid for ROTATION_OVERLAP_MS.
   // After the overlap window only [current] is returned.
   getSecret: () => secrets.getCsrfSecrets(),
+  getSessionIdentifier: (req) => req.cookies?.refreshToken || req.ip || 'anonymous',
   cookieName:      'pp-csrf',
   cookieOptions: {
     sameSite: 'strict',   // blocks cross-site CSRF entirely for modern browsers
@@ -66,7 +67,7 @@ const {
     path:     '/',
   },
   size:            64,    // token size in bytes
-  getTokenFromRequest: (req) => {
+  getCsrfTokenFromRequest: (req) => {
     // Accept token from header only — not from body or query string
     return req.headers['x-csrf-token'];
   },
@@ -99,7 +100,7 @@ function csrfProtection(req, res, next) {
  * @param {import('express').Response} res
  */
 function sendCsrfToken(req, res) {
-  const token = generateToken(req, res);
+  const token = generateCsrfToken(req, res);
   res.json({ csrfToken: token });
 }
 
