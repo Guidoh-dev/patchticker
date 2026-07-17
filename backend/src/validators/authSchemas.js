@@ -101,4 +101,5 @@ module.exports = {
   LoginBodySchema,
   RefreshBodySchema,
   LogoutBodySchema,
+  RegistrationPasswordField,
 };

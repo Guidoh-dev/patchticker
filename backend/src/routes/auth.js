@@ -356,7 +356,7 @@ const { z: _z } = require('zod');
 const { _hardened: _h } = require('../validators/schemas');
 const ResetPasswordSchema = _z.object({
   token:           _z.string().min(64).max(64),
-  password:        require('../validators/authSchemas').RegisterBodySchema.shape.password,
+  password:        require('../validators/authSchemas').RegistrationPasswordField,
   confirmPassword: _z.string().min(1, 'Please confirm your password'),
 }).strict().superRefine(({ password, confirmPassword }, ctx) => {
   if (password !== confirmPassword) {

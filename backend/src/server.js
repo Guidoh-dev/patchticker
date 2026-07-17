@@ -75,6 +75,7 @@ const authRouter       = require('./routes/auth');
 const billingRouter    = require('./routes/billing');
 const webhooksRouter   = require('./routes/webhooks');
 const adminRouter      = require('./routes/admin');
+const feedRouter       = require('./routes/feed');
 const cronService    = require('./services/cronService');
 const watchlistRouter  = require('./routes/watchlist');
 const ratingsRouter    = require('./routes/ratings');

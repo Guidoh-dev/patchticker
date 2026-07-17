@@ -60,6 +60,21 @@ async function fetchXml(url) {
   return res.data;
 }
 
+
+function toIsoDate(value, fallback = new Date()) {
+  if (!value) return fallback.toISOString().slice(0, 10);
+  const raw = String(value).trim();
+  const candidates = [raw];
+  if (/^[A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}$/i.test(raw)) {
+    candidates.push(`${raw} ${new Date().getFullYear()}`);
+  }
+  for (const candidate of candidates) {
+    const parsed = new Date(candidate);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  }
+  return fallback.toISOString().slice(0, 10);
+}
+
 // ── Parse RSS helper ──────────────────────────────────────────────────────────
 
 function parseRssItems(xml, limit = 5) {
@@ -101,7 +116,7 @@ async function detectWindows() {
       platform:   'Windows',
       name:       update.title.slice(0, 120),
       version,
-      releasedAt: update.pubDate ? new Date(update.pubDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(update.pubDate),
       changelog:  [update.description].filter(Boolean),
       sourceUrl:  update.link || 'https://learn.microsoft.com/windows/release-health/release-information',
     };
@@ -128,7 +143,7 @@ async function detectNvidia() {
       platform:   'NVIDIA',
       name:       `NVIDIA Game Ready Driver ${driver.Version}`,
       version:    driver.Version,
-      releasedAt: driver.ReleaseDateTime?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(driver.ReleaseDateTime),
       changelog:  driver.ReleaseNotes ? [driver.ReleaseNotes.slice(0, 400)] : [],
       sourceUrl:  `https://www.nvidia.com/Download/driverResults.aspx/${driver.DownloadURL}`,
     };
@@ -156,7 +171,7 @@ async function detectAmd() {
       platform:   'AMD',
       name:       `AMD Adrenalin Edition ${versionText}`,
       version:    versionText,
-      releasedAt: dateText ? new Date(dateText).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(dateText),
       changelog:  [],
       sourceUrl:  'https://www.amd.com/en/support/downloads/drivers.html',
     };
@@ -189,7 +204,7 @@ async function detectAppleIos() {
           platform:   'Apple',
           name:       nameCell.slice(0, 80),
           version:    versionMatch ? versionMatch[1] : nameCell,
-          releasedAt: dateCell ? new Date(dateCell).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          releasedAt: toIsoDate(dateCell),
           changelog:  [],
           sourceUrl:  linkCell ? `https://support.apple.com${linkCell}` : 'https://support.apple.com/en-us/111900',
         };
@@ -224,7 +239,7 @@ async function detectMacos() {
           platform:   'macOS',
           name:       nameCell.slice(0, 80),
           version:    versionMatch ? versionMatch[1] : nameCell,
-          releasedAt: dateCell ? new Date(dateCell).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          releasedAt: toIsoDate(dateCell),
           changelog:  [],
           sourceUrl:  linkCell ? `https://support.apple.com${linkCell}` : 'https://support.apple.com/en-us/111900',
         };
@@ -263,7 +278,7 @@ async function detectSteam() {
       platform:   'Steam',
       name:       update.title.slice(0, 100),
       version:    update.pubDate ? new Date(update.pubDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Latest',
-      releasedAt: update.pubDate ? new Date(update.pubDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(update.pubDate),
       changelog:  [update.description].filter(Boolean),
       sourceUrl:  update.link || 'https://store.steampowered.com/news/',
     };
@@ -288,7 +303,7 @@ async function detectSwitch() {
       platform:   'Switch',
       name:       `Nintendo Switch System Update ${versionMatch[1]}`,
       version:    versionMatch[1],
-      releasedAt: new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(),
       changelog:  ['Nintendo Switch system update detected from official support history'],
       sourceUrl:  'https://en-americas-support.nintendo.com/app/answers/detail/a_id/22525',
     };
@@ -312,7 +327,7 @@ async function detectDiscord() {
       platform:   'Discord',
       name:       `Discord Status / Client Signal — ${update.title}`.slice(0, 100),
       version:    update.pubDate ? new Date(update.pubDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Latest',
-      releasedAt: update.pubDate ? new Date(update.pubDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(update.pubDate),
       changelog:  [update.description].filter(Boolean),
       sourceUrl:  update.link || 'https://discordstatus.com/history',
     };
@@ -334,7 +349,7 @@ async function detectBattleNet() {
       platform:   'BattleNet',
       name:       (title || 'Battle.net Desktop App Update Signal').slice(0, 100),
       version:    new Date().toISOString().slice(0, 7),
-      releasedAt: new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(),
       changelog:  ['Battle.net support and launcher status checked for client-impacting changes'],
       sourceUrl:  'https://us.battle.net/support/en/',
     };
@@ -357,7 +372,7 @@ async function detectGog() {
       platform:   'GOG',
       name:       title || 'GOG Galaxy Update Signal',
       version:    new Date().toISOString().slice(0, 7),
-      releasedAt: new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(),
       changelog:  ['GOG news monitored for Galaxy client and library-sync updates'],
       sourceUrl:  'https://www.gog.com/news',
     };
@@ -387,7 +402,7 @@ async function detectEpic() {
       platform:   'Epic',
       name:       title.slice(0, 100),
       version:    versionMatch ? versionMatch[1] : 'Latest',
-      releasedAt: date ? new Date(date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(date),
       changelog:  [],
       sourceUrl:  'https://www.epicgames.com/site/en-US/news?category=release-notes',
     };
@@ -413,7 +428,7 @@ async function detectXbox() {
       platform:   'Xbox',
       name:       update.title.slice(0, 100),
       version:    versionMatch ? versionMatch[1] : 'Latest',
-      releasedAt: update.pubDate ? new Date(update.pubDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(update.pubDate),
       changelog:  [update.description].filter(Boolean),
       sourceUrl:  update.link || 'https://news.xbox.com',
     };
@@ -439,7 +454,7 @@ async function detectPs5() {
       platform:   'PS5',
       name:       update.title.slice(0, 100),
       version:    versionMatch ? versionMatch[1] : 'Latest',
-      releasedAt: update.pubDate ? new Date(update.pubDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      releasedAt: toIsoDate(update.pubDate),
       changelog:  [update.description].filter(Boolean),
       sourceUrl:  update.link || 'https://blog.playstation.com',
     };
@@ -470,7 +485,7 @@ async function detectIntel() {
       platform:   'Intel',
       name:       `Intel Arc & Iris Xe Graphics Driver ${versionEl}`,
       version:    versionEl,
-      releasedAt: dateEl ? new Date(dateEl).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      releasedAt: dateEl ? new Date(dateEl).toISOString().slice(0, 10) : toIsoDate(),
       changelog:  [],
       sourceUrl:  'https://www.intel.com/content/www/us/en/download/785597/intel-arc-iris-xe-graphics-windows.html',
     };
