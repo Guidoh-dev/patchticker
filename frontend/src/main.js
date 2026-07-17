@@ -1078,6 +1078,72 @@ function renderScoreBar(score, status) {
   `;
 }
 
+
+function renderInlineUpdatePanel(u, decision, rating, risk) {
+  const releaseNotes = (u.changelog || []).slice(0, 8);
+  const knownIssues = (u.knownIssues || []).slice(0, 6);
+  const riskFactors = (u.riskFactors || []).slice(0, 6);
+  const evidence = (u.evidence || []).slice(0, 6);
+  const security = u.securityCriticality || {};
+  const securityLabel = security.label || security.level || 'Not flagged as security-critical yet';
+  const cves = security.cves || [];
+  const ratingBreakdown = rating.breakdown || u.userRating?.breakdown || {};
+
+  return `
+    <div class="decision-expanded" hidden>
+      <div class="decision-expanded-grid">
+        <section class="decision-expanded-block decision-expanded-block--wide">
+          <span>Update overview</span>
+          <p>${H(u.reasoning || u.verdict || risk || 'PatchTicker is still gathering source notes and user reports for this update.')}</p>
+        </section>
+
+        <section class="decision-expanded-block">
+          <span>Release notes</span>
+          <ul>${releaseNotes.length ? releaseNotes.map(c => `<li>${H(c)}</li>`).join('') : '<li>No release notes loaded yet.</li>'}</ul>
+        </section>
+
+        <section class="decision-expanded-block">
+          <span>Known issues</span>
+          <ul>${knownIssues.length ? knownIssues.map(i => `<li>${H(i)}</li>`).join('') : '<li>No major known issues recorded yet.</li>'}</ul>
+        </section>
+
+        <section class="decision-expanded-block">
+          <span>Risk factors</span>
+          <ul>${riskFactors.length ? riskFactors.map(r => `<li><strong>${H(r.level || 'watch')}</strong> — ${H(r.text || r)}</li>`).join('') : `<li>${H(risk || 'No specific risk factor has been detected yet.')}</li>`}</ul>
+        </section>
+
+        <section class="decision-expanded-block">
+          <span>User rating</span>
+          <div class="decision-vote-breakdown">
+            <div><b style="width:${Number(ratingBreakdown.install || 0)}%"></b><em>Install</em><strong>${H(String(ratingBreakdown.install || 0))}%</strong></div>
+            <div><b style="width:${Number(ratingBreakdown.wait || 0)}%"></b><em>Wait</em><strong>${H(String(ratingBreakdown.wait || 0))}%</strong></div>
+            <div><b style="width:${Number(ratingBreakdown.avoid || 0)}%"></b><em>Avoid</em><strong>${H(String(ratingBreakdown.avoid || 0))}%</strong></div>
+          </div>
+          <p class="decision-expanded-note">${rating.votes ? `${H(String(rating.votes))} user votes counted.` : 'Waiting for more user votes.'}</p>
+        </section>
+
+        <section class="decision-expanded-block">
+          <span>Security context</span>
+          <p>${H(securityLabel)}</p>
+          ${cves.length ? `<div class="decision-cve-row">${cves.slice(0, 6).map(cve => `<code>${H(cve)}</code>`).join('')}</div>` : '<p class="decision-expanded-note">No CVE list attached to this update yet.</p>'}
+        </section>
+
+        <section class="decision-expanded-block decision-expanded-block--wide">
+          <span>Sources</span>
+          <div class="decision-source-list">
+            ${evidence.length ? evidence.map(e => `
+              <a href="${H(e.url || '#')}" target="_blank" rel="noopener noreferrer">
+                <strong>${H(e.source || 'Source')}</strong>
+                <small>${H(e.text || e.url || 'Open source')}</small>
+              </a>
+            `).join('') : '<p class="decision-expanded-note">No source links attached yet.</p>'}
+          </div>
+        </section>
+      </div>
+    </div>
+  `;
+}
+
 function renderUpdateCard(u) {
   const pSuffix = platformSuffix(u.platform);
   const short   = PLATFORM_SHORT[u.platform] ?? u.platform.slice(0,3).toUpperCase();
@@ -1099,7 +1165,7 @@ function renderUpdateCard(u) {
         <div class="decision-card-head">
           <span class="update-platform-icon platform--${pSuffix} decision-platform-icon">${H(short)}</span>
           <div>
-            <a class="decision-title" href="#/update/${H(u.id)}">${H(u.name)}</a>
+            <button class="decision-title decision-title--button" type="button" data-expand-toggle aria-expanded="false">${H(u.name)}</button>
             <div class="decision-meta">
               <a class="text-platform--${pSuffix}" href="#/platform/${H(u.platform)}">${H(platformLabel(u.platform))}</a>
               <span>·</span><span>${H(formatReleaseDate(u.releasedAt))}</span>
@@ -1120,19 +1186,6 @@ function renderUpdateCard(u) {
           <span class="is-active">Current rating</span>
         </div>
 
-        <details class="decision-drawer">
-          <summary>What changed?</summary>
-          <div class="decision-drawer-grid">
-            <div>
-              <span>Release notes</span>
-              <ul>${(u.changelog || []).slice(0, 3).map(c => `<li>${H(c)}</li>`).join('') || '<li>No release notes loaded yet.</li>'}</ul>
-            </div>
-            <div>
-              <span>Known issues</span>
-              <ul>${(u.knownIssues || []).slice(0, 3).map(i => `<li>${H(i)}</li>`).join('') || '<li>No major known issues recorded.</li>'}</ul>
-            </div>
-          </div>
-        </details>
       </div>
 
       <div class="decision-card-side">
@@ -1146,8 +1199,10 @@ function renderUpdateCard(u) {
           <span>Watch for</span>
           <p>${H(risk)}</p>
         </div>
-        <a class="decision-open" href="#/update/${H(u.id)}">Open details →</a>
+        <button class="decision-open" type="button" data-expand-toggle aria-expanded="false">Click to open ↓</button>
       </div>
+
+      ${renderInlineUpdatePanel(u, decision, rating, risk)}
     </article>
   `;
 }
@@ -1651,6 +1706,24 @@ async function renderDashboard() {
 
     applyFilters();
   }
+
+  document.getElementById('updates-list')?.addEventListener('click', (e) => {
+    const card = e.target.closest('.decision-card');
+    if (!card) return;
+    if (e.target.closest('a')) return;
+    const explicitToggle = e.target.closest('[data-expand-toggle]');
+    const clickedCardShell = e.target === card || e.target.closest('.decision-card-answer, .decision-card-head, .decision-takeaway, .decision-chips, .decision-timeline, .decision-card-side');
+    if (!explicitToggle && !clickedCardShell) return;
+
+    const panel = card.querySelector('.decision-expanded');
+    if (!panel) return;
+    const isOpen = card.classList.toggle('is-expanded');
+    panel.hidden = !isOpen;
+    card.querySelectorAll('[data-expand-toggle]').forEach(btn => {
+      btn.setAttribute('aria-expanded', String(isOpen));
+      if (btn.classList.contains('decision-open')) btn.textContent = isOpen ? 'Close details ↑' : 'Click to open ↓';
+    });
+  });
 
   // ── Initial data load ─────────────────────────────────────────────────────
   async function loadUpdates() {
