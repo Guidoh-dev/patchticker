@@ -1,5 +1,5 @@
 /* PatchTicker — SaaS UI Styles
-   Font: JetBrains Mono (code) + Syne (display)
+   Font: JetBrains Mono (code) + Space Grotesk (display) + IBM Plex Mono (numbers)
    Palette: #0a0a0a base · var(--green-primary) orange · #22d3ee cyan · #a855f7 purple
 */
 
@@ -43,7 +43,8 @@
   --radius-sm:   4px;
   --nav-h:       60px;
   --font-mono:   'JetBrains Mono', 'Courier New', monospace;
-  --font-display:'Syne', system-ui, sans-serif;
+  --font-display:'Space Grotesk', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-number: 'IBM Plex Mono', 'JetBrains Mono', 'Courier New', monospace;
 }
 
 html { background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; }
@@ -97,6 +98,56 @@ input, select, textarea { font-family: var(--font-mono); }
 .btn--ghost:hover:not(:disabled)  { color: var(--text); }
 .btn--full     { width: 100%; }
 
+
+/* Numeric ratings use a dedicated instrument-style font */
+.score-number,
+.score-bar-value,
+.detail-score-number,
+.detail-rating-score,
+.detail-feed-score,
+.admin-stat-value,
+.platform-score-num,
+.landing-score-row strong,
+.dash-stat-val,
+.peer-rating-main strong,
+.peer-rating-bars em,
+.mini-update-score,
+.decision-card-answer strong,
+.decision-user-meter strong,
+.decision-vote-breakdown strong,
+.update-tape-item span,
+.pricing-price {
+  font-family: var(--font-number);
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: -0.035em;
+}
+
+/* Title rhythm after the display font swap */
+.nav-brand,
+.auth-logo,
+.auth-title,
+.loading-logo,
+.dash-title,
+.pro-section-title,
+.pro-gate-title,
+.faq-title,
+.account-title,
+.admin-title,
+.legal-title,
+.landing-title,
+.landing-band h2,
+.dash-hero-title,
+.dash-section-title,
+.radar-card-kicker,
+.mini-update-title,
+.compare-card strong,
+.platform-title,
+.decision-title,
+.platform-pill-name {
+  font-family: var(--font-display);
+  letter-spacing: -0.035em;
+}
+
 /* ── Auth pages ──────────────────────────────────────────────────────────────── */
 .auth-container {
   min-height: calc(100vh - var(--nav-h));
@@ -110,7 +161,7 @@ input, select, textarea { font-family: var(--font-mono); }
   padding: 40px 36px;
 }
 .auth-header   { text-align: center; margin-bottom: 32px; }
-.auth-logo     { font-family: var(--font-display); font-size: 28px; font-weight: 900; color: var(--text); margin-bottom: 16px; letter-spacing: -1px; }
+.auth-logo     { font-family: var(--font-display); font-size: 28px; font-weight: 700; color: var(--text); margin-bottom: 16px; letter-spacing: -0.03em; }
 .auth-title    { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
 .auth-subtitle { font-size: 13px; color: var(--text-2); }
 .auth-form     { display: flex; flex-direction: column; gap: 20px; }
@@ -147,7 +198,7 @@ select.field-input { cursor: pointer; }
 .loading-screen {
   min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
 }
-.loading-logo { font-family: var(--font-display); font-size: 40px; font-weight: 900; color: var(--text); letter-spacing: -2px; }
+.loading-logo { font-family: var(--font-display); font-size: 40px; font-weight: 700; color: var(--text); letter-spacing: -0.04em; }
 .loading-text  { font-size: 13px; color: var(--text-3); }
 
 .spinner {
@@ -210,7 +261,7 @@ select.field-input { cursor: pointer; }
 .update-meta  { font-size: 12px; color: var(--text-2); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .update-meta-sep { color: var(--text-3); }
 .update-scores { text-align: right; }
-.score-number { font-family: var(--font-display); font-size: 28px; font-weight: 900; line-height: 1; }
+.score-number { font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1; }
 .score-label  { font-size: 10px; color: var(--text-3); }
 .status-badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 99px; white-space: nowrap; }
 
@@ -300,7 +351,7 @@ select.field-input { cursor: pointer; }
 .pricing-eyebrow  { font-size: 12px; font-weight: 600; color: var(--green-primary); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 16px; }
 .pricing-headline {
   font-family: var(--font-display); font-size: clamp(32px, 5vw, 52px);
-  font-weight: 900; line-height: 1.1; margin-bottom: 16px;
+  font-weight: 700; line-height: 1.1; margin-bottom: 16px;
 }
 .pricing-subhead  { font-size: 16px; color: var(--text-2); }
 .pricing-grid     { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 80px; }
@@ -320,7 +371,7 @@ select.field-input { cursor: pointer; }
 }
 .pricing-card-header { margin-bottom: 28px; }
 .pricing-tier  { font-size: 12px; font-weight: 600; color: var(--text-2); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 8px; }
-.pricing-price { font-family: var(--font-display); font-size: 44px; font-weight: 900; line-height: 1; margin-bottom: 6px; }
+.pricing-price { font-family: var(--font-display); font-size: 44px; font-weight: 700; line-height: 1; margin-bottom: 6px; }
 .pricing-period { font-size: 16px; font-weight: 400; color: var(--text-2); }
 .pricing-tagline { font-size: 13px; color: var(--text-2); }
 .pricing-features { list-style: none; flex: 1; margin-bottom: 28px; display: flex; flex-direction: column; gap: 10px; }
@@ -512,7 +563,7 @@ select.field-input { cursor: pointer; }
 .detail-error-code {
   font-family: var(--font-display);
   font-size: 64px;
-  font-weight: 900;
+  font-weight: 700;
   color: var(--text-3);
 }
 
@@ -648,7 +699,7 @@ select.field-input { cursor: pointer; }
 .detail-score-number {
   font-family: var(--font-display);
   font-size: 36px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
 }
 
@@ -770,7 +821,7 @@ select.field-input { cursor: pointer; }
 .detail-rating-score {
   font-family: var(--font-display);
   font-size: 32px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -1415,7 +1466,7 @@ select.field-input { cursor: pointer; }
   padding: 48px 24px 80px;
 }
 .account-header { margin-bottom: 36px; }
-.account-title  { font-family: var(--font-display); font-size: 28px; font-weight: 900; margin: 0 0 6px; }
+.account-title  { font-family: var(--font-display); font-size: 28px; font-weight: 700; margin: 0 0 6px; }
 .account-subtitle { font-size: 13px; color: var(--text-3); margin: 0; }
 
 .account-grid {
@@ -1516,7 +1567,7 @@ select.field-input { cursor: pointer; }
   padding: 40px 24px 80px;
 }
 .admin-header { margin-bottom: 32px; }
-.admin-title  { font-family: var(--font-display); font-size: 28px; font-weight: 900; margin: 0 0 4px; }
+.admin-title  { font-family: var(--font-display); font-size: 28px; font-weight: 700; margin: 0 0 4px; }
 .admin-subtitle { font-size: 13px; color: var(--text-3); }
 
 .admin-stats {
@@ -1538,7 +1589,7 @@ select.field-input { cursor: pointer; }
 .admin-stat-value {
   font-family: var(--font-display);
   font-size: 28px;
-  font-weight: 900;
+  font-weight: 700;
   color: var(--text);
   display: block;
 }
@@ -1756,7 +1807,7 @@ select.field-input { cursor: pointer; }
 .platform-title {
   font-family: var(--font-display);
   font-size: 36px;
-  font-weight: 900;
+  font-weight: 700;
   margin: 0 0 6px;
   letter-spacing: -0.02em;
 }
@@ -1840,7 +1891,7 @@ select.field-input { cursor: pointer; }
   justify-content: center;
   box-shadow: 0 0 16px color-mix(in srgb, var(--ring-color, #888) 30%, transparent);
 }
-.platform-score-num   { font-size: 20px; font-weight: 900; line-height: 1; }
+.platform-score-num   { font-size: 20px; font-weight: 700; line-height: 1; }
 .platform-score-label { font-size: 10px; color: var(--text-3); }
 
 .platform-status-badge {
@@ -2114,7 +2165,7 @@ select.field-input { cursor: pointer; }
   padding: 48px 24px 40px;
 }
 .legal-header { margin-bottom: 36px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
-.legal-title  { font-family: var(--font-display); font-size: 32px; font-weight: 900; margin: 0 0 8px; }
+.legal-title  { font-family: var(--font-display); font-size: 32px; font-weight: 700; margin: 0 0 8px; }
 .legal-effective { font-size: 12px; color: var(--text-3); margin: 0; }
 
 .legal-body {
@@ -2231,7 +2282,7 @@ select.field-input { cursor: pointer; }
 .dash-hero-title {
   font-family: var(--font-display);
   font-size: clamp(30px, 5vw, 54px);
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: -0.03em;
   margin: 0 0 10px;
   color: var(--text);
@@ -2296,7 +2347,7 @@ select.field-input { cursor: pointer; }
 .dash-stat-val {
   font-family: var(--font-display);
   font-size: 32px;
-  font-weight: 900;
+  font-weight: 700;
   color: var(--green-primary);
   line-height: 1;
 }
@@ -3101,7 +3152,7 @@ select.field-input { cursor: pointer; }
   color: var(--green-primary);
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: .14em;
 }
 .decision-action--caution { background: rgba(251,191,36,.14); color: var(--yellow); }
@@ -3127,7 +3178,7 @@ select.field-input { cursor: pointer; }
   color: var(--text);
   font-family: var(--font-display);
   font-size: 24px;
-  font-weight: 900;
+  font-weight: 700;
   line-height: 1.05;
   text-decoration: none !important;
 }
@@ -3472,7 +3523,7 @@ select.field-input { cursor: pointer; }
   margin-bottom: 8px;
   color: var(--green-primary);
   font-size: 11px;
-  font-weight: 900;
+  font-weight: 700;
   letter-spacing: .14em;
   text-transform: uppercase;
 }
