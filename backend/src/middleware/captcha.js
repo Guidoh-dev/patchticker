@@ -43,7 +43,7 @@ const https  = require('https');
 const qs     = require('querystring');
 const logger = require('../utils/logger');
 
-const VERIFY_URL   = 'https://hcaptcha.com/siteverify';
+const VERIFY_URL   = 'https://api.hcaptcha.com/siteverify';
 const MIN_SCORE    = parseFloat(process.env.HCAPTCHA_MIN_SCORE || '0.5');
 const isProd       = process.env.NODE_ENV === 'production';
 const isEnabled    = process.env.HCAPTCHA_ENABLED !== 'false';
@@ -57,7 +57,8 @@ const isEnabled    = process.env.HCAPTCHA_ENABLED !== 'false';
 function verifyCaptchaToken(token, ip) {
   return new Promise((resolve, reject) => {
     const secret = process.env.HCAPTCHA_SECRET_KEY;
-    const body   = qs.stringify({ secret, response: token, remoteip: ip });
+    const sitekey = process.env.HCAPTCHA_SITE_KEY || undefined;
+    const body   = qs.stringify({ secret, response: token, remoteip: ip, sitekey });
 
     const options = {
       method:  'POST',

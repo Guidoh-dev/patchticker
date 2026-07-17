@@ -377,16 +377,19 @@ async function runAll() {
     results:    [],
   };
 
-  for (const r of results) {
+  results.forEach((r, index) => {
+    const platform = platforms[index];
     if (r.status === 'fulfilled') {
       summary.results.push(r.value);
       if (r.value.status === 'new_update') summary.newUpdates++;
       else if (r.value.status === 'unchanged') summary.unchanged++;
     } else {
       summary.failed++;
-      logger.error('[pipeline] Platform run failed', { error: r.reason?.message });
+      const message = r.reason?.message || 'Unknown pipeline error';
+      summary.results.push({ platform, status: 'failed', error: message });
+      logger.error('[pipeline] Platform run failed', { platform, error: message });
     }
-  }
+  });
 
   logger.info('[pipeline] Run complete', {
     newUpdates: summary.newUpdates,

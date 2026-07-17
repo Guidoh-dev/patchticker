@@ -613,12 +613,87 @@ function rowToUpdate(row) {
   };
 }
 
-function mergeWithStaticPlatformFallback(dbUpdates) {
+
+async function hydrateLiveRatings(updates) {
+  if (!db.isAvailable() || !updates.length) return updates;
+
+  const ids = updates.map(update => update.id);
+  try {
+    const rows = await db.query(
+      `SELECT
+         update_id,
+         COUNT(*)                                 AS total,
+         COUNT(*) FILTER (WHERE vote = 'install') AS install_count,
+         COUNT(*) FILTER (WHERE vote = 'wait')    AS wait_count,
+         COUNT(*) FILTER (WHERE vote = 'avoid')   AS avoid_count
+       FROM update_ratings
+       WHERE update_id = ANY($1)
+       GROUP BY update_id`,
+      [ids]
+    );
+
+    const ratings = new Map(rows.rows.map((row) => {
+      const total = parseInt(row.total, 10) || 0;
+      const install = parseInt(row.install_count, 10) || 0;
+      const wait = parseInt(row.wait_count, 10) || 0;
+      const avoid = parseInt(row.avoid_count, 10) || 0;
+      const score = total ? +((install * 10 + wait * 5) / total).toFixed(1) : null;
+      return [row.update_id, {
+        score,
+        totalVotes: total,
+        breakdown: {
+          install: total ? Math.round((install / total) * 100) : 0,
+          wait: total ? Math.round((wait / total) * 100) : 0,
+          avoid: total ? Math.round((avoid / total) * 100) : 0,
+        },
+      }];
+    }));
+
+    return updates.map(update => {
+      const liveRating = ratings.get(update.id);
+      return liveRating
+        ? { ...update, userRating: liveRating, ratingsLive: true }
+        : { ...update, userRating: null, ratingsLive: false };
+    });
+  } catch (err) {
+    logger.warn('[updates] rating aggregation failed', { error: err.message });
+    return updates;
+  }
+}
+
+function mergeWithStaticPlatformFallback(dbUpdates, filters = {}) {
   const byId = new Map(dbUpdates.map(update => [update.id, update]));
   const byPlatformVersion = new Set(dbUpdates.map(update =>
     `${update.platform.toLowerCase()}:${String(update.version).toLowerCase()}`
   ));
-  getStaticUpdates().forEach((update) => {
+
+  let fallbackUpdates = getStaticUpdates();
+  if (filters.platform) {
+    const platformFilter = filters.platform.toLowerCase();
+    fallbackUpdates = fallbackUpdates.filter(update =>
+      update.platform.toLowerCase() === platformFilter
+    );
+  }
+  if (filters.status) {
+    fallbackUpdates = fallbackUpdates.filter(update => update.status === filters.status);
+  }
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    fallbackUpdates = fallbackUpdates.filter(update =>
+      update.name.toLowerCase().includes(q) ||
+      update.platform.toLowerCase().includes(q) ||
+      (update.version || '').toLowerCase().includes(q) ||
+      (update.affects || '').toLowerCase().includes(q) ||
+      (update.verdict || '').toLowerCase().includes(q) ||
+      (update.reasoning || '').toLowerCase().includes(q) ||
+      JSON.stringify(update.changelog || []).toLowerCase().includes(q) ||
+      JSON.stringify(update.knownIssues || []).toLowerCase().includes(q) ||
+      JSON.stringify(update.riskFactors || []).toLowerCase().includes(q) ||
+      JSON.stringify(update.evidence || []).toLowerCase().includes(q)
+    );
+  }
+
+  fallbackUpdates.forEach((update) => {
     const platformVersion = `${update.platform.toLowerCase()}:${String(update.version).toLowerCase()}`;
     if (!byId.has(update.id) && !byPlatformVersion.has(platformVersion)) {
       byId.set(update.id, update);
@@ -668,7 +743,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
 
       const rows = await db.query(query, params);
       if (rows.rows.length > 0) {
-        let updates = mergeWithStaticPlatformFallback(rows.rows.map(rowToUpdate));
+        let updates = mergeWithStaticPlatformFallback(rows.rows.map(rowToUpdate), { platform, status, search });
         // Apply sort after DISTINCT ON
         const sorters = {
           date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
@@ -677,7 +752,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
           score_asc:  (a, b) => a.score - b.score,
         };
         if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
-        return updates;
+        return hydrateLiveRatings(updates);
       }
     } catch (err) {
       logger.warn('[updates] DB query failed — falling back to static', { error: err.message });
@@ -710,7 +785,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
     score_asc:  (a, b) => a.score - b.score,
   };
   if (sort && sorters[sort]) updates = [...updates].sort(sorters[sort]);
-  return updates;
+  return hydrateLiveRatings(updates);
 }
 
 // ── getUpdateById — DB-first with static fallback ─────────────────────────────

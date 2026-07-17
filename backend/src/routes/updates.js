@@ -155,7 +155,7 @@ router.get(
 
       const enriched = {
         ...update,
-        userRating:  liveRatings ?? update.userRating,
+        userRating:  liveRatings,
         userVote,
         ratingsLive: !!liveRatings,
       };

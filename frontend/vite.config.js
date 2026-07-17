@@ -25,15 +25,15 @@ const FRONTEND_CSP = [
   "default-src 'none'",
   // hCaptcha + Google AdSense scripts
   // TODO: ca-pub-XXXXXXXXXXXXXXXX — replace with real publisher ID when live
-  "script-src 'self' https://js.hcaptcha.com https://newassets.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
-  "style-src 'self' https://fonts.googleapis.com https://newassets.hcaptcha.com",
+  "script-src 'self' https://hcaptcha.com https://*.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
+  "style-src 'self' https://fonts.googleapis.com https://hcaptcha.com https://*.hcaptcha.com",
   "font-src 'self' https://fonts.gstatic.com",
   // hCaptcha + AdSense network calls
-  "connect-src 'self' https://hcaptcha.com https://newassets.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
+  "connect-src 'self' https://hcaptcha.com https://*.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
   // AdSense ad images served from Google CDNs
-  "img-src 'self' data: https://newassets.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
+  "img-src 'self' data: https://hcaptcha.com https://*.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
   // hCaptcha + AdSense both render iframes
-  "frame-src https://newassets.hcaptcha.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
+  "frame-src https://hcaptcha.com https://*.hcaptcha.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
   "frame-ancestors 'none'",
   "form-action 'self' https://checkout.stripe.com",
   "base-uri 'self'",
@@ -54,7 +54,7 @@ export default defineConfig(({ mode }) => {
       '__STRIPE_PRICE_MONTHLY__':  JSON.stringify(env.VITE_STRIPE_PRICE_MONTHLY  || ''),
       '__STRIPE_PRICE_ANNUAL__':   JSON.stringify(env.VITE_STRIPE_PRICE_ANNUAL   || ''),
       // hCaptcha public site key — safe to expose in bundle
-      '__HCAPTCHA_SITE_KEY__':     JSON.stringify(env.VITE_HCAPTCHA_SITE_KEY     || '6d344ff4-6e74-4b64-b356-bc7a18f00b0c'),
+      '__HCAPTCHA_SITE_KEY__':     JSON.stringify(env.VITE_HCAPTCHA_SITE_KEY     || ''),
     },
 
     server: {

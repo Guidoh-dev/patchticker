@@ -163,16 +163,16 @@ function buildFrontendCspDirectives() {
   return addReportDirectives({
     defaultSrc:              ["'none'"],
     // TODO: ca-pub-XXXXXXXXXXXXXXXX — replace with real publisher ID when AdSense is live
-    scriptSrc:               ["'self'", 'https://js.hcaptcha.com', 'https://newassets.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
+    scriptSrc:               ["'self'", 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
     // No unsafe-inline. Google Fonts CSS is external — loaded from their CDN.
-    styleSrc:                ["'self'", 'https://fonts.googleapis.com', 'https://newassets.hcaptcha.com', 'https://pagead2.googlesyndication.com'],
+    styleSrc:                ["'self'", 'https://fonts.googleapis.com', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com'],
     // Actual font binary files are served from gstatic.com
     fontSrc:                 ["'self'", 'https://fonts.gstatic.com'],
-    // hCaptcha verification endpoint + newassets CDN
-    connectSrc:              ["'self'", 'https://hcaptcha.com', 'https://newassets.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
-    imgSrc:                  ["'self'", 'data:', 'https://newassets.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
-    // hCaptcha widget renders inside an iframe from newassets
-    frameSrc:                ['https://newassets.hcaptcha.com', 'https://googleads.g.doubleclick.net', 'https://tpc.googlesyndication.com'],
+    // hCaptcha verification endpoint + asset CDN
+    connectSrc:              ["'self'", 'https://hcaptcha.com', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
+    imgSrc:                  ["'self'", 'data:', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
+    // hCaptcha widget renders inside an iframe from hCaptcha
+    frameSrc:                ['https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://googleads.g.doubleclick.net', 'https://tpc.googlesyndication.com'],
     mediaSrc:                ["'none'"],
     objectSrc:               ["'none'"],
     frameSrc:                ["'none'"],

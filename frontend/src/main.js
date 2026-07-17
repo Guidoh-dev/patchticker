@@ -38,6 +38,7 @@ import { route, navigate, start, queryParams } from './router.js';
 // Role hierarchy:  free < pro < admin
 // Any role above 'free' gets no ads and no ad script.
 
+const HCAPTCHA_SITE_KEY = typeof __HCAPTCHA_SITE_KEY__ !== 'undefined' ? __HCAPTCHA_SITE_KEY__ : '';
 const ADSENSE_PUBLISHER_ID = 'ca-pub-5058946458366067';
 let _adScriptLoaded = false;  // guard: only inject the script tag once per session
 
@@ -303,7 +304,7 @@ function renderRegister() {
           <div class="field-group">
             <div class="h-captcha"
                  id="hcaptcha-widget"
-                 data-sitekey="6d344ff4-6e74-4b64-b356-bc7a18f00b0c"
+                 data-sitekey="${H(HCAPTCHA_SITE_KEY)}"
                  data-theme="dark"
                  data-size="normal">
             </div>
@@ -329,9 +330,15 @@ function renderRegister() {
   // The async script tag in index.html sets window.hcaptcha when ready.
   let captchaWidgetId = null;
   function mountCaptcha() {
+    if (!HCAPTCHA_SITE_KEY) {
+      errorEl.textContent = 'CAPTCHA is not configured. Add VITE_HCAPTCHA_SITE_KEY before enabling registration.';
+      errorEl.classList.remove('hidden');
+      submitBtn.disabled = true;
+      return;
+    }
     if (typeof window.hcaptcha !== 'undefined' && captchaWidgetId === null) {
       captchaWidgetId = window.hcaptcha.render('hcaptcha-widget', {
-        sitekey: '6d344ff4-6e74-4b64-b356-bc7a18f00b0c',
+        sitekey: HCAPTCHA_SITE_KEY,
         theme:   'dark',
         size:    'normal',
       });
@@ -877,17 +884,19 @@ function searchNeedles(raw) {
 }
 
 function peerRatingMeta(update) {
-  const rating = update?.userRating || {};
-  const breakdown = rating.breakdown || {};
+  const rating = update?.userRating || null;
+  const votes = Number(rating?.totalVotes || 0);
+  const breakdown = rating?.breakdown || {};
   const install = Math.max(0, Math.min(100, Number(breakdown.install) || 0));
   const wait = Math.max(0, Math.min(100, Number(breakdown.wait) || 0));
   const avoid = Math.max(0, Math.min(100, Number(breakdown.avoid) || 0));
-  const score = Number(rating.score ?? update?.score ?? 0);
-  const label = install >= 70 ? 'Users say install'
-    : avoid >= 35 ? 'Users say avoid'
-      : wait >= 35 ? 'Users say wait'
-        : 'Mixed community signal';
-  return { score, install, wait, avoid, label, votes: rating.totalVotes || 0 };
+  const score = votes ? Number(rating.score ?? 0) : null;
+  const label = !votes ? 'Waiting for user votes'
+    : install >= 70 ? 'Users say install'
+      : avoid >= 35 ? 'Users say avoid'
+        : wait >= 35 ? 'Users say wait'
+          : 'Mixed community signal';
+  return { score, install, wait, avoid, label, votes };
 }
 
 
@@ -1112,6 +1121,7 @@ function renderInlineUpdatePanel(u, decision, rating, risk) {
           <ul>${riskFactors.length ? riskFactors.map(r => `<li><strong>${H(r.level || 'watch')}</strong> — ${H(r.text || r)}</li>`).join('') : `<li>${H(risk || 'No specific risk factor has been detected yet.')}</li>`}</ul>
         </section>
 
+        ${rating.votes ? `
         <section class="decision-expanded-block">
           <span>User rating</span>
           <div class="decision-vote-breakdown">
@@ -1119,8 +1129,8 @@ function renderInlineUpdatePanel(u, decision, rating, risk) {
             <div><b style="width:${Number(ratingBreakdown.wait || 0)}%"></b><em>Wait</em><strong>${H(String(ratingBreakdown.wait || 0))}%</strong></div>
             <div><b style="width:${Number(ratingBreakdown.avoid || 0)}%"></b><em>Avoid</em><strong>${H(String(ratingBreakdown.avoid || 0))}%</strong></div>
           </div>
-          <p class="decision-expanded-note">${rating.votes ? `${H(String(rating.votes))} user votes counted.` : 'Waiting for more user votes.'}</p>
-        </section>
+          <p class="decision-expanded-note">${H(String(rating.votes))} user votes counted.</p>
+        </section>` : ''}
 
         <section class="decision-expanded-block">
           <span>Security context</span>
@@ -1189,12 +1199,18 @@ function renderUpdateCard(u) {
       </div>
 
       <div class="decision-card-side">
+        ${rating.votes ? `
         <div class="decision-user-meter">
           <span>User rating</span>
-          <strong>${rating.score ? rating.score.toFixed(1) : '—'}</strong>
+          <strong>${rating.score !== null ? rating.score.toFixed(1) : '—'}</strong>
           <div class="decision-meter-track"><i style="width:${install}%"></i></div>
           <em>${install}% install</em>
-        </div>
+        </div>` : `
+        <div class="decision-user-meter decision-user-meter--empty">
+          <span>Patch notes</span>
+          <strong>—</strong>
+          <em>Votes pending</em>
+        </div>`}
         <div class="decision-risk">
           <span>Watch for</span>
           <p>${H(risk)}</p>
@@ -1266,7 +1282,7 @@ function renderCompareCard(label, u) {
       <div class="compare-meta">
         <span>${H(platformLabel(u.platform))}</span>
         <span>${H(String(u.score))}/10 safety</span>
-        <span>${rating.votes ? `${H(String(rating.votes))} votes` : 'rating pending'}</span>
+        ${rating.votes ? `<span>${H(String(rating.votes))} votes</span>` : '<span>patch notes only</span>'}
       </div>
       <p>${H(primaryRiskText(u))}</p>
     </a>
@@ -1826,7 +1842,7 @@ async function renderDashboard() {
     if (scoreEl) scoreEl.textContent = meta.score ? meta.score.toFixed(1) : '—';
     if (labelEl) labelEl.textContent = meta.label;
     if (updateEl) updateEl.textContent = reviewed ? `${reviewed.name} · ${platformLabel(reviewed.platform)}` : 'Latest update confidence';
-    if (noteEl) noteEl.textContent = meta.votes ? `Based on ${meta.votes.toLocaleString()} peer votes and bug reports.` : 'Based on user votes and submitted bug reports.';
+    if (noteEl) noteEl.textContent = meta.votes ? `Based on ${meta.votes.toLocaleString()} user votes and bug reports.` : 'No user votes yet. Showing patch notes and source review only.';
     if (installEl) installEl.textContent = `${meta.install}%`;
     if (waitEl) waitEl.textContent = `${meta.wait}%`;
     if (avoidEl) avoidEl.textContent = `${meta.avoid}%`;
@@ -2461,7 +2477,7 @@ async function renderUpdateDetail(id) {
             </div>
           </section>
 
-          <!-- User Rating -->
+          ${ur?.totalVotes ? `
           <section class="detail-section">
             <h2 class="detail-section-title">User Rating
               ${ratingsLive ? '<span class="section-title-badge section-title-badge--live">LIVE</span>' : ''}
@@ -2475,7 +2491,7 @@ async function renderUpdateDetail(id) {
               <button class="vote-btn vote-btn--avoid  ${userVote === 'avoid'   ? 'active' : ''}" data-vote="avoid">✗ Avoid</button>
               ${userVote ? `<button class="vote-btn vote-btn--retract" data-retract>Clear</button>` : ''}
             </div>` : `<p class="detail-vote-cta"><a href="#/login">Sign in</a> to cast your vote</p>`}
-          </section>
+          </section>` : ''}
 
           <section class="detail-section">
             <h2 class="detail-section-title">Risk Factors</h2>
@@ -3043,9 +3059,11 @@ async function renderAdmin() {
     btn.disabled = true; btn.textContent = '⏳ Running…';
     try {
       const { triggerPipeline } = await import('./api.js');
-      await triggerPipeline(null);
-      showToast('Full pipeline triggered. Check back in a minute.', 'success');
-      setTimeout(loadPipelineStatus, 5000);
+      const res = await triggerPipeline(null);
+      const failures = res.errors || [];
+      showToast(failures.length ? `Pipeline completed with ${failures.length} errors.` : 'Full pipeline completed.', failures.length ? 'error' : 'success');
+      if (failures.length) console.warn('PatchTicker pipeline failures', failures);
+      await loadPipelineStatus();
     } catch (err) { showToast(err.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '▶ Run full scan now'; }
   });
@@ -3057,9 +3075,11 @@ async function renderAdmin() {
     btn.disabled = true; btn.textContent = '⏳ Running…';
     try {
       const { triggerPipeline } = await import('./api.js');
-      await triggerPipeline(platform);
-      showToast(`${platform} pipeline triggered.`, 'success');
-      setTimeout(loadPipelineStatus, 5000);
+      const res = await triggerPipeline(platform);
+      const failures = res.errors || [];
+      showToast(failures.length ? `${platform} pipeline failed.` : `${platform} pipeline completed.`, failures.length ? 'error' : 'success');
+      if (failures.length) console.warn('PatchTicker pipeline failures', failures);
+      await loadPipelineStatus();
     } catch (err) { showToast(err.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = 'Run selected'; }
   });
@@ -3239,7 +3259,7 @@ function renderFooter() {
 // ── PRIVACY POLICY ────────────────────────────────────────────────────────────
 function renderPrivacy() {
   const user = getUser();
-  const EFFECTIVE = 'April 10, 2026';
+  const EFFECTIVE = 'July 17, 2026';
 
   setHTML(`
     ${renderNav(user)}
@@ -3309,7 +3329,7 @@ function renderPrivacy() {
 // ── TERMS OF SERVICE ──────────────────────────────────────────────────────────
 function renderTerms() {
   const user = getUser();
-  const EFFECTIVE = 'April 10, 2026';
+  const EFFECTIVE = 'July 17, 2026';
 
   setHTML(`
     ${renderNav(user)}

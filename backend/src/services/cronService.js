@@ -21,6 +21,7 @@ const pipelineService = require('./pipelineService');
 let _fullScanJob     = null;
 let _securityScanJob = null;
 let _isRunning       = false;
+let _lastManualRun    = null;
 
 // ── Security-priority platforms — scanned hourly ──────────────────────────────
 const SECURITY_PLATFORMS = ['Windows', 'Apple', 'macOS'];
@@ -101,10 +102,30 @@ function stop() {
 // ── Manual trigger (used by admin route) ─────────────────────────────────────
 
 async function triggerManual(platform = null) {
-  if (platform) {
-    return pipelineService.processPlatform(platform);
+  if (_isRunning) {
+    const err = new Error('Pipeline is already running');
+    err.code = 'PIPELINE_RUNNING';
+    throw err;
   }
-  return pipelineService.runAll();
+
+  _isRunning = true;
+  const startedAt = new Date().toISOString();
+  try {
+    const summary = platform
+      ? await pipelineService.processPlatform(platform)
+      : await pipelineService.runAll();
+    _lastManualRun = { ok: true, platform, startedAt, finishedAt: new Date().toISOString(), summary };
+    return summary;
+  } catch (err) {
+    _lastManualRun = { ok: false, platform, startedAt, finishedAt: new Date().toISOString(), error: err.message };
+    throw err;
+  } finally {
+    _isRunning = false;
+  }
 }
 
-module.exports = { start, stop, triggerManual };
+function getPipelineRuntimeState() {
+  return { isRunning: _isRunning, lastManualRun: _lastManualRun };
+}
+
+module.exports = { start, stop, triggerManual, getPipelineRuntimeState };

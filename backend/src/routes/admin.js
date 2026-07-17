@@ -26,6 +26,7 @@ const db            = require('../config/db');
 const logger        = require('../utils/logger');
 const { decrypt }   = require('../utils/encrypt');
 const aiService     = require('../services/aiAnalysisService');
+const scraperService = require('../services/scraperService');
 const cronService   = require('../services/cronService');
 
 // All admin routes: authenticate first, then require admin role
@@ -306,15 +307,30 @@ router.get('/ai-log', async (req, res, next) => {
 router.post('/pipeline/run', async (req, res, next) => {
   try {
     const platform = req.body?.platform || null;
+    const validPlatforms = Object.keys(scraperService.DETECTORS || {});
+    if (platform && !validPlatforms.includes(platform)) {
+      return res.status(400).json({ error: `Invalid platform. Expected one of: ${validPlatforms.join(', ')}` });
+    }
+
     logger.info('[admin] Manual pipeline trigger', { adminId: req.user.id, platform });
-    // Run async — don't block the HTTP response for a 10-platform scan
-    cronService.triggerManual(platform).then(summary => {
-      logger.info('[admin] Manual pipeline complete', summary);
-    }).catch(err => {
-      logger.error('[admin] Manual pipeline error', { error: err.message });
+    const summary = await cronService.triggerManual(platform);
+    logger.info('[admin] Manual pipeline complete', { platform, summary });
+
+    const failed = Array.isArray(summary?.results)
+      ? summary.results.filter(r => r.status === 'failed')
+      : [];
+
+    res.json({
+      ok: failed.length === 0,
+      message: platform ? `Pipeline completed for ${platform}` : 'Full pipeline completed',
+      data: summary,
+      errors: failed,
     });
-    res.json({ ok: true, message: platform ? `Pipeline triggered for ${platform}` : 'Full pipeline triggered' });
-  } catch (err) { next(err); }
+  } catch (err) {
+    const status = err.code === 'PIPELINE_RUNNING' ? 409 : 500;
+    logger.error('[admin] Manual pipeline error', { error: err.message });
+    res.status(status).json({ error: err.message || 'Pipeline failed' });
+  }
 });
 
 // ── GET /api/admin/pipeline/status — last run summary ────────────────────────
@@ -332,7 +348,7 @@ router.get('/pipeline/status', async (req, res, next) => {
       GROUP BY platform
       ORDER BY platform
     `);
-    res.json({ data: rows.rows });
+    res.json({ data: rows.rows, runtime: cronService.getPipelineRuntimeState?.() || null });
   } catch (err) { next(err); }
 });
 

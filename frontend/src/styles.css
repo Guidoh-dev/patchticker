@@ -3356,7 +3356,7 @@ select.field-input { cursor: pointer; }
 /* ── Update tape reliability/readability refinements ──────────────────────── */
 .update-tape-track {
   animation-name: updateTapeScroll;
-  animation-duration: 42s;
+  animation-duration: 84s;
   animation-timing-function: linear;
   animation-iteration-count: infinite;
   will-change: transform;

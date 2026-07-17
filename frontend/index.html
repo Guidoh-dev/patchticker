@@ -34,8 +34,8 @@
     hCaptcha widget script — loaded async, does not block page render.
     The widget is rendered into #hcaptcha-widget inside the register form
     by main.js after the view mounts. The site key is injected at build
-    time by Vite (__HCAPTCHA_SITE_KEY__) and falls back to the hardcoded
-    public key. The secret key never appears here — backend only.
+    time by Vite (__HCAPTCHA_SITE_KEY__). The secret key never appears
+    here — backend only.
   -->
   <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 
