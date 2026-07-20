@@ -35,6 +35,7 @@ process.env.DB_ENCRYPTION_KEY  = 'd'.repeat(64);
 process.env.HEALTH_SECRET      = 'e'.repeat(48);
 process.env.ALLOWED_ORIGINS    = 'http://localhost:3000';
 process.env.APP_URL            = 'http://localhost:3000';
+process.env.HCAPTCHA_ENABLED   = 'false';
 
 const crypto = require('crypto');
 
@@ -61,7 +62,7 @@ const requireAuth = require('./middleware/requireAuth');
 
 function makeReq(overrides = {}) {
   return {
-    user:    { id: 'user-1', email: 'test@example.com', role: 'free' },
+    user:    { id: 'user-1', email: 'test@patchticker.app', role: 'free' },
     ip:      '127.0.0.1',
     path:    '/test',
     headers: { authorization: '' },
@@ -75,14 +76,14 @@ function makeRes() {
   const res = {
     status(code)  { _status = code; return res; },
     json(body)    { _body   = body; return res; },
-    get status()  { return _status; },
-    get body()    { return _body; },
+    get statusCode() { return _status; },
+    get body()       { return _body; },
   };
   return res;
 }
 
 function uniqueEmail() {
-  return `test-${crypto.randomBytes(4).toString('hex')}@example.com`;
+  return `test-${crypto.randomBytes(4).toString('hex')}@patchticker.app`;
 }
 
 const STRONG_PASSWORD = 'TestPassword1!@#';
@@ -118,31 +119,31 @@ describe('1. JWT authentication flow', () => {
 
   test('refresh token issue + consume cycle', async () => {
     const user    = await createUser({ email: uniqueEmail(), password: STRONG_PASSWORD });
-    const rawToken = issueRefreshToken({ userId: user.id, ip: '127.0.0.1', userAgent: 'test' });
+    const rawToken = await issueRefreshToken({ userId: user.id, ip: '127.0.0.1', userAgent: 'test' });
 
     expect(typeof rawToken).toBe('string');
     expect(rawToken.length).toBeGreaterThan(20);
 
-    const session = consumeRefreshToken(rawToken);
+    const session = await consumeRefreshToken(rawToken);
     expect(session).not.toBeNull();
     expect(session.userId).toBe(user.id);
   });
 
   test('consumed refresh token cannot be replayed (replay detection)', async () => {
     const user    = await createUser({ email: uniqueEmail(), password: STRONG_PASSWORD });
-    const rawToken = issueRefreshToken({ userId: user.id, ip: '127.0.0.1', userAgent: 'test' });
+    const rawToken = await issueRefreshToken({ userId: user.id, ip: '127.0.0.1', userAgent: 'test' });
 
-    consumeRefreshToken(rawToken);               // first use — valid
-    const replay = consumeRefreshToken(rawToken); // replay — must return null
+    await consumeRefreshToken(rawToken);               // first use — valid
+    const replay = await consumeRefreshToken(rawToken); // replay — must return null
     expect(replay).toBeNull();
   });
 
   test('revoked refresh token is rejected', async () => {
     const user    = await createUser({ email: uniqueEmail(), password: STRONG_PASSWORD });
-    const rawToken = issueRefreshToken({ userId: user.id, ip: '127.0.0.1', userAgent: 'test' });
+    const rawToken = await issueRefreshToken({ userId: user.id, ip: '127.0.0.1', userAgent: 'test' });
 
-    revokeRefreshToken(rawToken);
-    const session = consumeRefreshToken(rawToken);
+    await revokeRefreshToken(rawToken);
+    const session = await consumeRefreshToken(rawToken);
     expect(session).toBeNull();
   });
 
@@ -237,7 +238,7 @@ describe('3. Role-based access — requireRole', () => {
     const next = jest.fn();
     await requireRole('pro')(req, res, next);
     expect(next).not.toHaveBeenCalled();
-    expect(res.status).toBe(403);
+    expect(res.statusCode).toBe(403);
     expect(res.body.upgradeUrl).toBeDefined();
   });
 
@@ -255,7 +256,7 @@ describe('3. Role-based access — requireRole', () => {
     const next = jest.fn();
     await requireRole('admin')(req, res, next);
     expect(next).not.toHaveBeenCalled();
-    expect(res.status).toBe(403);
+    expect(res.statusCode).toBe(403);
   });
 
   test('admin bypasses pro check', async () => {
@@ -283,7 +284,7 @@ describe('3. Role-based access — requireRole', () => {
     const res  = makeRes();
     const next = jest.fn();
     await requireRole('free')(req, res, next);
-    expect(res.status).toBe(401);
+    expect(res.statusCode).toBe(401);
     expect(next).not.toHaveBeenCalled();
   });
 });
@@ -381,7 +382,7 @@ describe('7. Pro route protection — subscription live-check', () => {
     const next = jest.fn();
     await requirePro(req, res, next);
     expect(next).not.toHaveBeenCalled();
-    expect(res.status).toBe(403);
+    expect(res.statusCode).toBe(403);
     expect(res.body.error).toBeDefined();
   });
 
@@ -577,7 +578,7 @@ describe('11. requireAuth middleware', () => {
     const res  = makeRes();
     const next = jest.fn();
     await requireAuth(req, res, next);
-    expect(res.status).toBe(401);
+    expect(res.statusCode).toBe(401);
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -586,7 +587,7 @@ describe('11. requireAuth middleware', () => {
     const res  = makeRes();
     const next = jest.fn();
     await requireAuth(req, res, next);
-    expect(res.status).toBe(401);
+    expect(res.statusCode).toBe(401);
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -602,7 +603,7 @@ describe('11. requireAuth middleware', () => {
     const res  = makeRes();
     const next = jest.fn();
     await requireAuth(req, res, next);
-    expect(res.status).toBe(401);
+    expect(res.statusCode).toBe(401);
   });
 
   test('accepts valid token and sets req.user', async () => {
@@ -732,7 +733,7 @@ describe('15. Auth route smoke tests (HTTP)', () => {
       .post('/api/auth/register')
       .set('Cookie', cookie)
       .set('X-CSRF-Token', token)
-      .send({ email, password: STRONG_PASSWORD });
+      .send({ email, password: STRONG_PASSWORD, confirmPassword: STRONG_PASSWORD });
 
     expect(res.status).toBe(201);
     expect(res.body.accessToken).toBeDefined();
@@ -750,7 +751,7 @@ describe('15. Auth route smoke tests (HTTP)', () => {
       .post('/api/auth/register')
       .set('Cookie', csrf2.cookie)
       .set('X-CSRF-Token', csrf2.token)
-      .send({ email, password: STRONG_PASSWORD });
+      .send({ email, password: STRONG_PASSWORD, confirmPassword: STRONG_PASSWORD });
 
     const res = await request(app)
       .post('/api/auth/login')
@@ -769,7 +770,7 @@ describe('15. Auth route smoke tests (HTTP)', () => {
       .post('/api/auth/register')
       .set('Cookie', csrf1.cookie)
       .set('X-CSRF-Token', csrf1.token)
-      .send({ email, password: STRONG_PASSWORD });
+      .send({ email, password: STRONG_PASSWORD, confirmPassword: STRONG_PASSWORD });
 
     const { accessToken } = regRes.body;
 

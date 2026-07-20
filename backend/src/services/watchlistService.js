@@ -14,7 +14,7 @@ const db           = require('../config/db');
 const emailService = require('./emailService');
 const logger       = require('../utils/logger');
 
-const VALID_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Steam','Epic','Xbox','PS5','Switch','Discord','BattleNet','GOG'];
+const { PLATFORM_KEYS: VALID_PLATFORMS, isValidPlatform } = require('../config/platformRegistry');
 
 // ── Watchlist CRUD ────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ async function getWatchlist(userId) {
 }
 
 async function upsertWatch(userId, platform, { notifyEmail = true, notifyWebhook = false } = {}) {
-  if (!VALID_PLATFORMS.includes(platform)) throw new Error('Invalid platform');
+  if (!isValidPlatform(platform)) throw new Error('Invalid platform');
   if (!db.isAvailable()) throw new Error('Database unavailable');
 
   await db.query(

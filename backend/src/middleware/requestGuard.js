@@ -81,7 +81,13 @@ function requestGuard(req, res, next) {
   // ── 4. Content-Type for mutation methods ────────────────────────────────────
   if (['POST', 'PUT', 'PATCH'].includes(method)) {
     const ct = req.headers['content-type'] || '';
-    if (!ct.toLowerCase().includes('application/json')) {
+    const contentLengthHeader = req.headers['content-length'];
+    const hasBody = req.headers['transfer-encoding'] ||
+      (contentLengthHeader && parseInt(contentLengthHeader, 10) > 0);
+    // Empty POSTs are valid for authenticated action endpoints such as
+    // /api/billing/cancel and /api/billing/reactivate. Enforce JSON only when
+    // a request body is actually being sent.
+    if (hasBody && !ct.toLowerCase().includes('application/json')) {
       return reject(res, 415, 'Content-Type must be application/json', req);
     }
   }

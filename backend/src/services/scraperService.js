@@ -29,6 +29,7 @@
 const axios   = require('axios');
 const cheerio = require('cheerio');
 const logger  = require('../utils/logger');
+const { PLATFORM_KEYS } = require('../config/platformRegistry');
 
 const TIMEOUT = 20000; // 20 seconds per request; AMD/Intel release pages can be slow
 
@@ -620,38 +621,97 @@ const DETECTORS = {
   GOG:      detectGog,
 };
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function validateDetectedUpdate(platform, detected) {
+  if (!detected || typeof detected !== 'object') {
+    throw new Error('No update object returned');
+  }
+  if (!detected.name || !detected.version) {
+    throw new Error('Detector returned incomplete update data');
+  }
+  return {
+    ...detected,
+    platform: detected.platform || platform,
+    releasedAt: toIsoDate(detected.releasedAt),
+    changelog: Array.isArray(detected.changelog) ? detected.changelog.filter(Boolean).slice(0, 12) : [],
+    knownIssues: Array.isArray(detected.knownIssues) ? detected.knownIssues.filter(Boolean).slice(0, 12) : [],
+    riskFactors: Array.isArray(detected.riskFactors) ? detected.riskFactors.slice(0, 12) : [],
+    evidence: Array.isArray(detected.evidence) ? detected.evidence.slice(0, 8) : [],
+  };
+}
+
+async function detectPlatformDetailed(platform, opts = {}) {
+  const fn = DETECTORS[platform];
+  const attempts = Math.max(1, Number(opts.attempts || process.env.SCRAPER_RETRY_ATTEMPTS || 2));
+  const backoffMs = Math.max(100, Number(opts.backoffMs || process.env.SCRAPER_RETRY_BACKOFF_MS || 750));
+
+  if (!fn) {
+    return { platform, ok: false, result: null, attempts: 0, error: 'No detector registered for platform' };
+  }
+
+  let lastError = null;
+  const startedAt = Date.now();
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const detected = validateDetectedUpdate(platform, await fn());
+      return {
+        platform,
+        ok: true,
+        result: detected,
+        attempts: attempt,
+        latencyMs: Date.now() - startedAt,
+        error: null,
+      };
+    } catch (err) {
+      lastError = err;
+      logger.warn('[scraper] Detector attempt failed', { platform, attempt, attempts, error: err.message });
+      if (attempt < attempts) await sleep(backoffMs * attempt);
+    }
+  }
+
+  return {
+    platform,
+    ok: false,
+    result: null,
+    attempts,
+    latencyMs: Date.now() - startedAt,
+    error: lastError?.message || 'Detector failed',
+  };
+}
+
 /**
  * Run a single platform detector.
  * Returns the detected update object or null on failure.
  */
 async function detectPlatform(platform) {
-  const fn = DETECTORS[platform];
-  if (!fn) {
-    logger.warn('[scraper] No detector for platform', { platform });
+  const detailed = await detectPlatformDetailed(platform);
+  if (!detailed.ok) {
+    logger.error('[scraper] Detector failed', { platform, attempts: detailed.attempts, error: detailed.error });
     return null;
   }
-  try {
-    return await fn();
-  } catch (err) {
-    logger.error('[scraper] Detector threw', { platform, error: err.message });
-    return null;
-  }
+  return detailed.result;
 }
 
 /**
- * Run all detectors in parallel.
+ * Run all detectors with detailed status for operations/admin display.
+ */
+async function detectAllDetailed(platforms = PLATFORM_KEYS) {
+  const results = [];
+  for (const platform of platforms) {
+    results.push(await detectPlatformDetailed(platform));
+  }
+  return results;
+}
+
+/**
+ * Run all detectors.
  * Returns array of { platform, result } — result is null on failure.
  */
 async function detectAll() {
-  const results = await Promise.allSettled(
-    Object.keys(DETECTORS).map(async (platform) => ({
-      platform,
-      result: await detectPlatform(platform),
-    }))
-  );
-  return results
-    .filter(r => r.status === 'fulfilled')
-    .map(r => r.value);
+  return (await detectAllDetailed()).map(({ platform, result }) => ({ platform, result }));
 }
 
-module.exports = { detectPlatform, detectAll, DETECTORS };
+module.exports = { detectPlatform, detectPlatformDetailed, detectAll, detectAllDetailed, DETECTORS };

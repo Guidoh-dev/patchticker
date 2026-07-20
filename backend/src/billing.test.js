@@ -34,7 +34,7 @@ const request = require('supertest');
 const app     = require('./server');
 const crypto  = require('crypto');
 
-const { createUser }        = require('./services/userService');
+const { createUser, markEmailVerified } = require('./services/userService');
 const { issueAccessToken }  = require('./services/tokenService');
 const {
   statusToRole,
@@ -48,14 +48,16 @@ const {
 
 const STRONG_PASSWORD = 'TestPassword1!@#';
 function uniqueEmail() {
-  return `billing-${crypto.randomBytes(4).toString('hex')}@example.com`;
+  return `billing-${crypto.randomBytes(4).toString('hex')}@patchticker.app`;
 }
 
 async function makeAuthedUser() {
   const email = uniqueEmail();
   const user  = await createUser({ email, password: STRONG_PASSWORD });
-  const token = issueAccessToken(user);
-  return { user, token };
+  await markEmailVerified(user.id);
+  const verifiedUser = { ...user, emailVerified: true };
+  const token = issueAccessToken(verifiedUser);
+  return { user: verifiedUser, token };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,7 +72,7 @@ describe('1. Checkout session endpoint', () => {
     expect(res.status).toBe(401);
   });
 
-  test('POST /api/billing/checkout with invalid priceId format → 400', async () => {
+  test('POST /api/billing/checkout with invalid priceId format → 422', async () => {
     const { token } = await makeAuthedUser();
     const csrf = await request(app).get('/api/auth/csrf-token');
 
@@ -81,7 +83,7 @@ describe('1. Checkout session endpoint', () => {
       .set('Cookie', csrf.headers['set-cookie'])
       .send({ priceId: 'not_a_price_id' });
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   test('POST /api/billing/checkout with valid priceId → 503 (Stripe not configured in test)', async () => {

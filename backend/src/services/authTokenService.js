@@ -23,6 +23,7 @@
 const crypto = require('crypto');
 const logger = require('../utils/logger');
 const db     = require('../config/db');
+const { markEmailVerified } = require('./userService');
 
 const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;     // 1 hour
@@ -126,6 +127,8 @@ async function verifyEmailToken(rawToken) {
   const record = _emailVerifyStore.get(hash);
   if (!record || record.usedAt || record.expiresAt < Date.now()) return null;
   record.usedAt = Date.now();
+  await markEmailVerified(record.userId);
+  logger.info('[authToken] Email verified (in-memory)', { userId: record.userId });
   return record.userId;
 }
 

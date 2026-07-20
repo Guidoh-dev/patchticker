@@ -23,6 +23,7 @@ const logger           = require('../utils/logger');
 const scraperService   = require('./scraperService');
 const aiAnalysisService= require('./aiAnalysisService');
 const watchlistService = require('./watchlistService');
+const { PLATFORM_KEYS } = require('../config/platformRegistry');
 
 // ── ID generation ─────────────────────────────────────────────────────────────
 // Deterministic slug from platform + version: "nvidia-572-16"
@@ -266,25 +267,33 @@ async function processPlatform(platform) {
   const logCtx = { platform };
 
   // 1. Detect latest version from vendor source
-  const detected = await scraperService.detectPlatform(platform);
-  if (!detected) {
-    logger.info('[pipeline] No update detected', logCtx);
-    return { platform, status: 'no_update', version: null };
+  const detection = await scraperService.detectPlatformDetailed(platform);
+  if (!detection.ok) {
+    logger.warn('[pipeline] Source unavailable', { ...logCtx, attempts: detection.attempts, error: detection.error });
+    return {
+      platform,
+      status: 'source_unavailable',
+      version: null,
+      attempts: detection.attempts,
+      latencyMs: detection.latencyMs,
+      error: detection.error,
+    };
   }
+  const detected = detection.result;
 
   logCtx.version = detected.version;
 
   // 2. Compare to latest known version in DB
   if (!db.isAvailable()) {
     logger.warn('[pipeline] DB unavailable — skipping upsert', logCtx);
-    return { platform, status: 'db_unavailable', version: detected.version };
+    return { platform, status: 'db_unavailable', version: detected.version, latencyMs: detection.latencyMs };
   }
 
   const knownVersion = await getLatestKnownVersion(platform);
   if (knownVersion === detected.version) {
     await updateExistingMetadata(platform, detected.version, detected);
     logger.info('[pipeline] Version unchanged — metadata refreshed', { ...logCtx, knownVersion });
-    return { platform, status: 'unchanged', version: detected.version };
+    return { platform, status: 'unchanged', version: detected.version, latencyMs: detection.latencyMs, attempts: detection.attempts };
   }
 
   logger.info('[pipeline] New version detected', { ...logCtx, knownVersion, newVersion: detected.version });
@@ -356,23 +365,29 @@ async function processPlatform(platform) {
     id,
     score:   initialUpdate.score,
     aiRan:   aiAnalysisService.isEnabled(),
+    latencyMs: detection.latencyMs,
+    attempts: detection.attempts,
   };
 }
 
 // ── Run all platforms ─────────────────────────────────────────────────────────
 
 async function runAll() {
-  const platforms = Object.keys(scraperService.DETECTORS);
+  const platforms = PLATFORM_KEYS.filter(platform => scraperService.DETECTORS[platform]);
   logger.info('[pipeline] Starting full run', { platforms: platforms.length });
 
-  const results = await Promise.allSettled(
-    platforms.map(p => processPlatform(p))
-  );
+  const concurrency = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY || 4));
+  const results = [];
+  for (let i = 0; i < platforms.length; i += concurrency) {
+    const batch = platforms.slice(i, i + concurrency);
+    results.push(...await Promise.allSettled(batch.map(p => processPlatform(p))));
+  }
 
   const summary = {
     total:      platforms.length,
     newUpdates: 0,
     unchanged:  0,
+    unavailable: 0,
     failed:     0,
     results:    [],
   };
@@ -383,6 +398,7 @@ async function runAll() {
       summary.results.push(r.value);
       if (r.value.status === 'new_update') summary.newUpdates++;
       else if (r.value.status === 'unchanged') summary.unchanged++;
+      else if (r.value.status === 'source_unavailable') summary.unavailable++;
     } else {
       summary.failed++;
       const message = r.reason?.message || 'Unknown pipeline error';
@@ -394,6 +410,7 @@ async function runAll() {
   logger.info('[pipeline] Run complete', {
     newUpdates: summary.newUpdates,
     unchanged:  summary.unchanged,
+    unavailable: summary.unavailable,
     failed:     summary.failed,
   });
 

@@ -128,15 +128,17 @@ async function createUser({ email, password }) {
   const { v4: uuidv4 } = require('uuid');
   const now  = new Date().toISOString();
   const user = {
-    id:           uuidv4(),
+    id:              uuidv4(),
     email_encrypted: encrypt(normEmail),
-    email_hmac:   emailHmac,
-    password_hash: passwordHash,
-    created_at:   now,
+    email_hmac:      emailHmac,
+    password_hash:   passwordHash,
+    role:            'free',
+    email_verified:  false,
+    created_at:      now,
   };
   _memUsers.set(emailHmac, user);
   logger.info('User registered (in-memory)', { userId: user.id });
-  return { id: user.id, email: normEmail, createdAt: now };
+  return { id: user.id, email: normEmail, role: 'free', emailVerified: false, createdAt: now };
 }
 
 /**
@@ -149,7 +151,7 @@ async function verifyCredentials({ email, password }) {
 
   if (db.isAvailable()) {
     const result = await db.query(
-      'SELECT id, email_encrypted, password_hash, created_at FROM users WHERE email_hmac = $1',
+      'SELECT id, email_encrypted, password_hash, role, email_verified, created_at FROM users WHERE email_hmac = $1',
       [emailHmac]
     );
 
@@ -183,7 +185,7 @@ async function verifyCredentials({ email, password }) {
   }
   const valid = await argon2.verify(memUser.password_hash, password);
   if (!valid) return null;
-  return { id: memUser.id, email: normEmail, createdAt: memUser.created_at };
+  return { id: memUser.id, email: normEmail, role: memUser.role || 'free', emailVerified: !!memUser.email_verified, createdAt: memUser.created_at };
 }
 
 /**
@@ -201,12 +203,30 @@ async function findUserById(id) {
   // ── In-memory fallback ────────────────────────────────────────────────────
   for (const u of _memUsers.values()) {
     if (u.id === id) {
-      return { id: u.id, email: decrypt(u.email_encrypted), createdAt: u.created_at };
+      return { id: u.id, email: decrypt(u.email_encrypted), role: u.role || 'free', emailVerified: !!u.email_verified, createdAt: u.created_at };
     }
   }
   return null;
 }
 
+
+
+async function markEmailVerified(userId) {
+  if (db.isAvailable()) {
+    await db.query(
+      'UPDATE users SET email_verified = TRUE, email_verified_at = now(), updated_at = now() WHERE id = $1',
+      [userId]
+    );
+    return;
+  }
+
+  for (const u of _memUsers.values()) {
+    if (u.id === userId) {
+      u.email_verified = true;
+      break;
+    }
+  }
+}
 
 /**
  * Update a user's password hash (used by password reset flow).
@@ -251,7 +271,7 @@ async function findUserByEmail(email) {
 
   const memUser = _memUsers.get(emailHmac);
   if (!memUser) return null;
-  return { id: memUser.id, email: normEmail, role: 'free', emailVerified: false, createdAt: memUser.created_at };
+  return { id: memUser.id, email: normEmail, role: memUser.role || 'free', emailVerified: !!memUser.email_verified, createdAt: memUser.created_at };
 }
 
-module.exports = { createUser, verifyCredentials, findUserById, findUserByEmail, updateUserPassword };
+module.exports = { createUser, verifyCredentials, findUserById, findUserByEmail, updateUserPassword, markEmailVerified };

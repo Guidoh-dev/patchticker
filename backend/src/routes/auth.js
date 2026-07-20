@@ -87,7 +87,7 @@ router.post(
 
       const user         = await createUser({ email, password });
       const accessToken  = issueAccessToken(user);
-      const refreshToken = issueRefreshToken({
+      const refreshToken = await issueRefreshToken({
         userId:    user.id,
         ip:        req.ip,
         userAgent: req.headers['user-agent'],
@@ -164,7 +164,7 @@ router.post(
       await clearAttempts(email);
 
       const accessToken  = issueAccessToken(user);
-      const refreshToken = issueRefreshToken({
+      const refreshToken = await issueRefreshToken({
         userId:    user.id,
         ip,
         userAgent: req.headers['user-agent'],
@@ -200,7 +200,7 @@ router.post(
       }
 
       // consumeRefreshToken handles expiry check + replay detection
-      const session = consumeRefreshToken(rawToken);
+      const session = await consumeRefreshToken(rawToken);
 
       if (!session) {
         // Token invalid, expired, or replayed — clear the cookie
@@ -219,7 +219,7 @@ router.post(
 
       // Rotate: new access token + new refresh token
       const newAccessToken  = issueAccessToken(user);
-      const newRefreshToken = issueRefreshToken({
+      const newRefreshToken = await issueRefreshToken({
         userId:    user.id,
         ip:        req.ip,
         userAgent: req.headers['user-agent'],
@@ -245,13 +245,15 @@ router.post(
   authLimiter,
   csrfProtection,
   validate({ body: LogoutBodySchema }),
-  (req, res) => {
-    const rawToken = getRefreshToken(req);
-    revokeRefreshToken(rawToken);   // no-op if token absent / already revoked
+  async (req, res, next) => {
+    try {
+      const rawToken = getRefreshToken(req);
+      await revokeRefreshToken(rawToken);   // no-op if token absent / already revoked
     clearRefreshCookie(res);
 
-    logger.info('User logged out', { ip: req.ip });
-    res.json({ message: 'Logged out successfully' });
+      logger.info('User logged out', { ip: req.ip });
+      res.json({ message: 'Logged out successfully' });
+    } catch (err) { next(err); }
   }
 );
 

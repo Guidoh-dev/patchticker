@@ -232,3 +232,5 @@ export async function triggerPipeline(platform = null) {
   return request('/admin/pipeline/run', { method: 'POST', body: JSON.stringify({ platform }) });
 }
 export async function fetchPipelineStatus() { return request('/admin/pipeline/status'); }
+export async function fetchEmailStatus() { return request('/admin/email/status'); }
+export async function sendAdminTestEmail(to) { return request('/admin/email/test', { method: 'POST', body: JSON.stringify({ to }) }); }

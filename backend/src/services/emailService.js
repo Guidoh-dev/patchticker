@@ -1,12 +1,13 @@
 // src/services/emailService.js
 // ─────────────────────────────────────────────────────────────────────────────
-// EMAIL SERVICE — Nodemailer wrapper with support for SMTP and SendGrid
+// EMAIL SERVICE — Nodemailer wrapper with support for Brevo, SMTP, and SendGrid
 //
 // TRANSPORT SELECTION
 // ────────────────────
-//  1. If SENDGRID_API_KEY is set → use SendGrid SMTP relay
-//  2. If SMTP_HOST is set        → use custom SMTP server
-//  3. Otherwise (dev/test)       → use Ethereal (auto-created test account)
+//  1. If BREVO_SMTP_KEY is set   → use Brevo SMTP relay
+//  2. If SENDGRID_API_KEY is set → use SendGrid SMTP relay
+//  3. If SMTP_HOST is set        → use custom SMTP server
+//  4. Otherwise (dev/test)       → use Ethereal (auto-created test account)
 //     Ethereal messages are never delivered; preview them at ethereal.email
 //
 // EMAILS SENT BY THIS SERVICE
@@ -15,6 +16,7 @@
 //  • sendPasswordResetEmail(email, token) — reset link (1h TTL)
 //  • sendSubscriptionConfirm(email, plan) — pro upgrade confirmation
 //  • sendSubscriptionCanceled(email)      — cancellation notice
+//  • sendTestEmail(email)                 — admin-only delivery smoke test
 //
 // SECURITY
 // ─────────
@@ -27,7 +29,9 @@
 
 'use strict';
 
+const crypto     = require('crypto');
 const nodemailer = require('nodemailer');
+const db         = require('../config/db');
 const logger     = require('../utils/logger');
 
 // ── HTML escape helper ────────────────────────────────────────────────────────
@@ -39,8 +43,43 @@ const H = (s) => String(s).replace(/[&<>"']/g, (c) => ({
 
 let _transport = null;
 
+function wantsBrevo() {
+  return !!(process.env.BREVO_SMTP_LOGIN || process.env.BREVO_SMTP_USER || process.env.BREVO_SMTP_KEY || process.env.SMTP_HOST === 'smtp-relay.brevo.com');
+}
+
+function brevoConfigured() {
+  return !!((process.env.BREVO_SMTP_KEY && brevoUser()) ||
+    (process.env.SMTP_HOST === 'smtp-relay.brevo.com' && process.env.SMTP_USER && process.env.SMTP_PASS));
+}
+
+function brevoUser() {
+  return process.env.BREVO_SMTP_LOGIN || process.env.BREVO_SMTP_USER || process.env.SMTP_USER;
+}
+
+function brevoPass() {
+  return process.env.BREVO_SMTP_KEY || process.env.SMTP_PASS;
+}
+
 async function getTransport() {
   if (_transport) return _transport;
+
+  if (brevoConfigured()) {
+    _transport = nodemailer.createTransport({
+      host:   'smtp-relay.brevo.com',
+      port:   parseInt(process.env.BREVO_SMTP_PORT || process.env.SMTP_PORT || '587', 10),
+      secure: false,
+      auth: {
+        user: brevoUser(),
+        pass: brevoPass(),
+      },
+    });
+    logger.info('[email] Transport: Brevo SMTP relay');
+    return _transport;
+  }
+
+  if (wantsBrevo()) {
+    throw new Error('Brevo SMTP selected but BREVO_SMTP_LOGIN and BREVO_SMTP_KEY are not both configured');
+  }
 
   if (process.env.SENDGRID_API_KEY) {
     _transport = nodemailer.createTransport({
@@ -95,9 +134,69 @@ function appBaseUrl() {
   return (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 }
 
+function getEmailConfigStatus() {
+  const provider = wantsBrevo()
+    ? 'brevo'
+    : process.env.SENDGRID_API_KEY
+      ? 'sendgrid'
+      : process.env.SMTP_HOST
+        ? 'smtp'
+        : 'ethereal';
+  const from = process.env.EMAIL_FROM_ADDRESS || 'noreply@patchticker.app';
+  const configured = provider === 'brevo'
+    ? brevoConfigured()
+    : provider === 'sendgrid'
+      ? !!process.env.SENDGRID_API_KEY
+      : provider === 'smtp'
+        ? !!process.env.SMTP_HOST && (!process.env.SMTP_USER || !!process.env.SMTP_PASS)
+        : false;
+  return {
+    provider,
+    from,
+    fromName: process.env.EMAIL_FROM_NAME || 'PatchTicker',
+    configured,
+    deliverableInProduction: configured && !!from,
+    brevo: {
+      configured: brevoConfigured(),
+      host: 'smtp-relay.brevo.com',
+      port: parseInt(process.env.BREVO_SMTP_PORT || process.env.SMTP_PORT || '587', 10),
+      usernameConfigured: !!brevoUser(),
+    },
+    sendgrid: {
+      configured: !!process.env.SENDGRID_API_KEY,
+      host: 'smtp.sendgrid.net',
+      port: 587,
+      username: 'apikey',
+    },
+  };
+}
+
+async function verifyEmailTransport() {
+  const transport = await getTransport();
+  await transport.verify();
+  return getEmailConfigStatus();
+}
+
 // ── Core send function ────────────────────────────────────────────────────────
 
-async function send({ to, subject, html, text }) {
+function recipientHash(email) {
+  return crypto.createHash('sha256').update(String(email || '').trim().toLowerCase()).digest('hex');
+}
+
+async function logEmailDelivery({ to, subject, category, status, messageId = null, error = null }) {
+  if (!db.isAvailable()) return;
+  try {
+    await db.query(
+      `INSERT INTO email_delivery_log (recipient_hash, subject, category, provider, status, message_id, error_msg)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [recipientHash(to), String(subject || '').slice(0, 200), category || 'transactional', getEmailConfigStatus().provider, status, messageId, error ? String(error).slice(0, 500) : null]
+    );
+  } catch (err) {
+    logger.warn('[email] Delivery log skipped', { error: err.message });
+  }
+}
+
+async function send({ to, subject, html, text, category = 'transactional' }) {
   const transport = await getTransport();
   try {
     const info = await transport.sendMail({
@@ -115,8 +214,10 @@ async function send({ to, subject, html, text }) {
     } else {
       logger.info('[email] Sent', { messageId: info.messageId, to, subject });
     }
+    await logEmailDelivery({ to, subject, category, status: 'sent', messageId: info.messageId || null });
     return info;
   } catch (err) {
+    await logEmailDelivery({ to, subject, category, status: 'failed', error: err.message });
     logger.error('[email] Send failed', { message: err.message, to, subject });
     throw err;
   }
@@ -136,18 +237,18 @@ function wrapTemplate(title, bodyHtml) {
     .wrap{max-width:560px;margin:40px auto;background:#141414;border:1px solid #222;border-radius:8px;overflow:hidden}
     .header{background:#000;padding:24px 32px;border-bottom:1px solid #222}
     .header h1{margin:0;font-size:20px;font-weight:700;color:#fff;letter-spacing:.5px}
-    .header h1 span{color:#f97316}
+    .header h1 span{color:#16c96e}
     .body{padding:32px}
     .body p{margin:0 0 16px;line-height:1.6;color:#ccc;font-size:15px}
-    .btn{display:inline-block;margin:8px 0 20px;padding:14px 28px;background:#f97316;color:#fff;text-decoration:none;border-radius:6px;font-size:15px;font-weight:600}
+    .btn{display:inline-block;margin:8px 0 20px;padding:14px 28px;background:#16c96e;color:#000;text-decoration:none;border-radius:6px;font-size:15px;font-weight:700}
     .note{font-size:13px;color:#666;margin-top:4px}
     .footer{padding:20px 32px;border-top:1px solid #1a1a1a;font-size:12px;color:#555;text-align:center}
-    code{background:#1e1e1e;padding:2px 6px;border-radius:3px;font-family:monospace;font-size:13px;color:#f97316}
+    code{background:#1e1e1e;padding:2px 6px;border-radius:3px;font-family:monospace;font-size:13px;color:#16c96e}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="header"><h1><span>Patch</span>Pulse</h1></div>
+    <div class="header"><h1><span>Patch</span>Ticker</h1></div>
     <div class="body">${bodyHtml}</div>
     <div class="footer">PatchTicker · You're receiving this because you have an account · <a href="${H(appBaseUrl())}" style="color:#555">patchticker.app</a></div>
   </div>
@@ -179,7 +280,7 @@ async function sendVerificationEmail(email, rawToken) {
     'If you didn\'t create an account, ignore this email.',
   ].join('\n');
 
-  return send({ to: email, subject: 'Verify your PatchTicker email address', html, text });
+  return send({ to: email, subject: 'Verify your PatchTicker email address', html, text, category: 'email_verification' });
 }
 
 // ── sendPasswordResetEmail ────────────────────────────────────────────────────
@@ -205,7 +306,7 @@ async function sendPasswordResetEmail(email, rawToken) {
     'If you didn\'t request this, ignore this email — no changes were made.',
   ].join('\n');
 
-  return send({ to: email, subject: 'Reset your PatchTicker password', html, text });
+  return send({ to: email, subject: 'Reset your PatchTicker password', html, text, category: 'password_reset' });
 }
 
 // ── sendSubscriptionConfirm ───────────────────────────────────────────────────
@@ -215,7 +316,7 @@ async function sendSubscriptionConfirm(email, planName) {
     <p>🎉 Your <strong>${H(planName)}</strong> subscription is now active!</p>
     <p>You now have access to all Pro features:</p>
     <p>• Real-time update alerts &nbsp;• Advanced filtering &nbsp;• Priority bug report queue &nbsp;• API access</p>
-    <a href="${H(appBaseUrl())}/dashboard" class="btn">Go to Dashboard</a>
+    <a href="${H(appBaseUrl())}/#/updates" class="btn">Open PatchTicker</a>
     <p>Questions? Reply to this email — we're happy to help.</p>
   `);
 
@@ -223,10 +324,10 @@ async function sendSubscriptionConfirm(email, planName) {
     `Your PatchTicker ${planName} subscription is now active!`,
     '',
     'You now have access to all Pro features.',
-    `Dashboard: ${appBaseUrl()}/dashboard`,
+    `Open PatchTicker: ${appBaseUrl()}/#/updates`,
   ].join('\n');
 
-  return send({ to: email, subject: `Welcome to PatchTicker ${planName}!`, html, text });
+  return send({ to: email, subject: `Welcome to PatchTicker ${planName}!`, html, text, category: 'subscription' });
 }
 
 // ── sendSubscriptionCanceled ──────────────────────────────────────────────────
@@ -246,7 +347,7 @@ async function sendSubscriptionCanceled(email) {
     `Reactivate: ${appBaseUrl()}/pricing`,
   ].join('\n');
 
-  return send({ to: email, subject: 'Your PatchTicker subscription has been canceled', html, text });
+  return send({ to: email, subject: 'Your PatchTicker subscription has been canceled', html, text, category: 'subscription' });
 }
 
 // (exports extended below)
@@ -312,7 +413,6 @@ async function sendCancelScheduled(email, periodEndDate) {
 
 // ── sendPatchAlert ────────────────────────────────────────────────────────────
 // Requires userId so we can look up email from the DB.
-const db = require('../config/db');
 const { decrypt } = require('../utils/encrypt');
 
 async function sendPatchAlert(userId, platform, update) {
@@ -337,7 +437,25 @@ async function sendPatchAlert(userId, platform, update) {
   `);
   const text = `${platform} — New Update: ${update.name} (v${update.version})\nStatus: ${update.status.toUpperCase()} · Score: ${update.score}/10\n\n${update.verdict || ''}\n\nView: ${appUrl}/#/update/${update.id}`;
 
-  return send({ to: email, subject: `[PatchTicker] ${platform} update: ${update.name}`, html, text });
+  return send({ to: email, subject: `[PatchTicker] ${platform} update: ${update.name}`, html, text, category: 'patch_alert' });
+}
+
+
+async function sendTestEmail(email) {
+  const status = getEmailConfigStatus();
+  const html = wrapTemplate('PatchTicker email test', `
+    <p>This is a PatchTicker transactional email test.</p>
+    <p>If you received this, the configured <strong>${H(status.provider)}</strong> transport can send mail from <strong>${H(status.from)}</strong>.</p>
+    <p class="note">Use this before launch after setting SendGrid domain authentication and production env vars.</p>
+  `);
+  const text = [
+    'PatchTicker email test',
+    '',
+    `Provider: ${status.provider}`,
+    `From: ${status.from}`,
+    'If you received this, transactional email delivery is working.',
+  ].join('\n');
+  return send({ to: email, subject: '[PatchTicker] Email delivery test', html, text, category: 'admin_test' });
 }
 
 module.exports = {
@@ -348,4 +466,7 @@ module.exports = {
   sendPaymentFailed,
   sendCancelScheduled,
   sendPatchAlert,
+  sendTestEmail,
+  getEmailConfigStatus,
+  verifyEmailTransport,
 };

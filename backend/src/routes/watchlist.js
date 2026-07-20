@@ -21,7 +21,7 @@ const validate           = require('../middleware/validate');
 const { standardLimiter, accountMutateLimiter } = require('../middleware/rateLimiter');
 const watchlistService   = require('../services/watchlistService');
 
-const VALID_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Steam','Epic','Xbox','PS5','Switch','Discord','BattleNet','GOG'];
+const { PLATFORM_KEYS: VALID_PLATFORMS, isValidPlatform } = require('../config/platformRegistry');
 
 const PlatformParamSchema = z.object({
   platform: z.enum(VALID_PLATFORMS),

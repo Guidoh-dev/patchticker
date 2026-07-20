@@ -891,7 +891,7 @@ function peerRatingMeta(update) {
   const wait = Math.max(0, Math.min(100, Number(breakdown.wait) || 0));
   const avoid = Math.max(0, Math.min(100, Number(breakdown.avoid) || 0));
   const score = votes ? Number(rating.score ?? 0) : null;
-  const label = !votes ? 'Waiting for user votes'
+  const label = !votes ? 'Patch notes only'
     : install >= 70 ? 'Users say install'
       : avoid >= 35 ? 'Users say avoid'
         : wait >= 35 ? 'Users say wait'
@@ -1193,7 +1193,7 @@ function renderUpdateCard(u) {
         <div class="decision-timeline" aria-label="Update review timeline">
           <span class="is-done">Released</span>
           <span class="is-done">Reports checked</span>
-          <span class="is-active">Current rating</span>
+          <span class="is-active">Patch notes</span>
         </div>
 
       </div>
@@ -1209,7 +1209,7 @@ function renderUpdateCard(u) {
         <div class="decision-user-meter decision-user-meter--empty">
           <span>Patch notes</span>
           <strong>—</strong>
-          <em>Votes pending</em>
+          <em>Source notes</em>
         </div>`}
         <div class="decision-risk">
           <span>Watch for</span>
@@ -2257,10 +2257,10 @@ async function renderUpdateDetail(id) {
     `<span class="detail-cve-tag">${H(c)}</span>`
   ).join('');
 
-  // ── User Rating (live from API, falls back to static) ────────────────────────
+  // ── User Rating (live votes only; hidden until votes exist) ──────────────────
   const ur = u.userRating || null;
   const userVote = u.userVote || null;        // voter's current choice from server
-  const ratingsLive = u.ratingsLive || false; // true = real DB votes, false = static
+  const ratingsLive = u.ratingsLive || false; // true = real DB votes
 
   function ratingHTML(r, currentVote) {
     if (!r) return '<p class="detail-empty-note">No user ratings yet. Be the first to vote!</p>';
@@ -2848,13 +2848,21 @@ async function renderAdmin() {
               <option value="">— or run single platform —</option>
               <option>AMD</option><option>NVIDIA</option><option>Intel</option>
               <option>Apple</option><option>macOS</option><option>Windows</option>
-              <option>Steam</option><option>Epic</option><option>Xbox</option><option>PS5</option>
+              <option>Steam</option><option>Discord</option><option>BattleNet</option><option>GOG</option>
+              <option>Switch</option><option>Epic</option><option>Xbox</option><option>PS5</option>
             </select>
             <button class="btn btn--outline btn--sm" id="pipeline-run-one">Run selected</button>
           </div>
           <p class="pipeline-note">Scans run automatically every 6 hours. Security platforms (Windows, Apple, macOS) scan every hour.</p>
         </div>
         <div id="pipeline-status-wrap" class="admin-table-wrap">${spinner()}</div>
+        <div class="pipeline-controls pipeline-controls--email">
+          <div class="pipeline-actions">
+            <input class="field-input pipeline-platform-select" id="email-test-recipient" type="email" placeholder="Test recipient email" value="${H(user.email || '')}" />
+            <button class="btn btn--outline btn--sm" id="email-send-test">Send test email</button>
+          </div>
+          <p class="pipeline-note" id="email-status-note">Email transport: checking…</p>
+        </div>
       </div>
     </div>
   `);
@@ -3053,6 +3061,34 @@ async function renderAdmin() {
   }
 
   loadPipelineStatus();
+
+  async function loadEmailStatus() {
+    const note = document.getElementById('email-status-note');
+    if (!note) return;
+    try {
+      const { fetchEmailStatus } = await import('./api.js');
+      const res = await fetchEmailStatus();
+      const data = res.data || {};
+      note.textContent = `Email transport: ${data.provider || 'unknown'} · from ${data.from || 'not set'}${data.configured ? '' : ' · dev/test only'}`;
+    } catch (err) {
+      note.textContent = `Email transport unavailable: ${err.message}`;
+    }
+  }
+
+  loadEmailStatus();
+
+  document.getElementById('email-send-test')?.addEventListener('click', async () => {
+    const btn = document.getElementById('email-send-test');
+    const to = document.getElementById('email-test-recipient')?.value.trim();
+    btn.disabled = true; btn.textContent = 'Sending…';
+    try {
+      const { sendAdminTestEmail } = await import('./api.js');
+      await sendAdminTestEmail(to);
+      showToast(`Test email sent to ${to}.`, 'success');
+      await loadEmailStatus();
+    } catch (err) { showToast(err.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = 'Send test email'; }
+  });
 
   document.getElementById('pipeline-run-all')?.addEventListener('click', async () => {
     const btn = document.getElementById('pipeline-run-all');

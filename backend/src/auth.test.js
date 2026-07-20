@@ -113,13 +113,13 @@ describe('userService', () => {
         email:    `findme-${Date.now()}@example.com`,
         password: PASSWORD,
       });
-      const found = findUserById(created.id);
+      const found = await findUserById(created.id);
       expect(found.id).toBe(created.id);
       expect(found).not.toHaveProperty('passwordHash');
     });
 
-    it('returns null for unknown id', () => {
-      expect(findUserById('00000000-0000-0000-0000-000000000000')).toBeNull();
+    it('returns null for unknown id', async () => {
+      expect(await findUserById('00000000-0000-0000-0000-000000000000')).toBeNull();
     });
   });
 });
@@ -181,65 +181,65 @@ describe('tokenService', () => {
   });
 
   describe('refresh tokens', () => {
-    it('issues and consumes a refresh token', () => {
-      const raw     = issueRefreshToken(SESSION);
-      const session = consumeRefreshToken(raw);
+    it('issues and consumes a refresh token', async () => {
+      const raw     = await issueRefreshToken(SESSION);
+      const session = await consumeRefreshToken(raw);
       expect(session).not.toBeNull();
       expect(session.userId).toBe(SESSION.userId);
     });
 
-    it('returns null on unknown token', () => {
-      expect(consumeRefreshToken('totally-fake-token')).toBeNull();
+    it('returns null on unknown token', async () => {
+      expect(await consumeRefreshToken('totally-fake-token')).toBeNull();
     });
 
-    it('returns null on null input', () => {
-      expect(consumeRefreshToken(null)).toBeNull();
+    it('returns null on null input', async () => {
+      expect(await consumeRefreshToken(null)).toBeNull();
     });
 
-    it('prevents replay — second consume of same token returns null', () => {
-      const raw = issueRefreshToken(SESSION);
-      expect(consumeRefreshToken(raw)).not.toBeNull(); // first use OK
-      expect(consumeRefreshToken(raw)).toBeNull();     // second use rejected
+    it('prevents replay — second consume of same token returns null', async () => {
+      const raw = await issueRefreshToken(SESSION);
+      expect(await consumeRefreshToken(raw)).not.toBeNull(); // first use OK
+      expect(await consumeRefreshToken(raw)).toBeNull();     // second use rejected
     });
 
-    it('revokes all user sessions on replay detection', () => {
+    it('revokes all user sessions on replay detection', async () => {
       const userId  = 'replay-test-user';
       const session = { userId, ip: '1.2.3.4', userAgent: 'jest' };
 
-      const raw1 = issueRefreshToken(session);
-      const raw2 = issueRefreshToken(session);
+      const raw1 = await issueRefreshToken(session);
+      const raw2 = await issueRefreshToken(session);
 
       // First: consume raw1 legitimately to get it marked as replaced
-      consumeRefreshToken(raw1);
+      await consumeRefreshToken(raw1);
 
       // Second: re-present raw1 (replay) — should revoke raw2 as well
-      consumeRefreshToken(raw1);
+      await consumeRefreshToken(raw1);
 
       // raw2 should now be revoked too
-      expect(consumeRefreshToken(raw2)).toBeNull();
+      expect(await consumeRefreshToken(raw2)).toBeNull();
     });
 
-    it('revokeRefreshToken prevents future use', () => {
-      const raw = issueRefreshToken(SESSION);
-      revokeRefreshToken(raw);
-      expect(consumeRefreshToken(raw)).toBeNull();
+    it('revokeRefreshToken prevents future use', async () => {
+      const raw = await issueRefreshToken(SESSION);
+      await revokeRefreshToken(raw);
+      expect(await consumeRefreshToken(raw)).toBeNull();
     });
 
-    it('revokeAllUserSessions clears all tokens for a user', () => {
+    it('revokeAllUserSessions clears all tokens for a user', async () => {
       const userId = 'multi-session-user';
       const s      = { userId, ip: '0.0.0.0', userAgent: 'jest' };
-      const t1 = issueRefreshToken(s);
-      const t2 = issueRefreshToken(s);
-      const t3 = issueRefreshToken(s);
-      revokeAllUserSessions(userId);
-      expect(consumeRefreshToken(t1)).toBeNull();
-      expect(consumeRefreshToken(t2)).toBeNull();
-      expect(consumeRefreshToken(t3)).toBeNull();
+      const t1 = await issueRefreshToken(s);
+      const t2 = await issueRefreshToken(s);
+      const t3 = await issueRefreshToken(s);
+      await revokeAllUserSessions(userId);
+      expect(await consumeRefreshToken(t1)).toBeNull();
+      expect(await consumeRefreshToken(t2)).toBeNull();
+      expect(await consumeRefreshToken(t3)).toBeNull();
     });
 
-    it('stores hash, not raw token (raw not in returned session)', () => {
-      const raw     = issueRefreshToken(SESSION);
-      const session = consumeRefreshToken(raw);
+    it('stores hash, not raw token (raw not in returned session)', async () => {
+      const raw     = await issueRefreshToken(SESSION);
+      const session = await consumeRefreshToken(raw);
       // The raw UUID should not appear in the returned session object
       expect(JSON.stringify(session)).not.toContain(raw);
     });
@@ -256,68 +256,68 @@ describe('lockoutService', () => {
   const email = () => `lock-${Date.now()}-${Math.random()}@test.com`;
 
   describe('initial state', () => {
-    it('returns locked:false for unknown email', () => {
-      expect(checkLockout('nobody@test.com')).toEqual({ locked: false, remainingMs: 0 });
+    it('returns locked:false for unknown email', async () => {
+      expect(await checkLockout('nobody@test.com')).toEqual({ locked: false, remainingMs: 0 });
     });
   });
 
   describe('recordFailedAttempt', () => {
-    it('increments attempts and returns attemptsRemaining', () => {
+    it('increments attempts and returns attemptsRemaining', async () => {
       const e = email();
-      const r = recordFailedAttempt(e, '1.2.3.4');
+      const r = await recordFailedAttempt(e, '1.2.3.4');
       expect(r.locked).toBe(false);
       expect(r.attemptsRemaining).toBe(2); // MAX=3, used 1
     });
 
-    it('locks account after MAX_ATTEMPTS failures', () => {
+    it('locks account after MAX_ATTEMPTS failures', async () => {
       const e = email();
-      recordFailedAttempt(e);
-      recordFailedAttempt(e);
-      const last = recordFailedAttempt(e); // 3rd = MAX
+      await recordFailedAttempt(e);
+      await recordFailedAttempt(e);
+      const last = await recordFailedAttempt(e); // 3rd = MAX
       expect(last.locked).toBe(true);
       expect(last.attemptsRemaining).toBe(0);
     });
 
-    it('checkLockout returns locked:true after lockout', () => {
+    it('checkLockout returns locked:true after lockout', async () => {
       const e = email();
-      recordFailedAttempt(e); recordFailedAttempt(e); recordFailedAttempt(e);
-      const status = checkLockout(e);
+      await recordFailedAttempt(e); await recordFailedAttempt(e); await recordFailedAttempt(e);
+      const status = await checkLockout(e);
       expect(status.locked).toBe(true);
       expect(status.remainingMs).toBeGreaterThan(0);
     });
   });
 
   describe('clearAttempts', () => {
-    it('resets counter on successful login', () => {
+    it('resets counter on successful login', async () => {
       const e = email();
-      recordFailedAttempt(e);
-      recordFailedAttempt(e);
-      clearAttempts(e);
-      expect(checkLockout(e)).toEqual({ locked: false, remainingMs: 0 });
+      await recordFailedAttempt(e);
+      await recordFailedAttempt(e);
+      await clearAttempts(e);
+      expect(await checkLockout(e)).toEqual({ locked: false, remainingMs: 0 });
       // Should be able to fail again from scratch
-      const r = recordFailedAttempt(e);
+      const r = await recordFailedAttempt(e);
       expect(r.attemptsRemaining).toBe(2);
     });
   });
 
   describe('forceUnlock', () => {
-    it('removes lockout immediately', () => {
+    it('removes lockout immediately', async () => {
       const e = email();
-      recordFailedAttempt(e); recordFailedAttempt(e); recordFailedAttempt(e);
-      expect(checkLockout(e).locked).toBe(true);
-      forceUnlock(e);
-      expect(checkLockout(e).locked).toBe(false);
+      await recordFailedAttempt(e); await recordFailedAttempt(e); await recordFailedAttempt(e);
+      expect((await checkLockout(e)).locked).toBe(true);
+      await forceUnlock(e);
+      expect((await checkLockout(e)).locked).toBe(false);
     });
   });
 
   describe('email case insensitivity', () => {
-    it('treats UPPER@CASE.COM same as upper@case.com', () => {
+    it('treats UPPER@CASE.COM same as upper@case.com', async () => {
       const e = `LOCKCASE-${Date.now()}@TEST.COM`;
-      recordFailedAttempt(e);
-      recordFailedAttempt(e);
-      recordFailedAttempt(e);
+      await recordFailedAttempt(e);
+      await recordFailedAttempt(e);
+      await recordFailedAttempt(e);
       // Check with lowercase version
-      expect(checkLockout(e.toLowerCase()).locked).toBe(true);
+      expect((await checkLockout(e.toLowerCase())).locked).toBe(true);
     });
   });
 });
@@ -438,7 +438,7 @@ describe('authSchemas', () => {
       expect(fails(LoginBodySchema, { ...validLogin, remember: true })).toBeTruthy();
     });
     it('rejects __proto__', () => {
-      expect(fails(LoginBodySchema, { ...validLogin, __proto__: {} })).toBeTruthy();
+      expect(fails(LoginBodySchema, JSON.parse(JSON.stringify({ ...validLogin }) .slice(0, -1) + ',"__proto__":{}}'))).toBeTruthy();
     });
     it('password can contain any chars (no injection block on password)', () => {
       // Passwords are hashed — injection guards on password would reduce entropy

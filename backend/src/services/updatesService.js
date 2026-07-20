@@ -615,7 +615,8 @@ function rowToUpdate(row) {
 
 
 async function hydrateLiveRatings(updates) {
-  if (!db.isAvailable() || !updates.length) return updates;
+  const withoutRatings = (updates || []).map(update => ({ ...update, userRating: null, ratingsLive: false }));
+  if (!db.isAvailable() || !updates.length) return withoutRatings;
 
   const ids = updates.map(update => update.id);
   try {
@@ -657,7 +658,7 @@ async function hydrateLiveRatings(updates) {
     });
   } catch (err) {
     logger.warn('[updates] rating aggregation failed', { error: err.message });
-    return updates;
+    return withoutRatings;
   }
 }
 

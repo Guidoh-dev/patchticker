@@ -66,7 +66,12 @@ async function requireAuth(req, res, next) {
     }
 
     // Attach role — used by requireRole middleware for RBAC
-    req.user = { id: user.id, email: user.email, role: user.role || 'free' };
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role || 'free',
+      emailVerified: !!user.emailVerified,
+    };
     next();
   } catch (err) {
     logger.error('requireAuth DB error', { message: err.message, ip: req.ip });

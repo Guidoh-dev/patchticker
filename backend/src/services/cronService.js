@@ -17,6 +17,7 @@
 const cron            = require('node-cron');
 const logger          = require('../utils/logger');
 const pipelineService = require('./pipelineService');
+const { SECURITY_PLATFORM_KEYS } = require('../config/platformRegistry');
 
 let _fullScanJob     = null;
 let _securityScanJob = null;
@@ -24,7 +25,7 @@ let _isRunning       = false;
 let _lastManualRun    = null;
 
 // ── Security-priority platforms — scanned hourly ──────────────────────────────
-const SECURITY_PLATFORMS = ['Windows', 'Apple', 'macOS'];
+const SECURITY_PLATFORMS = SECURITY_PLATFORM_KEYS;
 
 async function runSecurityScan() {
   if (_isRunning) {

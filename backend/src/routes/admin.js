@@ -27,7 +27,9 @@ const logger        = require('../utils/logger');
 const { decrypt }   = require('../utils/encrypt');
 const aiService     = require('../services/aiAnalysisService');
 const scraperService = require('../services/scraperService');
+const { PLATFORM_KEYS } = require('../config/platformRegistry');
 const cronService   = require('../services/cronService');
+const emailService  = require('../services/emailService');
 
 // All admin routes: authenticate first, then require admin role
 router.use(requireAuth, requireAdmin);
@@ -302,6 +304,30 @@ router.get('/ai-log', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+
+// ── GET /api/admin/email/status — transactional email configuration ───────────
+
+router.get('/email/status', async (req, res, next) => {
+  try {
+    const status = emailService.getEmailConfigStatus();
+    res.json({ data: status });
+  } catch (err) { next(err); }
+});
+
+// ── POST /api/admin/email/test — send a test email to current/admin address ───
+
+router.post('/email/test', async (req, res, next) => {
+  try {
+    const to = req.body?.to || req.user.email;
+    if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
+      return res.status(400).json({ error: 'Valid recipient email required' });
+    }
+    await emailService.verifyEmailTransport();
+    const info = await emailService.sendTestEmail(to);
+    res.json({ ok: true, data: { to, messageId: info.messageId || null, provider: emailService.getEmailConfigStatus().provider } });
+  } catch (err) { next(err); }
+});
+
 // ── POST /api/admin/pipeline/run — trigger full scan manually ─────────────────
 
 router.post('/pipeline/run', async (req, res, next) => {
@@ -342,13 +368,22 @@ router.get('/pipeline/status', async (req, res, next) => {
       SELECT platform,
              MAX(created_at)  AS last_detected,
              MAX(released_at) AS last_release,
-             MAX(version)     AS latest_version,
+             (ARRAY_AGG(version ORDER BY released_at DESC, created_at DESC))[1] AS latest_version,
              COUNT(*)         AS total_versions
       FROM software_updates
       GROUP BY platform
       ORDER BY platform
     `);
-    res.json({ data: rows.rows, runtime: cronService.getPipelineRuntimeState?.() || null });
+    const byPlatform = new Map(rows.rows.map(row => [row.platform, row]));
+    const data = PLATFORM_KEYS.map(platform => ({
+      platform,
+      latest_version: byPlatform.get(platform)?.latest_version || null,
+      last_release: byPlatform.get(platform)?.last_release || null,
+      last_detected: byPlatform.get(platform)?.last_detected || null,
+      total_versions: Number(byPlatform.get(platform)?.total_versions || 0),
+      detector_registered: !!scraperService.DETECTORS[platform],
+    }));
+    res.json({ data, runtime: cronService.getPipelineRuntimeState?.() || null });
   } catch (err) { next(err); }
 });
 

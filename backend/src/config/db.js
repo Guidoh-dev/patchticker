@@ -129,7 +129,12 @@ function buildSslConfig() {
 // ── Pool creation ─────────────────────────────────────────────────────────────
 
 function createPool() {
-  const connectionString = process.env.DATABASE_URL;
+  // Unit tests must not accidentally connect to a developer's real Supabase DB
+  // just because backend/.env was loaded by server.js. Opt in explicitly for
+  // integration tests that are meant to hit a database.
+  const connectionString = isTest && process.env.ALLOW_TEST_DATABASE !== 'true'
+    ? ''
+    : process.env.DATABASE_URL;
 
   if (!connectionString) {
     if (isProd) {

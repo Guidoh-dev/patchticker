@@ -29,6 +29,7 @@ const { z }   = require('zod');
 
 const requireAuth         = require('../middleware/requireAuth');
 const validate            = require('../middleware/validate');
+const { csrfProtection }  = require('../middleware/csrf');
 const { authLimiter, checkoutLimiter } = require('../middleware/rateLimiter');
 const logger              = require('../utils/logger');
 const {
@@ -43,7 +44,7 @@ const {
 // Maps known error conditions to clean HTTP responses.
 // Falls through to global error handler for unexpected errors.
 function handleBillingError(err, res, next) {
-  if (err.message?.includes('STRIPE_SECRET_KEY') || err.message?.includes('not configured')) {
+  if (err.message?.includes('STRIPE_SECRET_KEY') || err.message?.includes('not configured') || err.message?.includes('Database required')) {
     return res.status(503).json({ error: 'Billing is not configured' });
   }
   if (err.type === 'StripeCardError') {
@@ -70,6 +71,7 @@ const CheckoutSchema = z.object({
 router.post(
   '/checkout',
   requireAuth,
+  csrfProtection,
   authLimiter,       // per-IP limit
   checkoutLimiter,   // per-user limit (5/hr) — blocks card-testing on one account
   validate({ body: CheckoutSchema }),
@@ -123,6 +125,7 @@ router.post(
 router.post(
   '/portal',
   requireAuth,
+  csrfProtection,
   authLimiter,
   async (req, res, next) => {
     try {
@@ -176,6 +179,7 @@ router.get(
 router.post(
   '/cancel',
   requireAuth,
+  csrfProtection,
   authLimiter,
   async (req, res, next) => {
     try {
@@ -204,6 +208,7 @@ router.post(
 router.post(
   '/reactivate',
   requireAuth,
+  csrfProtection,
   authLimiter,
   async (req, res, next) => {
     try {
