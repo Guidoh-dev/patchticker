@@ -896,6 +896,22 @@ const PLATFORM_CLASS = {
   macOS:'macos', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
 };
 const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
+const PLATFORM_LOGOS = {
+  AMD:       '/platform-logos/simple-icons/amd.svg',
+  NVIDIA:    '/platform-logos/simple-icons/nvidia.svg',
+  Apple:     '/platform-logos/simple-icons/apple.svg',
+  macOS:     '/platform-logos/simple-icons/macos.svg',
+  Intel:     '/platform-logos/simple-icons/intel.svg',
+  Windows:   '/platform-logos/wikimedia/windows.svg',
+  Steam:     '/platform-logos/simple-icons/steam.svg',
+  SteamDeck: '/platform-logos/simple-icons/steamdeck.svg',
+  Switch:    '/platform-logos/wikimedia/nintendo-switch.svg',
+  Xbox:      '/platform-logos/wikimedia/xbox.svg',
+  PS5:       '/platform-logos/simple-icons/playstation5.svg',
+  Discord:   '/platform-logos/simple-icons/discord.svg',
+  BattleNet: '/platform-logos/simple-icons/battledotnet.svg',
+  GOG:       '/platform-logos/simple-icons/gogdotcom.svg',
+};
 const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
 const TICKER_SERVICES = [
   'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows',
@@ -933,6 +949,29 @@ const FOLLOWABLE_STEAM_GAMES = [
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
 function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy' })[p] || p; }
+function platformLogoPath(platform) { return PLATFORM_LOGOS[platform] || null; }
+function renderPlatformLogo(platform, extraClass = '') {
+  const pSuffix = platformSuffix(platform);
+  const label = platformLabel(platform);
+  const short = PLATFORM_SHORT[platform] ?? String(platform || '').slice(0, 3).toUpperCase();
+  const src = platformLogoPath(platform);
+  const classes = `platform-logo platform--${pSuffix}${extraClass ? ` ${extraClass}` : ''}`;
+  if (!src) return `<span class="${classes} platform-logo--fallback" aria-label="${H(label)}">${H(short)}</span>`;
+  return `<span class="${classes}" aria-label="${H(label)}"><img src="${H(src)}" alt="" loading="eager" decoding="async" /><span class="sr-only">${H(label)}</span></span>`;
+}
+function serviceLogoKey(service) {
+  return ({
+    'Apple iOS': 'Apple',
+    'Steam Deck': 'SteamDeck',
+    'SteamOS': 'SteamDeck',
+    'Battle.net': 'BattleNet',
+    'GOG Galaxy': 'GOG',
+  })[service] || service;
+}
+function renderServiceTickerItem(service) {
+  const key = serviceLogoKey(service);
+  return `<span class="service-ticker-item">${renderPlatformLogo(key, 'service-ticker-logo')}<span>${H(service)}</span></span>`;
+}
 
 function searchableTextForUpdate(u) {
   const nested = [
@@ -1251,7 +1290,7 @@ function renderUpdateCard(u) {
 
       <div class="decision-card-body">
         <div class="decision-card-head">
-          <span class="update-platform-icon platform--${pSuffix} decision-platform-icon">${H(short)}</span>
+          ${renderPlatformLogo(u.platform, 'update-platform-icon decision-platform-icon')}
           <div>
             <button class="decision-title decision-title--button" type="button" data-expand-toggle aria-expanded="false">${H(u.name)}</button>
             <div class="decision-meta">
@@ -1318,7 +1357,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
   return `
     <a class="mini-update-card${tone}" href="#/update/${H(u.id)}">
       <div class="mini-update-top">
-        <span class="update-platform-icon platform--${pSuffix} mini-update-icon">${H(short)}</span>
+        ${renderPlatformLogo(u.platform, 'update-platform-icon mini-update-icon')}
         <span class="mini-update-status status-badge ${H(u.status)}">${H(u.status)}</span>
       </div>
       <div class="mini-update-title">${H(u.name)}</div>
@@ -1411,7 +1450,7 @@ async function renderDashboard() {
       <div class="service-ticker" aria-label="Supported PatchTicker services">
         <div class="service-ticker-track">
           ${[...TICKER_SERVICES, ...TICKER_SERVICES].map(service => `
-            <span class="service-ticker-item">${H(service)}</span>
+            ${renderServiceTickerItem(service)}
           `).join('')}
         </div>
       </div>
@@ -1557,7 +1596,7 @@ async function renderDashboard() {
                 const suffix = PLATFORM_CLASS[p] || 'default';
                 const short  = PLATFORM_SHORT[p] || p.slice(0,3).toUpperCase();
                 return `<a class="platform-pill platform--${suffix}" href="#/platform/${H(p)}" title="${H(platformLabel(p))}">
-                  <span class="platform-pill-icon">${H(short)}</span>
+                  ${renderPlatformLogo(p, 'platform-pill-icon')}
                   <span class="platform-pill-name">${H(platformLabel(p))}</span>
                 </a>`;
               }).join('')}
@@ -2266,9 +2305,7 @@ async function renderUpdateDetail(id) {
       <!-- Hero -->
       <div class="detail-hero detail-hero--brief">
         <div class="detail-hero-left">
-          <div class="update-platform-icon platform--${pSuffix} detail-platform-icon">
-            ${H(PLATFORM_SHORT[u.platform] ?? u.platform.slice(0,3).toUpperCase())}
-          </div>
+          ${renderPlatformLogo(u.platform, 'update-platform-icon detail-platform-icon')}
           <div>
             <p class="detail-kicker">${H(platformLabel(u.platform))} update brief</p>
             <h1 class="detail-title">${H(u.name)}</h1>
@@ -2998,7 +3035,7 @@ async function renderPlatformPage(platformName) {
       <div class="platform-hero" style="border-left:4px solid ${color}">
         <div class="platform-hero-inner">
           <a class="platform-back" href="#/updates">← All platforms</a>
-          <h1 class="platform-title">${H(name)}</h1>
+          <div class="platform-title-row">${renderPlatformLogo(name, 'platform-title-logo')}<h1 class="platform-title">${H(name)}</h1></div>
           <p class="platform-subtitle">Update history &amp; community reports</p>
         </div>
       </div>
