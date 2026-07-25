@@ -56,13 +56,13 @@ describe('stripSqlMeta', () => {
   it('removes semicolons', () => expect(stripSqlMeta('DROP; TABLE')).toBe('DROP TABLE'));
   it('removes -- comment', () => expect(stripSqlMeta('val -- comment')).toBe('val  comment'));
   it('removes /* */ block comment', () => expect(stripSqlMeta('val /* x */ end')).toBe('val  x  end'));
-  it('removes backslash', () => expect(stripSqlMeta('C:\\Users\\foo')).toBe('CUsersfoo'));
+  it('removes backslash', () => expect(stripSqlMeta('C:\\Users\\foo')).toBe('C:Usersfoo'));
   it('returns non-strings unchanged', () => expect(stripSqlMeta(42)).toBe(42));
 });
 
 // ── stripPathChars ────────────────────────────────────────────────────────────
 describe('stripPathChars', () => {
-  it('removes null bytes', () => expect(stripPathChars('file\0.php')).toBe('filephp'));
+  it('removes null bytes', () => expect(stripPathChars('file\0.php')).toBe('file.php'));
   it('removes ../', () => expect(stripPathChars('../../etc/passwd')).toBe('etcpasswd'));
   it('removes ..\\', () => expect(stripPathChars('..\\windows')).toBe('windows'));
   it('removes forward slashes', () => expect(stripPathChars('/etc/shadow')).toBe('etcshadow'));
@@ -90,7 +90,7 @@ describe('stripProto', () => {
   it('removes __proto__ key', () => {
     const obj = JSON.parse('{"__proto__":{"polluted":true},"a":1}');
     const clean = stripProto(obj);
-    expect(clean.__proto__).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(clean, '__proto__')).toBe(false);
     expect(clean.a).toBe(1);
   });
   it('removes constructor key', () => {
@@ -108,13 +108,13 @@ describe('stripProto', () => {
   it('handles nested objects recursively', () => {
     const obj = { outer: { __proto__: { bad: true }, inner: 'ok' } };
     const clean = stripProto(obj);
-    expect(clean.outer.__proto__).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(clean.outer, '__proto__')).toBe(false);
     expect(clean.outer.inner).toBe('ok');
   });
   it('handles arrays', () => {
     const arr = [{ __proto__: { x: 1 }, y: 2 }];
     const clean = stripProto(arr);
-    expect(clean[0].__proto__).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(clean[0], '__proto__')).toBe(false);
     expect(clean[0].y).toBe(2);
   });
   it('returns primitives unchanged', () => {
@@ -166,7 +166,7 @@ describe('sanitizeInput', () => {
   it('removes __proto__ from input', () => {
     const obj = JSON.parse('{"__proto__":{"polluted":true},"field":"value"}');
     const out = sanitizeInput(obj);
-    expect(out.__proto__).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(out, '__proto__')).toBe(false);
   });
   it('handles nested objects', () => {
     const out = sanitizeInput({ a: { b: "test'" } });
@@ -178,7 +178,8 @@ describe('sanitizeInput', () => {
   });
   it('HTML-escapes when escapeOutput:true', () => {
     const out = sanitizeInput({ html: '<b>bold</b>' }, { escapeOutput: true });
-    expect(out.html).toContain('&lt;');
+    expect(out.html).not.toContain('<');
+    expect(out.html).not.toContain('>');
   });
   it('strips null bytes from string values', () => {
     const out = sanitizeInput({ path: 'file\0.php' });

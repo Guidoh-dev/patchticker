@@ -184,7 +184,10 @@ export function openFeedStream(accessToken, onMessage, onError) {
   return () => es.close();
 }
 
-export async function fetchUpdateById(id) { return request(`/updates/${id}`, { skipAuth: true }); }
+export async function fetchUpdateById(id) {
+  const res = await request(`/updates/${encodeURIComponent(id)}`, { skipAuth: true });
+  return res?.data || res;
+}
 export async function fetchSummary()      { return request('/updates/summary', { skipAuth: true }); }
 
 // ── Bug Reports ───────────────────────────────────────────────────────────────

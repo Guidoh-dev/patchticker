@@ -23,9 +23,15 @@ process.env.JWT_REFRESH_SECRET = 'b'.repeat(64);
 process.env.CSRF_SECRET        = 'c'.repeat(32);
 process.env.ALLOWED_ORIGINS    = 'http://localhost:3000';
 process.env.HTTPS_REDIRECT     = 'false';
+process.env.TRUST_PROXY        = '1';
 
 const request = require('supertest');
 const app     = require('./server');
+
+beforeEach(() => {
+  try { require('./services/ipAbuseService')._resetAll(); } catch {}
+  try { require('./services/ipBlacklist')._resetAll(); } catch {}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SECTION 1 — ipAbuseService
@@ -518,7 +524,7 @@ describe('suspiciousActivityDetector (integration)', () => {
     const traversalIp = '10.30.0.6';
 
     await request(app)
-      .get('/api/../etc/passwd')
+      .get('/api/%2e%2e%2fetc/passwd')
       .set('X-Forwarded-For', traversalIp);
 
     const status = getStatus(traversalIp);

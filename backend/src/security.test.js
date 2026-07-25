@@ -88,7 +88,7 @@ describe('config/security', () => {
     Object.keys(process.env).forEach(k => {
       if (!(k in ORIGINAL_ENV)) delete process.env[k];
     });
-    delete require.cache[require.resolve('./config/security')];
+    jest.resetModules();
   });
 
   it('loads successfully with valid test env', () => {
@@ -99,7 +99,7 @@ describe('config/security', () => {
 
   it('parses comma-separated ALLOWED_ORIGINS', () => {
     process.env.ALLOWED_ORIGINS = 'http://localhost:3000, http://localhost:4000 , http://localhost:5000';
-    delete require.cache[require.resolve('./config/security')];
+    jest.resetModules();
     const cfg = require('./config/security');
     expect(cfg.ALLOWED_ORIGINS).toHaveLength(3);
     expect(cfg.ALLOWED_ORIGINS).toContain('http://localhost:3000');
@@ -107,31 +107,31 @@ describe('config/security', () => {
     expect(cfg.ALLOWED_ORIGINS).toContain('http://localhost:5000');
   });
 
-  it('returns empty array for empty ALLOWED_ORIGINS', () => {
+  it('falls back to localhost for empty ALLOWED_ORIGINS in development', () => {
     process.env.ALLOWED_ORIGINS = '';
     process.env.NODE_ENV = 'development';
-    delete require.cache[require.resolve('./config/security')];
+    jest.resetModules();
     const cfg = require('./config/security');
-    expect(cfg.ALLOWED_ORIGINS).toHaveLength(0);
+    expect(cfg.ALLOWED_ORIGINS).toEqual(['http://localhost:3000']);
   });
 
   it('HSTS_PRELOAD defaults to false', () => {
     delete process.env.HSTS_PRELOAD;
-    delete require.cache[require.resolve('./config/security')];
+    jest.resetModules();
     const cfg = require('./config/security');
     expect(cfg.HSTS_PRELOAD).toBe(false);
   });
 
   it('HSTS_PRELOAD parses true correctly', () => {
     process.env.HSTS_PRELOAD = 'true';
-    delete require.cache[require.resolve('./config/security')];
+    jest.resetModules();
     const cfg = require('./config/security');
     expect(cfg.HSTS_PRELOAD).toBe(true);
   });
 
   it('HSTS_MAX_AGE defaults to 31536000 (1 year)', () => {
     delete process.env.HSTS_MAX_AGE;
-    delete require.cache[require.resolve('./config/security')];
+    jest.resetModules();
     const cfg = require('./config/security');
     expect(cfg.HSTS_MAX_AGE).toBe(31536000);
   });
@@ -139,7 +139,7 @@ describe('config/security', () => {
   it('HTTPS_REDIRECT is true when env is "true"', () => {
     process.env.HTTPS_REDIRECT = 'true';
     process.env.NODE_ENV = 'development';
-    delete require.cache[require.resolve('./config/security')];
+    jest.resetModules();
     const cfg = require('./config/security');
     expect(cfg.HTTPS_REDIRECT).toBe(true);
   });
@@ -147,7 +147,7 @@ describe('config/security', () => {
   it('HTTPS_REDIRECT is false in development by default', () => {
     process.env.HTTPS_REDIRECT = 'false';
     process.env.NODE_ENV = 'development';
-    delete require.cache[require.resolve('./config/security')];
+    jest.resetModules();
     const cfg = require('./config/security');
     expect(cfg.HTTPS_REDIRECT).toBe(false);
   });
@@ -158,30 +158,39 @@ describe('config/security', () => {
       // Set up valid production values
       process.env.ALLOWED_ORIGINS = 'https://patchticker.app';
       process.env.HTTPS_REDIRECT  = 'true';
+      process.env.HCAPTCHA_SECRET_KEY = '0x1111111111111111111111111111111111111111';
+      process.env.HCAPTCHA_SITE_KEY = '11111111-1111-4111-8111-111111111111';
     });
 
     it('throws when ALLOWED_ORIGINS is missing in production', () => {
       delete process.env.ALLOWED_ORIGINS;
-      delete require.cache[require.resolve('./config/security')];
+      jest.resetModules();
       expect(() => require('./config/security')).toThrow(/ALLOWED_ORIGINS/);
     });
 
     it('throws when ALLOWED_ORIGINS has non-HTTPS origin in production', () => {
       process.env.ALLOWED_ORIGINS = 'http://patchticker.app';
-      delete require.cache[require.resolve('./config/security')];
+      jest.resetModules();
       expect(() => require('./config/security')).toThrow(/HTTPS/);
     });
 
     it('accepts HTTPS origins in production', () => {
       process.env.ALLOWED_ORIGINS = 'https://patchticker.app,https://www.patchticker.app';
-      delete require.cache[require.resolve('./config/security')];
+      jest.resetModules();
       expect(() => require('./config/security')).not.toThrow();
     });
 
     it('rejects placeholder value for ALLOWED_ORIGINS', () => {
       process.env.ALLOWED_ORIGINS = 'REPLACE_WITH_YOUR_DOMAIN';
-      delete require.cache[require.resolve('./config/security')];
+      jest.resetModules();
       expect(() => require('./config/security')).toThrow();
+    });
+
+    it('rejects hCaptcha test keys in production', () => {
+      process.env.HCAPTCHA_SECRET_KEY = '0x0000000000000000000000000000000000000000';
+      process.env.HCAPTCHA_SITE_KEY = '10000000-ffff-ffff-ffff-000000000001';
+      jest.resetModules();
+      expect(() => require('./config/security')).toThrow(/HCAPTCHA_SECRET_KEY/);
     });
   });
 });
@@ -194,14 +203,14 @@ describe('httpsRedirect', () => {
   let httpsRedirect;
 
   beforeEach(() => {
-    delete require.cache[require.resolve('./middleware/httpsRedirect')];
+    jest.resetModules();
     httpsRedirect = require('./middleware/httpsRedirect');
   });
 
   it('is a no-op when HTTPS_REDIRECT is false', () => {
     process.env.HTTPS_REDIRECT = 'false';
-    delete require.cache[require.resolve('./config/security')];
-    delete require.cache[require.resolve('./middleware/httpsRedirect')];
+    jest.resetModules();
+    jest.resetModules();
     const redirect = require('./middleware/httpsRedirect');
 
     const req  = mockReq({ secure: false });
@@ -213,11 +222,8 @@ describe('httpsRedirect', () => {
   });
 
   it('redirects HTTP to HTTPS with 301 when HTTPS_REDIRECT is true', () => {
-    // Simulate production-like redirect enabled
-    const cfg = require('./config/security');
-    Object.defineProperty(cfg, 'HTTPS_REDIRECT', { value: true, writable: true });
-
-    delete require.cache[require.resolve('./middleware/httpsRedirect')];
+    process.env.HTTPS_REDIRECT = 'true';
+    jest.resetModules();
     const redirect = require('./middleware/httpsRedirect');
 
     const req  = mockReq({
@@ -238,10 +244,8 @@ describe('httpsRedirect', () => {
   });
 
   it('does not redirect when already HTTPS (req.secure)', () => {
-    const cfg = require('./config/security');
-    Object.defineProperty(cfg, 'HTTPS_REDIRECT', { value: true, writable: true });
-
-    delete require.cache[require.resolve('./middleware/httpsRedirect')];
+    process.env.HTTPS_REDIRECT = 'true';
+    jest.resetModules();
     const redirect = require('./middleware/httpsRedirect');
 
     const req  = mockReq({ secure: true });
@@ -253,10 +257,8 @@ describe('httpsRedirect', () => {
   });
 
   it('detects HTTPS via X-Forwarded-Proto header (proxy mode)', () => {
-    const cfg = require('./config/security');
-    Object.defineProperty(cfg, 'HTTPS_REDIRECT', { value: true, writable: true });
-
-    delete require.cache[require.resolve('./middleware/httpsRedirect')];
+    process.env.HTTPS_REDIRECT = 'true';
+    jest.resetModules();
     const redirect = require('./middleware/httpsRedirect');
 
     const req  = mockReq({
@@ -273,10 +275,8 @@ describe('httpsRedirect', () => {
   });
 
   it('exempts /api/health from redirect', () => {
-    const cfg = require('./config/security');
-    Object.defineProperty(cfg, 'HTTPS_REDIRECT', { value: true, writable: true });
-
-    delete require.cache[require.resolve('./middleware/httpsRedirect')];
+    process.env.HTTPS_REDIRECT = 'true';
+    jest.resetModules();
     const redirect = require('./middleware/httpsRedirect');
 
     const req  = mockReq({ path: '/api/health', secure: false });
@@ -288,10 +288,8 @@ describe('httpsRedirect', () => {
   });
 
   it('preserves original URL path and query string in redirect', () => {
-    const cfg = require('./config/security');
-    Object.defineProperty(cfg, 'HTTPS_REDIRECT', { value: true, writable: true });
-
-    delete require.cache[require.resolve('./middleware/httpsRedirect')];
+    process.env.HTTPS_REDIRECT = 'true';
+    jest.resetModules();
     const redirect = require('./middleware/httpsRedirect');
 
     const req = mockReq({
@@ -317,42 +315,22 @@ describe('cors middleware', () => {
   // We test the origin resolver directly since the Express cors wrapper
   // doesn't expose it, so we build a small harness.
 
-  function resolveOrigin(origin) {
+  function resolveOrigin(origin, allowedOrigins = 'http://localhost:3000,https://patchticker.app') {
     return new Promise((resolve, reject) => {
-      // Re-require cors and simulate what it does internally
-      delete require.cache[require.resolve('./config/security')];
-      delete require.cache[require.resolve('./middleware/cors')];
-      process.env.ALLOWED_ORIGINS = 'http://localhost:3000,https://patchticker.app';
-      delete require.cache[require.resolve('./config/security')];
-
-      // We test the cors behavior end-to-end via simulated OPTIONS request
+      process.env.ALLOWED_ORIGINS = allowedOrigins;
+      jest.resetModules();
       const corsMiddleware = require('./middleware/cors');
-      const req = mockReq({ method: 'OPTIONS', headers: { origin } });
-      const res = mockRes();
-
-      // Patch res with cors expectations
-      let allowedOrigin;
-      res.setHeader = (name, val) => {
-        if (name.toLowerCase() === 'access-control-allow-origin') {
-          allowedOrigin = val;
-        }
-        return res;
-      };
-      res.getHeader = () => undefined;
-      res.removeHeader = () => res;
-
-      const next = () => resolve({ allowed: true, origin: allowedOrigin });
-      corsMiddleware(req, res, (err) => {
+      corsMiddleware.originCallback(origin, (err, allowed) => {
         if (err) reject(err);
-        else resolve({ allowed: true, origin: allowedOrigin });
+        else resolve({ allowed });
       });
     });
   }
 
   beforeEach(() => {
     process.env.ALLOWED_ORIGINS = 'http://localhost:3000,https://patchticker.app';
-    delete require.cache[require.resolve('./config/security')];
-    delete require.cache[require.resolve('./middleware/cors')];
+    jest.resetModules();
+    jest.resetModules();
   });
 
   it('allows requests from an allowed origin', async () => {
@@ -375,10 +353,7 @@ describe('cors middleware', () => {
   });
 
   it('rejects http:// origin when only https:// is in allowlist', async () => {
-    process.env.ALLOWED_ORIGINS = 'https://patchticker.app';
-    delete require.cache[require.resolve('./config/security')];
-    delete require.cache[require.resolve('./middleware/cors')];
-    await expect(resolveOrigin('http://patchticker.app')).rejects.toBeDefined();
+    await expect(resolveOrigin('http://patchticker.app', 'https://patchticker.app')).rejects.toBeDefined();
   });
 });
 
@@ -409,7 +384,7 @@ describe('securityHeaders middleware', () => {
     });
   });
 
-  afterAll((done) => server.close(done));
+  afterAll((done) => { server.close(done); });
 
   function get(path) {
     return new Promise((resolve, reject) => {

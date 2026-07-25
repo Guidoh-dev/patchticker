@@ -81,7 +81,8 @@ const SIGNAL = Object.freeze({
 //   signals:      string[] — ring buffer of last 20 signal names (for diagnostics)
 // }
 
-const _records = new Map();
+const _records = globalThis.__patchtickerIpAbuseRecords || new Map();
+globalThis.__patchtickerIpAbuseRecords = _records;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -237,6 +238,10 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000).unref(); // run hourly, don't block process exit
 
+function _resetAll() {
+  _records.clear();
+}
+
 module.exports = {
   recordSignal,
   getBackoffMs,
@@ -244,6 +249,7 @@ module.exports = {
   resetRecord,
   computeBackoffMs,  // exported for tests
   normaliseIp,       // exported for tests
+  _resetAll,
   SIGNAL,
   BASE_WINDOW_MS,
   AUTO_BLACKLIST_POINTS,

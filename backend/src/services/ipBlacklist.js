@@ -52,10 +52,12 @@ const AUTO_BLACKLIST_TTL_MS = parseInt(
 
 // Map<ip → BlacklistEntry>
 // BlacklistEntry: { reason, addedAt, expiresAt|null, permanent, autoAdded, signals[] }
-const _entries = new Map();
+const _entries = globalThis.__patchtickerIpBlacklistEntries || new Map();
+globalThis.__patchtickerIpBlacklistEntries = _entries;
 
 // Set of CIDR strings e.g. '192.168.1.0/24'
-const _cidrs = new Set();
+const _cidrs = globalThis.__patchtickerIpBlacklistCidrs || new Set();
+globalThis.__patchtickerIpBlacklistCidrs = _cidrs;
 
 // ── CIDR helpers ──────────────────────────────────────────────────────────────
 
@@ -287,6 +289,11 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000).unref();
 
+function _resetAll() {
+  _entries.clear();
+  _cidrs.clear();
+}
+
 module.exports = {
   isBlacklisted,
   blacklist,
@@ -299,5 +306,6 @@ module.exports = {
   // exported for tests
   _ipInCidr,
   _matchesCidr,
+  _resetAll,
   AUTO_BLACKLIST_TTL_MS,
 };

@@ -39,6 +39,8 @@ import { route, navigate, start, queryParams } from './router.js';
 // Any role above 'free' gets no ads and no ad script.
 
 const HCAPTCHA_SITE_KEY = typeof __HCAPTCHA_SITE_KEY__ !== 'undefined' ? __HCAPTCHA_SITE_KEY__ : '';
+const STRIPE_PRICE_MONTHLY = typeof __STRIPE_PRICE_MONTHLY__ !== 'undefined' ? __STRIPE_PRICE_MONTHLY__ : '';
+const STRIPE_PRICE_ANNUAL = typeof __STRIPE_PRICE_ANNUAL__ !== 'undefined' ? __STRIPE_PRICE_ANNUAL__ : '';
 const ADSENSE_PUBLISHER_ID = 'ca-pub-5058946458366067';
 let _adScriptLoaded = false;  // guard: only inject the script tag once per session
 
@@ -207,6 +209,69 @@ function attachNavHandlers(user) {
   }
 }
 
+function attachTopicScrollNav() {
+  const links = [...document.querySelectorAll('.topic-nav-link')];
+  const jumpLinks = [...document.querySelectorAll('.topic-jump[href^="#section-"]')];
+  const sections = links
+    .map(link => document.querySelector(link.getAttribute('href')))
+    .filter(Boolean);
+
+  if (!links.length || !sections.length) return;
+
+  const setActive = (id) => {
+    links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${id}`));
+  };
+
+  links.forEach(link => {
+    link.addEventListener('click', (e) => {
+      const target = document.querySelector(link.getAttribute('href'));
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActive(target.id);
+    });
+  });
+
+  jumpLinks.forEach(link => {
+    link.addEventListener('click', (e) => {
+      const target = document.querySelector(link.getAttribute('href'));
+      if (!target) return;
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setActive(target.id);
+    });
+  });
+
+  if (!('IntersectionObserver' in window)) return;
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter(entry => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (visible?.target?.id) setActive(visible.target.id);
+  }, { rootMargin: '-34% 0px -52% 0px', threshold: [0.1, 0.25, 0.5] });
+
+  sections.forEach(section => observer.observe(section));
+}
+
+
+function attachMotionEffects(root = document) {
+  // Scroll-reveal was removed by request. Keep this hook lightweight so
+  // dynamic cards still receive any non-reveal motion classes safely.
+  const targets = [
+    ...root.querySelectorAll('.topic-section, .dash-section-header, .hero-live-console, .update-tape-panel, .platform-pill, .decision-flow-grid article, .mini-update-card, .decision-card, .follow-game-chip, .followed-game-card, .hero-console-queue div'),
+  ].filter(el => !el.dataset.motionBound);
+
+  targets.forEach((el) => {
+    el.dataset.motionBound = 'true';
+    el.classList.add('motion-ready');
+  });
+}
+
+function refreshMotionEffects(root = document) {
+  requestAnimationFrame(() => attachMotionEffects(root));
+}
+
 // ── Loading screen ────────────────────────────────────────────────────────────
 function renderLoading() {
   setHTML(`
@@ -346,9 +411,12 @@ function renderRegister() {
   }
   // Try immediately (script may already be loaded on second visit to page)
   mountCaptcha();
-  // Also hook the hCaptcha onload callback in case script hasn't fired yet
-  const _prevOnload = window.onloadCallback;
-  window.onloadCallback = () => { mountCaptcha(); if (_prevOnload) _prevOnload(); };
+  // hCaptcha loads async; poll briefly so registration works even if this view mounts first.
+  const captchaPoll = window.setInterval(() => {
+    mountCaptcha();
+    if (captchaWidgetId !== null || !HCAPTCHA_SITE_KEY) window.clearInterval(captchaPoll);
+  }, 250);
+  window.setTimeout(() => window.clearInterval(captchaPoll), 10000);
 
   pwdInput.addEventListener('input', () => {
     const v = pwdInput.value;
@@ -583,8 +651,8 @@ async function renderVerifyEmail(params) {
 function renderPricing() {
   const user       = getUser();
   const isPro      = user && hasRole('pro');
-  const monthlyId  = window.__STRIPE_PRICE_MONTHLY__ || '';
-  const annualId   = window.__STRIPE_PRICE_ANNUAL__  || '';
+  const monthlyId  = STRIPE_PRICE_MONTHLY || '';
+  const annualId   = STRIPE_PRICE_ANNUAL  || '';
 
   setHTML(`
     ${renderNav(user)}
@@ -756,9 +824,15 @@ function renderLanding() {
               : '<a class="btn btn--primary" href="#/register">Create free account</a><a class="btn btn--outline" href="#/updates">Browse live updates</a>'}
           </div>
           <div class="landing-proof">
-            <span>11 tracked platforms</span>
-            <span>Team-reviewed guidance</span>
+            <span>14 tracked platforms</span>
+            <span>Release-note research</span>
             <span>Live community voting</span>
+          </div>
+          <div class="landing-scroll-map" aria-label="PatchTicker workflow">
+            <span>Watch the tape</span>
+            <span>Choose setup</span>
+            <span>Compare risk</span>
+            <span>Open patch notes</span>
           </div>
         </div>
 
@@ -784,18 +858,21 @@ function renderLanding() {
         </div>
       </section>
 
-      <section class="landing-grid">
-        <article>
-          <h2>One read, not ten tabs.</h2>
-          <p>Windows, NVIDIA, AMD, Apple, Switch, consoles, Steam, Epic, and Intel all land in one feed with clear install guidance.</p>
+      <section class="landing-grid landing-grid--bento">
+        <article class="landing-bento-large">
+          <span class="landing-bento-tag">Live desk</span>
+          <h2>One screen for updates that usually live across ten tabs.</h2>
+          <p>Windows, NVIDIA, AMD, Apple, Switch, consoles, Steam, Discord, GOG, Battle.net, Epic, and Intel all land in one decision feed.</p>
         </article>
         <article>
-          <h2>Why it matters.</h2>
-          <p>Each rating brings together release notes, security impact, known issues, user reports, and source links.</p>
+          <span class="landing-bento-tag">Risk view</span>
+          <h2>Stable / Caution / Avoid.</h2>
+          <p>Visitors get a clear action before reading full notes.</p>
         </article>
         <article>
-          <h2>Alert when it matters.</h2>
-          <p>Pro watchlists notify you when a platform you care about ships something that may affect your setup.</p>
+          <span class="landing-bento-tag">Your setup</span>
+          <h2>Filter by what you run.</h2>
+          <p>Drivers, launchers, OS releases, handhelds, and games stay separated.</p>
         </article>
       </section>
 
@@ -1327,10 +1404,8 @@ async function renderDashboard() {
   setHTML(`
     ${renderNav(user)}
 
-    <div class="dash-wrap">
-
-      <!-- Subscription banner -->
-      <div id="sub-banner-slot"></div>
+    <div class="dash-wrap dash-wrap--simple dash-wrap--triad">
+      <div id="sub-banner-slot" class="dash-sub-banner-slot"></div>
 
       <div class="service-ticker" aria-label="Supported PatchTicker services">
         <div class="service-ticker-track">
@@ -1340,281 +1415,187 @@ async function renderDashboard() {
         </div>
       </div>
 
-      <!-- Hero strip -->
-      <div class="dash-hero">
-        <div class="dash-hero-inner">
-          <div class="dash-hero-text">
-            <p class="dash-hero-kicker">Your update safety desk</p>
-            <h1 class="dash-hero-title">Know what to install, what to wait on, and what to <span>avoid.</span></h1>
-            <p class="dash-hero-sub">The PatchTicker team gathers release notes, user votes, bug reports, and trusted sources so you can decide what belongs on your device today.</p>
-            <section class="setup-lens-panel setup-lens-panel--hero">
-              <div class="setup-lens-intro">
-                <p class="dash-section-kicker">Choose your setup</p>
-                <p class="setup-lens-copy">Filter PatchTicker around the gear, launchers, and games you actually use.</p>
-              </div>
-              <div class="setup-lens-grid">
-                <button class="setup-lens active" data-lens="" data-label="Everything"><span>Everything</span><em>All tracked patches</em></button>
-                <button class="setup-lens" data-lens="nvidia amd intel windows steam discord battle.net gog" data-label="Gaming PC"><span>Gaming PC</span><em>Drivers, Windows, launchers, chat</em></button>
-                <button class="setup-lens" data-lens="macos apple macbook" data-label="Work Mac"><span>Work Mac</span><em>macOS, Apple, MacBook</em></button>
-                <button class="setup-lens" data-lens="steam deck steamos" data-label="Steam Deck"><span>Steam Deck</span><em>SteamOS and handheld updates</em></button>
-                <button class="setup-lens" data-lens="switch xbox ps5 console" data-label="Console"><span>Console</span><em>Switch, Xbox, PlayStation</em></button>
-              </div>
-            </section>
-            <div class="dash-hero-actions">
-              <a class="btn btn--primary" href="#updates-list">Browse recent patches</a>
-              ${isAuthed
-                ? '<a class="btn btn--secondary" href="#/account">Manage your watchlist</a>'
-                : '<a class="btn btn--outline" href="#/register">Create a free account</a>'}
+      <div class="dash-layout">
+        <aside class="dash-sidebar" aria-label="Dashboard controls">
+          <div class="dash-rail-brand">
+            <span class="dash-rail-kicker">PatchTicker desk</span>
+            <strong><span class="brand-pulse">Patch</span>Ticker</strong>
+            <p>Live install guidance for operating systems, drivers, launchers, firmware, and games.</p>
+          </div>
+
+          <nav class="topic-nav topic-nav--rail" aria-label="PatchTicker sections">
+            <a class="topic-nav-link active" href="#section-overview">Overview</a>
+            <a class="topic-nav-link" href="#section-tape">Live tape</a>
+            <a class="topic-nav-link" href="#section-latest">Patch desk</a>
+            <a class="topic-nav-link" href="#section-services">Services</a>
+            ${hasRole('pro') || user?.role === 'admin' ? '<a class="topic-nav-link" href="#section-games">My games</a>' : ''}
+          </nav>
+
+          <section class="dash-filter-card" aria-label="Precise update filters">
+            <div class="dash-filter-head">
+              <span>Precise filter</span>
+              <button class="link-btn dash-clear-link" id="dash-clear-all" type="button">Reset</button>
             </div>
-            <div class="dash-hero-notes">
-              <span class="dash-note-pill">User install confidence</span>
-              <span class="dash-note-pill">Device and game-specific search</span>
-              <span class="dash-note-pill">Bug reports before you update</span>
+            <div class="dash-search-row">
+              <input class="dash-search" id="dash-search" type="search" placeholder="Search service, device, game, version…" autocomplete="off" />
+              <button class="dash-search-clear hidden" id="dash-search-clear" type="button" aria-label="Clear search">×</button>
             </div>
-          </div>
-          <div class="dash-hero-side">
-            <div class="dash-hero-stats" id="dash-hero-stats">
-              <div class="dash-stat"><span class="dash-stat-val" id="stat-stable">—</span><span class="dash-stat-label">Stable</span></div>
-              <div class="dash-stat-divider"></div>
-              <div class="dash-stat"><span class="dash-stat-val dash-stat-val--caution" id="stat-caution">—</span><span class="dash-stat-label">Caution</span></div>
-              <div class="dash-stat-divider"></div>
-              <div class="dash-stat"><span class="dash-stat-val dash-stat-val--avoid" id="stat-avoid">—</span><span class="dash-stat-label">Avoid</span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Platform quick-nav -->
-      <div class="dash-platform-strip">
-        ${TRACKED_PLATFORMS.map(p => {
-          const suffix = PLATFORM_CLASS[p] || 'default';
-          const short  = PLATFORM_SHORT[p] || p.slice(0,3).toUpperCase();
-          return `<a class="platform-pill platform--${suffix}" href="#/platform/${H(p)}" title="${H(platformLabel(p))}">
-            <span class="platform-pill-icon">${H(short)}</span>
-            <span class="platform-pill-name">${H(platformLabel(p))}</span>
-          </a>`;
-        }).join('')}
-      </div>
-
-      <section class="update-tape-panel" aria-label="Live update tape">
-        <div class="update-tape-label">Update tape</div>
-        <div class="update-tape-window">
-          <div class="update-tape-track" id="update-tape-track">${spinner()}</div>
-        </div>
-      </section>
-
-      ${hasRole('pro') || user?.role === 'admin' ? `
-      <section class="follow-games-panel">
-        <div class="dash-section-header dash-section-header--tight">
-          <div>
-            <p class="dash-section-kicker">Pro game tracking</p>
-            <h2 class="dash-section-title">Follow my games</h2>
-          </div>
-          <p class="dash-section-copy">Track Steam patch notes for the games you actually play. These follows stay on this device until account sync is wired in.</p>
-        </div>
-        <div class="follow-games-box">
-          <div class="follow-games-search">
-            <input class="dash-search" id="follow-game-input" type="search" placeholder="Search Steam games… e.g. Apex, Dota, Rust" autocomplete="off" />
-            <button class="btn btn--primary btn--sm" id="follow-game-add">Follow</button>
-          </div>
-          <div class="follow-game-suggestions" id="follow-game-suggestions"></div>
-          <div class="followed-games" id="followed-games"></div>
-        </div>
-      </section>
-      ` : ''}
-
-      <div class="dash-highlights">
-        <div class="dash-section-header">
-          <div>
-            <p class="dash-section-kicker">Right now</p>
-            <h2 class="dash-section-title">Start with what matters now</h2>
-          </div>
-          <p class="dash-section-copy">A quick path to the updates most likely to affect your device, games, or workflow.</p>
-        </div>
-        <div class="dash-radar-grid" id="dash-radar-grid">
-          ${spinner()}
-        </div>
-      </div>
-
-      <section class="compare-panel">
-        <div class="dash-section-header dash-section-header--tight">
-          <div>
-            <p class="dash-section-kicker">Compare before installing</p>
-            <h2 class="dash-section-title">Best choice vs. highest risk</h2>
-          </div>
-          <p class="dash-section-copy">A quick contrast between what users trust and what deserves patience.</p>
-        </div>
-        <div class="compare-strip" id="compare-strip">${spinner()}</div>
-      </section>
-
-      <!-- Main content area -->
-      <div class="dash-main">
-
-        <!-- Filter + feed column -->
-        <div class="dash-feed-col">
-
-          <section class="dash-section">
-            <div class="dash-section-header dash-section-header--tight">
-              <div>
-                <p class="dash-section-kicker">Worth a look</p>
-                <h2 class="dash-section-title">Latest updates to check before installing</h2>
-              </div>
-              <p class="dash-section-copy">Open any card for the takeaway, known issues, user votes, and source links.</p>
-            </div>
-            <div class="dash-feature-grid" id="dash-feature-grid">
-              ${spinner()}
+            <div class="dash-active-filters hidden" id="dash-active-filters">
+              <span id="dash-filter-summary"></span>
             </div>
           </section>
 
-          <!-- Filter bar -->
-          <div class="dash-filterbar">
-            <div class="dash-search-wrap">
-              <span class="dash-search-icon">⌕</span>
-              <input
-                class="dash-search"
-                id="dash-search"
-                type="search"
-                placeholder="Search devices, platforms, games… e.g. Steam Deck, MacBook, RTX"
-                list="dash-search-suggestions"
-                autocomplete="off"
-                spellcheck="false"
-              />
-              <datalist id="dash-search-suggestions">
-                ${SEARCH_SUGGESTIONS.map(term => `<option value="${H(term)}"></option>`).join('')}
-              </datalist>
-              <button class="dash-search-clear hidden" id="dash-search-clear" aria-label="Clear">✕</button>
+          <section class="dash-filter-card">
+            <div class="dash-filter-head"><span>Setup lens</span></div>
+            <div class="setup-lens-grid">
+              <button class="setup-lens active" type="button" data-lens="" data-label="Everything">Everything</button>
+              <button class="setup-lens" type="button" data-lens="windows nvidia amd intel steam discord battle.net gog galaxy" data-label="PC stack">PC stack</button>
+              <button class="setup-lens" type="button" data-lens="steam steamdeck steamos switch ps5 xbox" data-label="Gaming stack">Gaming stack</button>
+              <button class="setup-lens" type="button" data-lens="apple macos ios macbook" data-label="Apple stack">Apple stack</button>
             </div>
+          </section>
 
-            <div class="dash-filter-chips">
-              <div class="dash-chip-group" id="status-filters">
-                <button class="chip active" data-status="">All</button>
-                <button class="chip chip--stable"  data-status="stable">✓ Stable</button>
-                <button class="chip chip--caution" data-status="caution">⚠ Caution</button>
-                <button class="chip chip--avoid"   data-status="avoid">✕ Avoid</button>
-              </div>
-              <select class="dash-sort" id="dash-sort">
-                <option value="date_desc">Newest</option>
-                <option value="date_asc">Oldest</option>
-                <option value="score_desc">Score ↓</option>
-                <option value="score_asc">Score ↑</option>
-              </select>
+          <section class="dash-filter-card">
+            <div class="dash-filter-head"><span>Platform</span></div>
+            <div class="dash-chip-grid" id="platform-filters">
+              <button class="chip active" type="button" data-platform="">All</button>
+              ${TRACKED_PLATFORMS.map(p => {
+                const suffix = PLATFORM_CLASS[p] || 'default';
+                return `<button class="chip platform--${suffix}" type="button" data-platform="${H(p)}">${H(platformLabel(p))}</button>`;
+              }).join('')}
             </div>
+          </section>
 
-            <div class="dash-platform-chips" id="platform-filters">
-              <button class="chip active" data-platform="">All platforms</button>
-              <button class="chip" data-platform="AMD">AMD</button>
-              <button class="chip" data-platform="NVIDIA">NVIDIA</button>
-              <button class="chip" data-platform="Intel">Intel</button>
-              <button class="chip" data-platform="Apple">Apple</button>
-              <button class="chip" data-platform="macOS">macOS</button>
-              <button class="chip" data-platform="Windows">Windows</button>
-              <button class="chip" data-platform="Steam">Steam</button>
-              <button class="chip" data-platform="Discord">Discord</button>
-              <button class="chip" data-platform="BattleNet">Battle.net</button>
-              <button class="chip" data-platform="GOG">GOG</button>
-              <button class="chip" data-platform="Switch">Switch</button>
-              <button class="chip" data-platform="Epic">Epic</button>
-              <button class="chip" data-platform="Xbox">Xbox</button>
-              <button class="chip" data-platform="PS5">PS5</button>
+          <section class="dash-filter-card">
+            <div class="dash-filter-head"><span>Status</span></div>
+            <div class="dash-chip-grid dash-chip-grid--status" id="status-filters">
+              <button class="chip active" type="button" data-status="">All</button>
+              <button class="chip" type="button" data-status="stable">Stable</button>
+              <button class="chip" type="button" data-status="caution">Caution</button>
+              <button class="chip" type="button" data-status="avoid">Avoid</button>
             </div>
+          </section>
 
-            <div class="dash-active-filters hidden" id="dash-active-filters">
-              <span id="dash-filter-summary"></span>
-              <button class="dash-clear-all" id="dash-clear-all">Clear filters</button>
-            </div>
-          </div>
-
-          <!-- Update cards -->
-          <div id="updates-list" class="updates-list">${spinner()}</div>
-
-          <!-- AdSense -->
-          ${shouldShowAds() ? `
-            <div id="ad-slot-dashboard" class="ad-slot ad-slot--banner" aria-label="Advertisement"></div>
-          ` : ''}
-
-          <!-- Bug report form (Pro) -->
-          ${hasRole('pro') || user?.role === 'admin' ? `
-            <div class="bug-report-panel">
-              <div class="bug-report-panel-header">
-                <span class="pro-badge-label">PRO</span>
-                <h2 class="bug-report-panel-title">Submit Bug Report</h2>
-              </div>
-              <form class="bug-report-form" id="bug-form">
-                <div class="bug-form-row">
-                  <div class="field-group">
-                    <label class="field-label" for="bug-update">Update ID</label>
-                    <input class="field-input" id="bug-update" type="text" placeholder="e.g. nvidia-572-16" />
-                  </div>
-                  <div class="field-group">
-                    <label class="field-label" for="bug-severity">Severity</label>
-                    <select class="field-input" id="bug-severity">
-                      <option value="low">Low</option>
-                      <option value="medium" selected>Medium</option>
-                      <option value="high">High</option>
-                      <option value="critical">Critical</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="field-group">
-                  <label class="field-label" for="bug-desc">Description</label>
-                  <textarea class="field-input field-textarea" id="bug-desc" rows="3"
-                    placeholder="Describe the issue — hardware, OS version, steps to reproduce…"></textarea>
-                </div>
-                <div class="bug-form-error hidden" id="bug-error"></div>
-                <button class="btn btn--primary" type="submit" id="bug-submit">Submit report</button>
-              </form>
-            </div>
-          ` : !isAuthed ? `
-            <div class="guest-cta-panel">
-              <div class="guest-cta-copy">
-                <p class="guest-cta-kicker">Join the watchlist</p>
-                <h3 class="guest-cta-title">Make this your pre-update check.</h3>
-                <p class="guest-cta-text">Create a free account to save platforms, follow user ratings, and post in the live feed.</p>
-              </div>
-              <div class="guest-cta-actions">
-                <a class="btn btn--primary" href="#/register">Create free account</a>
-                <a class="btn btn--ghost" href="#/login">Sign in</a>
-              </div>
-            </div>
-          ` : ''}
-
-        </div>
-
-        <!-- Right sidebar: live feed only -->
-        <aside class="dash-sidebar">
-          <div class="feed-sidebar" id="feed-sidebar">
-            <div class="feed-header">
-              <span class="feed-title">LIVE FEED</span>
-              <span class="feed-dot" id="feed-dot" title="Connecting…"></span>
-            </div>
-            <div class="feed-messages" id="feed-messages"></div>
-            ${isAuthed ? `
-              <div class="feed-compose">
-                <input
-                  class="feed-input"
-                  id="feed-input"
-                  type="text"
-                  placeholder="Post to feed…"
-                  maxlength="280"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-                <button class="feed-send" id="feed-send" aria-label="Send">↑</button>
-              </div>
-            ` : `
-              <div class="feed-guest-panel">
-                <p class="feed-guest-title">Browse the room, then sign in to post.</p>
-                <a class="btn btn--outline btn--full" href="#/login">Sign in for live chat</a>
-              </div>
-            `}
-          </div>
+          <section class="dash-filter-card">
+            <label class="dash-filter-label" for="dash-sort">Sort desk</label>
+            <select class="dash-sort" id="dash-sort">
+              <option value="date_desc">Newest first</option>
+              <option value="date_asc">Oldest first</option>
+              <option value="score_desc">Highest score</option>
+              <option value="score_asc">Lowest score</option>
+            </select>
+          </section>
         </aside>
 
-      </div><!-- /.dash-main -->
+        <main class="dash-main" aria-label="PatchTicker dashboard">
+          <section class="dash-command-hero topic-section" id="section-overview">
+            <div class="dash-command-copy">
+              <p class="dash-hero-kicker">Live update status</p>
+              <h1 class="dash-command-title">Decide what belongs on your machine today.</h1>
+              <p class="dash-command-sub">PatchTicker turns vendor release notes, stability signals, security context, and real user votes into a clear install / wait / avoid read.</p>
+              <div class="dash-hero-actions">
+                <a class="btn btn--primary topic-jump" href="#section-latest">Open the patch desk</a>
+                ${isAuthed
+                  ? '<a class="btn btn--secondary" href="#/account">Manage watchlist</a>'
+                  : '<a class="btn btn--outline" href="#/register">Create free account</a>'}
+              </div>
+            </div>
+            <div class="dash-command-stats" id="dash-hero-stats" aria-label="Current update status totals">
+              <div class="dash-command-stat"><span class="dash-stat-val" id="stat-stable">—</span><small>Stable</small></div>
+              <div class="dash-command-stat"><span class="dash-stat-val dash-stat-val--caution" id="stat-caution">—</span><small>Caution</small></div>
+              <div class="dash-command-stat"><span class="dash-stat-val dash-stat-val--avoid" id="stat-avoid">—</span><small>Avoid</small></div>
+            </div>
+          </section>
+
+          <section class="dash-panel update-tape-panel topic-section" id="section-tape" aria-label="Live update tape">
+            <div class="dash-panel-head">
+              <div><p class="dash-section-kicker">Live tape</p><h2>Newest movement</h2></div>
+              <span class="dash-panel-badge">Right to left</span>
+            </div>
+            <div class="update-tape-window">
+              <div class="update-tape-track" id="update-tape-track">${spinner()}</div>
+            </div>
+          </section>
+
+          <section class="dash-panel topic-section" id="section-latest">
+            <div class="dash-panel-head">
+              <div><p class="dash-section-kicker">Patch desk</p><h2>Recent patches worth opening</h2></div>
+              <p class="dash-panel-copy">Every row opens into a dedicated update page with notes, sources, and ratings when real votes exist.</p>
+            </div>
+            <div class="dash-feature-grid latest-decisions-grid" id="dash-feature-grid">
+              ${spinner()}
+            </div>
+            <div class="updates-list updates-list--desk" id="updates-list">
+              ${spinner()}
+            </div>
+          </section>
+        </main>
+
+        <aside class="dash-aside" aria-label="Live signals and service list">
+          <section class="dash-panel dash-live-feed">
+            <div class="dash-panel-head dash-panel-head--compact">
+              <div><p class="dash-section-kicker">User feed</p><h2>Live signal</h2></div>
+              <span class="feed-status"><span class="feed-dot" id="feed-dot"></span> Live</span>
+            </div>
+            <div class="feed-messages" id="feed-messages" aria-live="polite"></div>
+            ${isAuthed ? `
+              <div class="feed-compose">
+                <input class="feed-input" id="feed-input" type="text" maxlength="280" placeholder="Share an update note…" />
+                <button class="feed-send" id="feed-send" type="button">Send</button>
+              </div>
+            ` : `<p class="dash-side-copy">Sign in to post update notes. Public reads stay open.</p>`}
+          </section>
+
+          <section class="dash-panel topic-section" id="section-services">
+            <div class="dash-panel-head dash-panel-head--compact">
+              <div><p class="dash-section-kicker">Tracked services</p><h2>Coverage</h2></div>
+            </div>
+            <div class="dash-platform-strip dash-platform-strip--stacked">
+              ${TRACKED_PLATFORMS.map(p => {
+                const suffix = PLATFORM_CLASS[p] || 'default';
+                const short  = PLATFORM_SHORT[p] || p.slice(0,3).toUpperCase();
+                return `<a class="platform-pill platform--${suffix}" href="#/platform/${H(p)}" title="${H(platformLabel(p))}">
+                  <span class="platform-pill-icon">${H(short)}</span>
+                  <span class="platform-pill-name">${H(platformLabel(p))}</span>
+                </a>`;
+              }).join('')}
+            </div>
+          </section>
+
+          ${hasRole('pro') || user?.role === 'admin' ? `
+          <section class="dash-panel follow-games-panel topic-section" id="section-games">
+            <div class="dash-panel-head dash-panel-head--compact">
+              <div><p class="dash-section-kicker">Pro</p><h2>Follow my games</h2></div>
+            </div>
+            <p class="dash-side-copy">Track Steam patch notes for the games you actually play.</p>
+            <div class="follow-games-box">
+              <div class="follow-games-search">
+                <input class="dash-search" id="follow-game-input" type="search" placeholder="Search Steam games…" autocomplete="off" />
+                <button class="btn btn--primary btn--sm" id="follow-game-add">Follow</button>
+              </div>
+              <div class="follow-game-suggestions" id="follow-game-suggestions"></div>
+              <div class="followed-games" id="followed-games"></div>
+            </div>
+          </section>
+          ` : `
+          <section class="dash-panel dash-pro-lock">
+            <div class="dash-panel-head dash-panel-head--compact">
+              <div><p class="dash-section-kicker">Pro</p><h2>Follow my games</h2></div>
+            </div>
+            <p class="dash-side-copy">Pro users can follow specific games and launcher updates for a cleaner personal feed.</p>
+            <a class="btn btn--outline btn--sm" href="#/pricing">View Pro</a>
+          </section>
+          `}
+
+          <div id="ad-slot-dashboard" class="ad-slot ad-slot--dashboard"></div>
+        </aside>
+      </div>
     </div><!-- /.dash-wrap -->
     ${renderFooter()}
   `);
   attachNavHandlers(user);
+  attachTopicScrollNav();
+  refreshMotionEffects();
 
   // Inject AdSense banner for free-tier users.
   injectAd('ad-slot-dashboard', 'auto');
@@ -1684,6 +1665,7 @@ async function renderDashboard() {
       listEl.innerHTML = filtered.map(renderUpdateCard).join('');
     }
 
+    refreshMotionEffects(listEl);
     updateFilterSummary();
   }
 
@@ -1741,58 +1723,8 @@ async function renderDashboard() {
     });
   });
 
-  function renderOfflineRails(message = 'Live patch feed is reconnecting. Showing recent PatchTicker coverage.') {
-    const fallback = typeof getStaticUpdates === 'function' ? getStaticUpdates() : [];
-    const featureGrid = document.getElementById('dash-feature-grid');
-    const radarGrid = document.getElementById('dash-radar-grid');
-    const listEl = document.getElementById('updates-list');
-    if (featureGrid) {
-      featureGrid.innerHTML = fallback.slice(0, 3).map(renderMiniUpdateCard).join('') || `<p class="dash-empty-copy">${H(message)}</p>`;
-    }
-    if (radarGrid) {
-      const newest = fallback.slice(0, 9);
-      const servicePlatforms = new Set(['Steam', 'Discord', 'BattleNet', 'GOG', 'Switch', 'PS5', 'Xbox', 'Epic']);
-      const pcPlatforms = new Set(['AMD', 'NVIDIA', 'Intel', 'Windows', 'Apple', 'macOS']);
-      radarGrid.innerHTML = [
-        renderRadarCard('Recent coverage', message, newest.slice(0, 3)),
-        renderRadarCard('Apps and consoles', 'Launcher, storefront, console, and handheld patches worth checking.', newest.filter(u => servicePlatforms.has(u.platform)).slice(0, 3)),
-        renderRadarCard('PC essentials', 'Drivers and operating-system updates that can change performance or stability.', newest.filter(u => pcPlatforms.has(u.platform)).slice(0, 3)),
-      ].join('');
-    }
-    if (listEl && fallback.length) {
-      _allUpdates = fallback;
-      applyFilters();
-    }
-  }
-
-  // ── Initial data load ─────────────────────────────────────────────────────
-  async function loadUpdates() {
-    const listEl = document.getElementById('updates-list');
-    listEl.innerHTML = spinner();
-    try {
-      _allUpdates = normaliseUpdatesResponse(await fetchUpdates({}));
-      renderHomepageRails(_allUpdates);
-      applyFilters();
-    } catch (err) {
-      renderOfflineRails(`Live patch feed is reconnecting: ${err.message}`);
-    }
-  }
-
-  function renderHomepageRails(updates) {
-    const featureGrid = document.getElementById('dash-feature-grid');
-    const radarGrid   = document.getElementById('dash-radar-grid');
-    if (!featureGrid || !radarGrid) return;
-
-    const newest = [...updates].sort((a, b) => new Date(b.releasedAt) - new Date(a.releasedAt));
-    const servicePlatforms = new Set(['Steam', 'Discord', 'BattleNet', 'GOG', 'Switch', 'PS5', 'Xbox', 'Epic']);
-    const pcPlatforms = new Set(['AMD', 'NVIDIA', 'Intel', 'Windows', 'Apple', 'macOS']);
-
-    const featured = newest.slice(0, 3);
-    const services = newest.filter((u) => servicePlatforms.has(u.platform)).slice(0, 3);
-    const pcStack  = newest.filter((u) => pcPlatforms.has(u.platform)).slice(0, 3);
-    const caution  = newest.filter((u) => u.status !== 'stable').slice(0, 3);
-    const best = [...updates].sort((a, b) => b.score - a.score)[0];
-    const riskiest = [...updates].sort((a, b) => a.score - b.score)[0];
+  function renderTapeAndLatest(updates, message = 'Live patch feed is reconnecting. Showing recent PatchTicker coverage.') {
+    const newest = [...(updates || [])].sort((a, b) => new Date(b.releasedAt) - new Date(a.releasedAt));
 
     const tapeTrack = document.getElementById('update-tape-track');
     if (tapeTrack) {
@@ -1803,52 +1735,36 @@ async function renderDashboard() {
             const delta = u.status === 'stable' ? '↑' : u.status === 'avoid' ? '↓' : '•';
             return `<a class="update-tape-item update-tape-item--${H(d.cls)}" href="#/update/${H(u.id)}"><b>${H(platformLabel(u.platform))}</b><span>${H(String(u.score))}</span><em>${H(d.action)} ${delta}</em></a>`;
           }).join('')
-        : '<span class="update-tape-empty">Loading tracked updates…</span>';
+        : `<span class="update-tape-empty">${H(message)}</span>`;
     }
 
-    const compareStrip = document.getElementById('compare-strip');
-    if (compareStrip) {
-      compareStrip.innerHTML = [
-        renderCompareCard('Highest confidence', best),
-        renderCompareCard('Needs patience', riskiest),
-      ].join('');
+    const featureGrid = document.getElementById('dash-feature-grid');
+    if (featureGrid) {
+      featureGrid.innerHTML = newest.slice(0, 6).map(renderMiniUpdateCard).join('') || `<p class="dash-empty-copy">${H(message)}</p>`;
+      refreshMotionEffects(featureGrid);
     }
+    refreshMotionEffects(document.getElementById('section-tape') || document);
+  }
 
-    featureGrid.innerHTML = featured.length
-      ? featured.map((u) => renderMiniUpdateCard(u)).join('')
-      : '<p class="dash-empty-copy">No featured updates available yet.</p>';
+  function renderOfflineRails(message = 'Live patch feed is reconnecting. Showing recent PatchTicker coverage.') {
+    const fallback = typeof getStaticUpdates === 'function' ? getStaticUpdates() : [];
+    if (fallback.length) _allUpdates = fallback;
+    renderTapeAndLatest(fallback, message);
+  }
 
-    radarGrid.innerHTML = [
-      renderRadarCard('Apps and consoles', 'Launchers, storefronts, handhelds, and console updates.', services),
-      renderRadarCard('PC essentials', 'Drivers and operating system updates that can change performance.', pcStack),
-      renderRadarCard('Slow down first', 'Recent releases with caution signs, bug reports, or avoid ratings.', caution),
-    ].join('');
+  // ── Initial data load ─────────────────────────────────────────────────────
+  async function loadUpdates() {
+    try {
+      _allUpdates = normaliseUpdatesResponse(await fetchUpdates({}));
+      renderTapeAndLatest(_allUpdates);
+      applyFilters();
+    } catch (err) {
+      renderOfflineRails(`Live patch feed is reconnecting: ${err.message}`);
+    }
+  }
 
-    const reviewed = [...updates]
-      .filter(u => u.userRating)
-      .sort((a, b) => (b.userRating?.totalVotes || 0) - (a.userRating?.totalVotes || 0))[0] || newest[0];
-    const meta = peerRatingMeta(reviewed);
-    const scoreEl = document.getElementById('peer-rating-score');
-    const labelEl = document.getElementById('peer-rating-label');
-    const updateEl = document.getElementById('peer-rating-update');
-    const noteEl = document.getElementById('peer-rating-note');
-    const installEl = document.getElementById('peer-install');
-    const waitEl = document.getElementById('peer-wait');
-    const avoidEl = document.getElementById('peer-avoid');
-    const installBar = document.getElementById('peer-install-bar');
-    const waitBar = document.getElementById('peer-wait-bar');
-    const avoidBar = document.getElementById('peer-avoid-bar');
-
-    if (scoreEl) scoreEl.textContent = meta.score ? meta.score.toFixed(1) : '—';
-    if (labelEl) labelEl.textContent = meta.label;
-    if (updateEl) updateEl.textContent = reviewed ? `${reviewed.name} · ${platformLabel(reviewed.platform)}` : 'Latest update confidence';
-    if (noteEl) noteEl.textContent = meta.votes ? `Based on ${meta.votes.toLocaleString()} user votes and bug reports.` : 'No user votes yet. Showing patch notes and source review only.';
-    if (installEl) installEl.textContent = `${meta.install}%`;
-    if (waitEl) waitEl.textContent = `${meta.wait}%`;
-    if (avoidEl) avoidEl.textContent = `${meta.avoid}%`;
-    if (installBar) installBar.style.width = `${meta.install}%`;
-    if (waitBar) waitBar.style.width = `${meta.wait}%`;
-    if (avoidBar) avoidBar.style.width = `${meta.avoid}%`;
+  function renderHomepageRails(updates) {
+    renderTapeAndLatest(updates);
   }
 
   // ── Hero stats from summary ───────────────────────────────────────────────
@@ -1910,6 +1826,7 @@ async function renderDashboard() {
           </div>
         `).join('')
       : '<p class="follow-games-empty">No followed games yet. Add a Steam game to make this feed yours.</p>';
+    refreshMotionEffects(document.getElementById('section-games') || document);
   }
 
   function addFollowedGame(game) {
@@ -2263,38 +2180,24 @@ async function renderUpdateDetail(id) {
   const ratingsLive = u.ratingsLive || false; // true = real DB votes
 
   function ratingHTML(r, currentVote) {
-    if (!r) return '<p class="detail-empty-note">No user ratings yet. Be the first to vote!</p>';
-    const urColor     = scoreColor(r.score ?? 5);
-    const starFill    = r.score != null ? Math.round((r.score / 10) * 5 * 10) / 10 : 0;
-    const stars = [1,2,3,4,5].map(i => {
-      const fill = Math.min(1, Math.max(0, starFill - (i - 1)));
-      if (fill >= 1) return `<span class="detail-star detail-star--full">★</span>`;
-      if (fill > 0)  return `<span class="detail-star detail-star--half">★</span>`;
-      return `<span class="detail-star detail-star--empty">☆</span>`;
-    }).join('');
+    if (!r) return '<p class="detail-empty-note">User rating appears after real votes are recorded.</p>';
+    const urColor = scoreColor(r.score ?? 5);
+    const install = r.breakdown?.install ?? 0;
+    const wait = r.breakdown?.wait ?? 0;
+    const avoid = r.breakdown?.avoid ?? 0;
     return `
-      <div class="detail-rating-card">
+      <div class="detail-rating-card detail-rating-card--compact">
         <div class="detail-rating-top">
           <div class="detail-rating-score" style="color:${urColor}">${(r.score ?? '—').toString()}</div>
-          <div class="detail-rating-stars">${stars}</div>
-          <div class="detail-rating-count">${(r.totalVotes || 0).toLocaleString()} votes${ratingsLive ? ' <span class="rating-live-dot">●</span>' : ''}</div>
+          <div>
+            <div class="detail-rating-title">User Rating</div>
+            <div class="detail-rating-count">${(r.totalVotes || 0).toLocaleString()} votes${ratingsLive ? ' <span class="rating-live-dot">●</span>' : ''}</div>
+          </div>
         </div>
-        <div class="detail-rating-bars">
-          <div class="detail-rating-row">
-            <span class="detail-rating-label" style="color:var(--green)">Install</span>
-            <div class="detail-rating-track"><div class="detail-rating-fill" style="width:${r.breakdown?.install ?? 0}%;background:var(--green)"></div></div>
-            <span class="detail-rating-pct">${r.breakdown?.install ?? 0}%</span>
-          </div>
-          <div class="detail-rating-row">
-            <span class="detail-rating-label" style="color:var(--yellow)">Wait</span>
-            <div class="detail-rating-track"><div class="detail-rating-fill" style="width:${r.breakdown?.wait ?? 0}%;background:var(--yellow)"></div></div>
-            <span class="detail-rating-pct">${r.breakdown?.wait ?? 0}%</span>
-          </div>
-          <div class="detail-rating-row">
-            <span class="detail-rating-label" style="color:var(--red)">Avoid</span>
-            <div class="detail-rating-track"><div class="detail-rating-fill" style="width:${r.breakdown?.avoid ?? 0}%;background:var(--red)"></div></div>
-            <span class="detail-rating-pct">${r.breakdown?.avoid ?? 0}%</span>
-          </div>
+        <div class="detail-rating-chips">
+          <span class="detail-rating-chip detail-rating-chip--install">Install ${install}%</span>
+          <span class="detail-rating-chip detail-rating-chip--wait">Wait ${wait}%</span>
+          <span class="detail-rating-chip detail-rating-chip--avoid">Avoid ${avoid}%</span>
         </div>
       </div>`;
   }
@@ -2359,82 +2262,41 @@ async function renderUpdateDetail(id) {
       </div>
 
       <!-- Hero -->
-      <div class="detail-hero">
+      <div class="detail-hero detail-hero--brief">
         <div class="detail-hero-left">
           <div class="update-platform-icon platform--${pSuffix} detail-platform-icon">
             ${H(PLATFORM_SHORT[u.platform] ?? u.platform.slice(0,3).toUpperCase())}
           </div>
           <div>
+            <p class="detail-kicker">${H(platformLabel(u.platform))} update brief</p>
             <h1 class="detail-title">${H(u.name)}</h1>
             <div class="detail-meta">
-              <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
+              <span>Version ${H(u.version)}</span>
               <span class="detail-meta-sep">·</span>
-              <span>v${H(u.version)}</span>
-              <span class="detail-meta-sep">·</span>
-              <span>Released ${H(u.releasedAt)}</span>
-              <span class="detail-meta-sep">·</span>
-              <span>${H(u.affects)}</span>
+              <span>Released ${H(formatReleaseDate(u.releasedAt))}</span>
+              ${u.affects ? `<span class="detail-meta-sep">·</span><span>${H(u.affects)}</span>` : ''}
             </div>
           </div>
         </div>
 
-        <!-- Score metrics block — Safety / Impact / Security -->
-        <div class="detail-score-block">
-
-          <!-- Safety Score -->
-          <div class="detail-metric-group">
-            <div class="detail-score-bar-wrap">
-              <div class="detail-score-track">
-                <div class="detail-score-labels">
-                  <span>10</span><span>8</span><span>6</span><span>4</span><span>2</span><span>0</span>
-                </div>
-                <div class="detail-score-column">
-                  <div class="detail-score-empty"></div>
-                  <div class="detail-score-fill"
-                       style="height:${scorePct}%;background:linear-gradient(to top,${color},${color}88);box-shadow:0 0 16px ${color}44">
-                  </div>
-                </div>
-              </div>
-              <div>
-                <div class="detail-score-number" style="color:${color}">${H(String(u.score))}</div>
-                <div class="detail-score-caption">Safety</div>
-              </div>
-            </div>
+        <aside class="detail-decision-panel detail-decision-panel--${H(u.status)}" aria-label="PatchTicker decision summary">
+          <div class="status-badge ${H(u.status)} detail-status-badge">${H(u.status.toUpperCase())}</div>
+          <div class="detail-decision-score">
+            <span style="color:${color}">${H(String(u.score ?? '—'))}</span>
+            <em>Safety score</em>
           </div>
-
-          <!-- Impact Score -->
-          <div class="detail-metric-group">
-            <div class="detail-score-bar-wrap">
-              <div class="detail-score-track">
-                <div class="detail-score-labels">
-                  <span>10</span><span>8</span><span>6</span><span>4</span><span>2</span><span>0</span>
-                </div>
-                <div class="detail-score-column">
-                  <div class="detail-score-empty"></div>
-                  <div class="detail-score-fill"
-                       style="height:${impactPct}%;background:linear-gradient(to top,${impactColor},${impactColor}88);box-shadow:0 0 16px ${impactColor}44">
-                  </div>
-                </div>
-              </div>
-              <div>
-                <div class="detail-score-number" style="color:${impactColor}">${impactScore !== null ? H(String(impactScore)) : '—'}</div>
-                <div class="detail-score-caption">Impact</div>
-              </div>
-            </div>
+          <div class="detail-decision-facts">
+            <div><strong>${impactScore !== null ? H(String(impactScore)) : 'N/A'}</strong><span>${impactScore !== null ? H(impactLabel) : 'Impact pending'}</span></div>
+            <div><strong>${H(String(u.bugCount ?? 0))}</strong><span>Bug reports</span></div>
+            <div><strong>${H(sec.label || 'No data')}</strong><span>Security note</span></div>
           </div>
-
-          <div class="detail-score-meta">
-            <div class="status-badge ${H(u.status)} detail-status-badge">${H(u.status.toUpperCase())}</div>
-            <div class="detail-impact-label" style="color:${impactColor}">${H(impactLabel)}</div>
-            <div class="detail-bug-count">🐛 ${H(String(u.bugCount))} reports</div>
-          </div>
-
-        </div>
+          <a class="detail-source-primary" href="${H(u.sourceUrl || '#')}" target="_blank" rel="noopener">Open official source ↗</a>
+        </aside>
       </div>
 
       <!-- Verdict banner -->
       <div class="detail-verdict detail-verdict--${H(u.status)}">
-        <span class="detail-verdict-label">TAKEAWAY</span>
+        <span class="detail-verdict-label">PATCHTICKER READ</span>
         <p class="detail-verdict-text">${H(u.verdict || 'No takeaway available for this update yet.')}</p>
       </div>
 
@@ -2445,17 +2307,17 @@ async function renderUpdateDetail(id) {
         <div class="detail-col-main">
 
           <section class="detail-section">
-            <h2 class="detail-section-title">What we found</h2>
+            <h2 class="detail-section-title">Update brief</h2>
             <p class="detail-reasoning">${H(u.reasoning || 'Our notes for this update are not published yet. Check back after the community monitoring window, typically 72 hours after release.')}</p>
           </section>
 
           <section class="detail-section">
-            <h2 class="detail-section-title">Changelog</h2>
+            <h2 class="detail-section-title">What changed</h2>
             <ul class="detail-list">${changelogHTML || '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">—</span>No changelog available</li>'}</ul>
           </section>
 
           <section class="detail-section">
-            <h2 class="detail-section-title">Known Issues</h2>
+            <h2 class="detail-section-title">Known issues</h2>
             <ul class="detail-list">${issuesHTML}</ul>
           </section>
 
@@ -2466,7 +2328,7 @@ async function renderUpdateDetail(id) {
 
           <!-- Security Criticality -->
           <section class="detail-section">
-            <h2 class="detail-section-title">Security Criticality</h2>
+            <h2 class="detail-section-title">Security notes</h2>
             <div class="detail-security-card" style="background:${secC.bg};border-color:${secC.border}">
               <div class="detail-security-header">
                 <span class="detail-security-icon">${secIcon}</span>
@@ -2494,7 +2356,7 @@ async function renderUpdateDetail(id) {
           </section>` : ''}
 
           <section class="detail-section">
-            <h2 class="detail-section-title">Risk Factors</h2>
+            <h2 class="detail-section-title">Watch for</h2>
             <div class="detail-risk-list">
               ${riskHTML || '<p class="detail-empty-note">No specific risk factors recorded.</p>'}
             </div>
@@ -2506,12 +2368,6 @@ async function renderUpdateDetail(id) {
               ${evidenceHTML || '<p class="detail-empty-note">No evidence sources recorded yet.</p>'}
             </div>
           </section>
-
-          <section class="detail-section">
-            <h2 class="detail-section-title">Community discussion</h2>
-            <div class="detail-feed">${feedHTML}</div>
-          </section>
-
           <section class="detail-section">
             <h2 class="detail-section-title">Community Bug Reports
               <span class="section-title-badge section-title-badge--live">LIVE</span>

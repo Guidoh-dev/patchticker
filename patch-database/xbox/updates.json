@@ -1,0 +1,63 @@
+{
+  "platform": {
+    "key": "Xbox",
+    "label": "Xbox",
+    "lane": "console",
+    "sourceType": "html",
+    "priority": 3,
+    "official": true
+  },
+  "window": {
+    "from": "2026-05-22",
+    "to": "2026-07-21"
+  },
+  "updates": [
+    {
+      "id": "xbox-latest",
+      "platform": "Xbox",
+      "name": "Xbox System Update Latest",
+      "version": "Latest",
+      "releasedAt": "2026-07-17",
+      "status": "caution",
+      "storedScore": 5,
+      "impactScore": null,
+      "bugCount": 0,
+      "affects": "Xbox Series X|S / Xbox One / dashboard / network services / controller and game compatibility",
+      "verdict": "Install for normal console use unless community reports show dashboard, network, or game-launch regressions.",
+      "reasoning": "Xbox system updates can change dashboard behavior, networking, controller handling, and game compatibility. PatchTicker tracks the official Xbox Support update notes rather than relying on blog posts.",
+      "changelog": [
+        "Official Xbox system update notes checked for dashboard, system, and stability changes."
+      ],
+      "knownIssues": [],
+      "riskFactors": [
+        {
+          "text": "Console updates are generally safe, but dashboard or network changes can temporarily affect party chat, store access, or game launch behavior.",
+          "level": "low"
+        }
+      ],
+      "evidence": [
+        {
+          "url": "https://support.xbox.com/en-US/help/hardware-network/settings-updates/whats-new-xbox-one-system-updates",
+          "text": "Xbox update notes detected OS/version Latest.",
+          "source": "Xbox Support"
+        }
+      ],
+      "securityCriticality": {
+        "level": "low",
+        "label": "No Security Patches",
+        "cves": []
+      },
+      "scraperGap": false,
+      "ratingTest": {
+        "score": 7,
+        "label": "mixed/caution",
+        "recommendation": "review before installing",
+        "notes": [
+          "Official/vendor source attached.",
+          "Version parser returned “Latest” instead of a concrete build.",
+          "1 risk factor(s) attached."
+        ]
+      }
+    }
+  ]
+}

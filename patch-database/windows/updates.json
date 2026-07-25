@@ -1,0 +1,57 @@
+{
+  "platform": {
+    "key": "Windows",
+    "label": "Windows",
+    "lane": "security",
+    "sourceType": "rss",
+    "priority": 1,
+    "official": true
+  },
+  "window": {
+    "from": "2026-05-22",
+    "to": "2026-07-21"
+  },
+  "updates": [
+    {
+      "id": "windows-kb5094123",
+      "platform": "Windows",
+      "name": "June 9, 2026—KB5094123 (OS Build 17763.8880) - Microsoft Support",
+      "version": "KB5094123",
+      "releasedAt": "2026-06-24",
+      "status": "caution",
+      "storedScore": 5,
+      "impactScore": null,
+      "bugCount": 0,
+      "affects": "Windows PCs / cumulative updates / security fixes / system stability / enterprise deployment",
+      "verdict": "Review the KB notes and early install reports before broad rollout; security fixes usually make this worth scheduling quickly.",
+      "reasoning": "Windows cumulative updates can include security patches, servicing-stack changes, driver interactions, and known issues. PatchTicker tracks the official Microsoft support article and watches for rollback or install-failure patterns.",
+      "changelog": [
+        "Windows cumulative updates can include security patches, servicing-stack changes, driver interactions, and known issues. PatchTicker tracks the official Microsoft support article and watches for rollback or install-failure patterns."
+      ],
+      "knownIssues": [],
+      "riskFactors": [],
+      "evidence": [
+        {
+          "url": "https://support.microsoft.com/en-us/topic/june-9-2026-kb5094123-os-build-17763-8880-19adceff-e266-40ec-8a10-df4bb0e320ea",
+          "text": "Current Windows update verified from official source",
+          "source": "Windows"
+        }
+      ],
+      "securityCriticality": {
+        "level": "low",
+        "label": "No Security Patches",
+        "cves": []
+      },
+      "scraperGap": false,
+      "ratingTest": {
+        "score": 9,
+        "label": "positive",
+        "recommendation": "install candidate",
+        "notes": [
+          "Official/vendor source attached.",
+          "Security urgency detected."
+        ]
+      }
+    }
+  ]
+}

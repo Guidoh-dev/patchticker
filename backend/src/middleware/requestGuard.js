@@ -74,7 +74,10 @@ function requestGuard(req, res, next) {
   }
 
   // ── 3. Path traversal in URL ────────────────────────────────────────────────
-  if (/\.\.(\/|\\|%2F|%5C)/i.test(req.originalUrl)) {
+  const rawUrl = req.originalUrl || '';
+  let decodedUrl = rawUrl;
+  try { decodedUrl = decodeURIComponent(rawUrl); } catch { /* malformed escapes are handled downstream */ }
+  if (/\.\.(\/|\\|%2F|%5C)/i.test(rawUrl) || /\.\.(\/|\\)/.test(decodedUrl)) {
     return reject(res, 400, 'Path traversal detected in URL', req);
   }
 

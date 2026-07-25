@@ -7,3 +7,7 @@ frontend/.env
 frontend/dist/
 logs/
 .DS_Store
+
+# Generated QA scratch files
+outputs/**/*.inspect.ndjson
+outputs/**/qa_*.ndjson

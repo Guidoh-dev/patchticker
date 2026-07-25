@@ -326,6 +326,22 @@ describe('4. Subscription model — status mapping', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('5. Stripe integration — config guard', () => {
+  const savedStripeEnv = {};
+
+  beforeEach(() => {
+    for (const key of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) {
+      savedStripeEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']) {
+      if (savedStripeEnv[key] === undefined) delete process.env[key];
+      else process.env[key] = savedStripeEnv[key];
+    }
+  });
+
   test('createCheckoutSession throws if STRIPE_SECRET_KEY not configured', async () => {
     const { createCheckoutSession } = require('./services/subscriptionService');
     const fakeUser = { id: 'u1', email: 'a@b.com' };

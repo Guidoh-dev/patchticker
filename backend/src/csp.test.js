@@ -140,17 +140,19 @@ describe('Frontend CSP directives', () => {
     ({ buildFrontendCspDirectives } = require('./middleware/securityHeaders'));
   });
 
-  it('script-src is self only — no external scripts', () => {
+  it('script-src allows only self plus required hCaptcha/AdSense providers', () => {
     const d = buildFrontendCspDirectives();
     expect(d.scriptSrc).toContain("'self'");
-    expect(d.scriptSrc).toHaveLength(1);
+    expect(d.scriptSrc).toContain('https://hcaptcha.com');
+    expect(d.scriptSrc).toContain('https://*.hcaptcha.com');
+    expect(d.scriptSrc).toContain('https://pagead2.googlesyndication.com');
   });
 
-  it('style-src allows self and fonts.googleapis.com only', () => {
+  it('style-src allows self, fonts, and required widget providers', () => {
     const d = buildFrontendCspDirectives();
     expect(d.styleSrc).toContain("'self'");
     expect(d.styleSrc).toContain('https://fonts.googleapis.com');
-    expect(d.styleSrc).toHaveLength(2);
+    expect(d.styleSrc).toContain('https://hcaptcha.com');
   });
 
   it('style-src does NOT contain unsafe-inline', () => {
@@ -165,16 +167,18 @@ describe('Frontend CSP directives', () => {
     expect(d.fontSrc).toHaveLength(2);
   });
 
-  it('connect-src is self only — no external API calls', () => {
+  it('connect-src allows self plus required hCaptcha/AdSense providers', () => {
     const d = buildFrontendCspDirectives();
-    expect(d.connectSrc).toEqual(["'self'"]);
+    expect(d.connectSrc).toContain("'self'");
+    expect(d.connectSrc).toContain('https://hcaptcha.com');
+    expect(d.connectSrc).toContain('https://*.hcaptcha.com');
   });
 
-  it('img-src allows self and data: URIs only', () => {
+  it('img-src allows self, data URIs, and required widget/ad providers', () => {
     const d = buildFrontendCspDirectives();
     expect(d.imgSrc).toContain("'self'");
     expect(d.imgSrc).toContain('data:');
-    expect(d.imgSrc).toHaveLength(2);
+    expect(d.imgSrc).toContain('https://hcaptcha.com');
   });
 
   it('default-src is none', () => {
@@ -185,6 +189,13 @@ describe('Frontend CSP directives', () => {
   it('frame-ancestors is none', () => {
     const d = buildFrontendCspDirectives();
     expect(d.frameAncestors).toEqual(["'none'"]);
+  });
+
+  it('frame-src allows hCaptcha and ad frames', () => {
+    const d = buildFrontendCspDirectives();
+    expect(d.frameSrc).toContain('https://hcaptcha.com');
+    expect(d.frameSrc).toContain('https://*.hcaptcha.com');
+    expect(d.frameSrc).not.toContain("'none'");
   });
 
   it('base-uri is self — prevents base tag injection', () => {
@@ -214,11 +225,10 @@ describe('Frontend CSP directives', () => {
     expect(allSources).not.toContain("'unsafe-eval'");
   });
 
-  it('no wildcards (*) in any directive', () => {
+  it('no bare wildcard source in any directive', () => {
     const d = buildFrontendCspDirectives();
-    const allSources = Object.values(d).flat().join(' ');
-    // Only 'data:' is expected; no bare * wildcards
-    expect(allSources.match(/(?<![a-z])\*/g)).toBeNull();
+    const allSources = Object.values(d).flat();
+    expect(allSources).not.toContain('*');
   });
 
   it('upgrade-insecure-requests is present', () => {
@@ -307,9 +317,10 @@ describe('API vs Frontend CSP: key differences', () => {
     expect(buildFrontendCspDirectives().objectSrc).toEqual(["'none'"]);
   });
 
-  it('both have connect-src self only', () => {
+  it('API connect-src is self only; frontend includes widget/ad providers', () => {
     expect(buildApiCspDirectives().connectSrc).toEqual(["'self'"]);
-    expect(buildFrontendCspDirectives().connectSrc).toEqual(["'self'"]);
+    expect(buildFrontendCspDirectives().connectSrc).toContain("'self'");
+    expect(buildFrontendCspDirectives().connectSrc).toContain('https://hcaptcha.com');
   });
 
   it('frontend img-src has data:; api does not', () => {

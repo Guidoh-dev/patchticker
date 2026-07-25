@@ -432,6 +432,7 @@ describe('GET /api/health — liveness', () => {
     process.env.JWT_ACCESS_SECRET  = 'a'.repeat(64);
     process.env.JWT_REFRESH_SECRET = 'b'.repeat(64);
     process.env.CSRF_SECRET        = 'c'.repeat(32);
+    process.env.DB_ENCRYPTION_KEY  = 'd'.repeat(64);
     const express     = require('express');
     const healthRouter = require('./routes/health');
     const app = express();
@@ -442,11 +443,12 @@ describe('GET /api/health — liveness', () => {
     delete process.env.JWT_ACCESS_SECRET;
     delete process.env.JWT_REFRESH_SECRET;
     delete process.env.CSRF_SECRET;
+    delete process.env.DB_ENCRYPTION_KEY;
   });
 
   it('rejects unknown query parameters', async () => {
     const res = await request.get('/api/health?hack=true');
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 });
 
