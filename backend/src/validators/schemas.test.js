@@ -310,8 +310,8 @@ describe('GetUpdateByIdParamSchema', () => {
   });
 
   describe('invalid / attack inputs', () => {
-    it('rejects unknown slug', () => {
-      expect(fails(GetUpdateByIdParamSchema, { id: 'unknown-update' })).toBeTruthy();
+    it('accepts unknown-but-valid future patch slugs for DB lookup', () => {
+      expect(passes(GetUpdateByIdParamSchema, { id: 'unknown-update' })).toBe(true);
     });
     it('rejects empty string', () => {
       expect(fails(GetUpdateByIdParamSchema, { id: '' })).toBeTruthy();
@@ -344,7 +344,7 @@ describe('GetUpdateByIdParamSchema', () => {
       expect(fails(GetUpdateByIdParamSchema, { id: 'nvidia-572-16', extra: 'x' })).toBeTruthy();
     });
     it('rejects __proto__ alongside valid id', () => {
-      expect(fails(GetUpdateByIdParamSchema, { id: 'nvidia-572-16', __proto__: {} })).toBeTruthy();
+      expect(fails(GetUpdateByIdParamSchema, JSON.parse('{"id":"nvidia-572-16","__proto__":{}}'))).toBeTruthy();
     });
   });
 });
@@ -525,8 +525,8 @@ describe('PostBugReportBodySchema', () => {
   });
 
   describe('enum enforcement', () => {
-    it('rejects unknown updateId', () => {
-      expect(fails(PostBugReportBodySchema, { ...valid, updateId: 'fake-update-1-0' })).toBeTruthy();
+    it('accepts unknown-but-valid future updateId slugs for DB lookup', () => {
+      expect(passes(PostBugReportBodySchema, { ...valid, updateId: 'fake-update-1-0' })).toBe(true);
     });
     it('rejects unknown severity', () => {
       expect(fails(PostBugReportBodySchema, { ...valid, severity: 'urgent' })).toBeTruthy();
@@ -594,8 +594,8 @@ describe('GetBugReportsByUpdateIdParamSchema', () => {
   it('accepts valid updateId', () => {
     expect(passes(GetBugReportsByUpdateIdParamSchema, { updateId: 'amd-adrenalin-25-3-1' })).toBe(true);
   });
-  it('rejects invalid updateId', () => {
-    expect(fails(GetBugReportsByUpdateIdParamSchema, { updateId: 'not-real' })).toBeTruthy();
+  it('accepts unknown-but-valid future updateId slugs for DB lookup', () => {
+    expect(passes(GetBugReportsByUpdateIdParamSchema, { updateId: 'not-real' })).toBe(true);
   });
   it('rejects path traversal', () => {
     expect(fails(GetBugReportsByUpdateIdParamSchema, { updateId: '../admin' })).toBeTruthy();
@@ -613,6 +613,6 @@ describe('GetBugReportsByUpdateIdParamSchema', () => {
     expect(fails(GetBugReportsByUpdateIdParamSchema, { updateId: 'nvidia-572-16', page: 1 })).toBeTruthy();
   });
   it('rejects __proto__ alongside valid updateId', () => {
-    expect(fails(GetBugReportsByUpdateIdParamSchema, { updateId: 'nvidia-572-16', __proto__: {} })).toBeTruthy();
+    expect(fails(GetBugReportsByUpdateIdParamSchema, JSON.parse('{"updateId":"nvidia-572-16","__proto__":{}}'))).toBeTruthy();
   });
 });

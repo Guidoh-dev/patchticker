@@ -171,11 +171,10 @@ function buildFrontendCspDirectives() {
     // hCaptcha verification endpoint + asset CDN
     connectSrc:              ["'self'", 'https://hcaptcha.com', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
     imgSrc:                  ["'self'", 'data:', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
-    // hCaptcha widget renders inside an iframe from hCaptcha
+    // hCaptcha widget and AdSense render inside sandboxed provider iframes
     frameSrc:                ['https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://googleads.g.doubleclick.net', 'https://tpc.googlesyndication.com'],
     mediaSrc:                ["'none'"],
     objectSrc:               ["'none'"],
-    frameSrc:                ["'none'"],
     frameAncestors:          ["'none'"],
     formAction:              ["'self'"],
     baseUri:                 ["'self'"],
@@ -263,9 +262,9 @@ function directivesToNginx(directives) {
     .map(([k, v]) => {
       // Convert camelCase Helmet key → kebab-case CSP directive
       const dir = k.replace(/([A-Z])/g, '-$1').toLowerCase();
-      return Array.isArray(v) && v.length === 0
-        ? dir
-        : `${dir} ${v.join(' ')}`;
+      if (Array.isArray(v) && v.length === 0) return dir;
+      const sources = Array.isArray(v) ? v : [v];
+      return `${dir} ${sources.join(' ')}`;
     })
     .join('; ');
 }

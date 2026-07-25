@@ -68,4 +68,10 @@ function getRefreshToken(req) {
   return req.cookies?.[COOKIE_NAME];
 }
 
-module.exports = { setRefreshCookie, clearRefreshCookie, getRefreshToken, COOKIE_NAME };
+module.exports = {
+  setRefreshCookie,
+  clearRefreshCookie,
+  getRefreshToken,
+  COOKIE_NAME,
+  REFRESH_COOKIE_OPTIONS,
+};

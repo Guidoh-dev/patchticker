@@ -1,0 +1,31 @@
+# Intel Patch Research
+
+- Platform key: `Intel`
+- Lane: drivers
+- Source type: html
+- Window: 2026-05-22 through 2026-07-21 (<60 days)
+- Updates captured: 2
+
+| Release | Version | Rating test | Overall | Recommendation | Source |
+|---|---:|---:|---|---|---|
+| Intel® Arc™ Graphics - Windows* 32.0.101.8864 (2026-07-20) | 32.0.101.8864 | 7.4/10 | positive | install candidate | [Intel Download Center](https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html) |
+| Intel® Arc™ Graphics - Windows* 32.0.101.8861 (2026-07-07) | 32.0.101.8861 | 7.4/10 | positive | install candidate | [Intel Download Center](https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html) |
+
+## Notes
+### Intel® Arc™ Graphics - Windows* 32.0.101.8864
+- ID: `intel-32-0-101-8864`
+- Date: 2026-07-20
+- Stored PatchTicker score/status: 5 / caution
+- Local rating test: 7.4/10 (positive) — install candidate
+- Affects: Intel Arc GPUs / Core Ultra Arc graphics / Windows graphics driver / game compatibility
+- Verdict: Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies to your setup.
+- Rating test notes: Official/vendor source attached. 1 risk factor(s) attached.
+
+### Intel® Arc™ Graphics - Windows* 32.0.101.8861
+- ID: `intel-32-0-101-8861`
+- Date: 2026-07-07
+- Stored PatchTicker score/status: 5 / caution
+- Local rating test: 7.4/10 (positive) — install candidate
+- Affects: Intel Arc GPUs / Core Ultra Arc graphics / Windows graphics driver / game compatibility
+- Verdict: Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies to your setup.
+- Rating test notes: Official/vendor source attached. 1 risk factor(s) attached.

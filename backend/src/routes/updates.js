@@ -13,7 +13,7 @@
 const express = require('express');
 const router  = express.Router();
 
-const { externalApiLimiter } = require('../middleware/rateLimiter');
+const { ratingsReadLimiter } = require('../middleware/rateLimiter');
 const requireAuth             = require('../middleware/requireAuth');
 const { requirePro }          = require('../middleware/requireRole');
 const validate                = require('../middleware/validate');
@@ -23,7 +23,6 @@ const {
 } = require('../validators/schemas');
 const { getUpdates, getUpdateById, getSentimentSummary, getUpdateHistory } = require('../services/updatesService');
 const aiService        = require('../services/aiAnalysisService');
-const { escapeOutput } = require('../utils/sanitize');
 const db               = require('../config/db');
 const logger           = require('../utils/logger');
 const { aiAnalysisLimiter } = require('../middleware/rateLimiter');
@@ -78,7 +77,7 @@ async function getUserVote(updateId, userId) {
 
 router.get(
   '/',
-  externalApiLimiter,
+  ratingsReadLimiter,
   validate({ query: GetUpdatesQuerySchema }),
   async (req, res, next) => {
     try {
@@ -103,7 +102,7 @@ router.get('/summary', async (req, res, next) => {
 
 router.get(
   '/:platform/history',
-  externalApiLimiter,
+  ratingsReadLimiter,
   async (req, res, next) => {
     try {
       const platform = req.params.platform;
@@ -140,7 +139,7 @@ router.post(
 
 router.get(
   '/:id',
-  externalApiLimiter,
+  ratingsReadLimiter,
   validate({ params: GetUpdateByIdParamSchema }),
   async (req, res, next) => {
     try {
@@ -161,7 +160,7 @@ router.get(
       };
 
       logger.info(`GET /updates/${req.params.id}`, { hasLiveRatings: !!liveRatings });
-      res.json({ data: escapeOutput(enriched) });
+      res.json({ data: enriched });
     } catch (err) { next(err); }
   }
 );

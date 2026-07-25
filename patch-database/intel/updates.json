@@ -1,0 +1,108 @@
+{
+  "platform": {
+    "key": "Intel",
+    "label": "Intel",
+    "lane": "drivers",
+    "sourceType": "html",
+    "priority": 2,
+    "official": true
+  },
+  "window": {
+    "from": "2026-05-22",
+    "to": "2026-07-21"
+  },
+  "updates": [
+    {
+      "id": "intel-32-0-101-8864",
+      "platform": "Intel",
+      "name": "Intel® Arc™ Graphics - Windows* 32.0.101.8864",
+      "version": "32.0.101.8864",
+      "releasedAt": "2026-07-20",
+      "status": "caution",
+      "storedScore": 5,
+      "impactScore": null,
+      "bugCount": 0,
+      "affects": "Intel Arc GPUs / Core Ultra Arc graphics / Windows graphics driver / game compatibility",
+      "verdict": "Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies to your setup.",
+      "reasoning": "Intel graphics drivers often bundle game optimizations, device support, and display fixes. PatchTicker tracks Intel’s official Download Center page and extracts the latest version/date directly from that listing.",
+      "changelog": [
+        "This download installs Intel® Graphics Driver 32.0.101.8864 for Intel® Arc™ B-Series Graphics, Intel® Arc™ A-Series Graphics, and Intel® Core™ Ultra Processors with Intel® Arc™ Graphics."
+      ],
+      "knownIssues": [],
+      "riskFactors": [
+        {
+          "text": "Graphics driver updates can affect game performance, display output, sleep/wake behavior, and compatibility with capture or overlay tools.",
+          "level": "medium"
+        }
+      ],
+      "evidence": [
+        {
+          "url": "https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html",
+          "text": "Intel® Arc™ Graphics - Windows* version 32.0.101.8864. This download installs Intel® Graphics Driver 32.0.101.8864 for Intel® Arc™ B-Series Graphics, Intel® Arc™ A-Series Graphics, and Intel® Core™ Ultra Processors with Intel® Arc™ Graphics.",
+          "source": "Intel Download Center"
+        }
+      ],
+      "securityCriticality": {
+        "level": "low",
+        "label": "No Security Patches",
+        "cves": []
+      },
+      "scraperGap": false,
+      "ratingTest": {
+        "score": 7.4,
+        "label": "positive",
+        "recommendation": "install candidate",
+        "notes": [
+          "Official/vendor source attached.",
+          "1 risk factor(s) attached."
+        ]
+      }
+    },
+    {
+      "id": "intel-32-0-101-8861",
+      "platform": "Intel",
+      "name": "Intel® Arc™ Graphics - Windows* 32.0.101.8861",
+      "version": "32.0.101.8861",
+      "releasedAt": "2026-07-07",
+      "status": "caution",
+      "storedScore": 5,
+      "impactScore": null,
+      "bugCount": 0,
+      "affects": "Intel Arc GPUs / Core Ultra Arc graphics / Windows graphics driver / game compatibility",
+      "verdict": "Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies to your setup.",
+      "reasoning": "Intel graphics drivers often bundle game optimizations, device support, and display fixes. PatchTicker tracks Intel’s official Download Center page and extracts the latest version/date directly from that listing.",
+      "changelog": [
+        "This download installs Intel® Graphics Driver 32.0.101.8861 for Intel® Arc™ B-Series Graphics, Intel® Arc™ A-Series Graphics, and Intel® Core™ Ultra Processors with Intel® Arc™ Graphics."
+      ],
+      "knownIssues": [],
+      "riskFactors": [
+        {
+          "text": "Graphics driver updates can affect game performance, display output, sleep/wake behavior, and compatibility with capture or overlay tools.",
+          "level": "medium"
+        }
+      ],
+      "evidence": [
+        {
+          "url": "https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html",
+          "text": "Intel® Arc™ Graphics - Windows* version 32.0.101.8861. This download installs Intel® Graphics Driver 32.0.101.8861 for Intel® Arc™ B-Series Graphics, Intel® Arc™ A-Series Graphics, and Intel® Core™ Ultra Processors with Intel® Arc™ Graphics.",
+          "source": "Intel Download Center"
+        }
+      ],
+      "securityCriticality": {
+        "level": "low",
+        "label": "No Security Patches",
+        "cves": []
+      },
+      "scraperGap": false,
+      "ratingTest": {
+        "score": 7.4,
+        "label": "positive",
+        "recommendation": "install candidate",
+        "notes": [
+          "Official/vendor source attached.",
+          "1 risk factor(s) attached."
+        ]
+      }
+    }
+  ]
+}

@@ -28,6 +28,8 @@ process.env.DB_ENCRYPTION_KEY  = 'd'.repeat(64);
 process.env.HEALTH_SECRET      = 'e'.repeat(48);
 process.env.ALLOWED_ORIGINS    = 'http://localhost:3000';
 process.env.APP_URL            = 'http://localhost:3000';
+process.env.HCAPTCHA_ENABLED   = 'false';
+process.env.TRUST_PROXY        = '1';
 
 const request = require('supertest');
 
@@ -117,13 +119,13 @@ describe('2. Secure cookies — cookie configuration', () => {
   test('POST /api/auth/register sets httpOnly cookie', async () => {
     const app = require('./server');
     const csrf = await request(app).get('/api/auth/csrf-token');
-    const email = `cookie-test-${Date.now()}@example.com`;
+    const email = `cookie-test-${Date.now()}@patchticker.test`;
 
     const res = await request(app)
       .post('/api/auth/register')
       .set('Cookie', csrf.headers['set-cookie'])
       .set('X-CSRF-Token', csrf.body.csrfToken)
-      .send({ email, password: 'TestPassword1!@#' });
+      .send({ email, password: 'TestPassword1!@#', confirmPassword: 'TestPassword1!@#' });
 
     expect(res.status).toBe(201);
     const cookies = res.headers['set-cookie'] || [];

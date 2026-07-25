@@ -111,4 +111,8 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-module.exports = cors(corsOptions);
+const corsMiddleware = cors(corsOptions);
+corsMiddleware.originCallback = originCallback;
+corsMiddleware.corsOptions = corsOptions;
+
+module.exports = corsMiddleware;

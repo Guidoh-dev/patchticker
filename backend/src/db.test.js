@@ -26,6 +26,7 @@ function freshDb(overrides = {}) {
     NODE_ENV:       'test',
     DATABASE_URL:   '',
     DB_SSL:         'false',
+    ALLOW_TEST_DATABASE: 'false',
     ...overrides,
   };
   Object.entries(env).forEach(([k, v]) => {
@@ -242,8 +243,9 @@ describe('hmac', () => {
   });
 
   it('is key-dependent — different key produces different HMAC', () => {
+    const h1 = enc.hmac('a@b.com');
     const enc2 = freshEncrypt('b'.repeat(64));
-    expect(enc.hmac('a@b.com')).not.toBe(enc2.hmac('a@b.com'));
+    expect(h1).not.toBe(enc2.hmac('a@b.com'));
   });
 });
 
@@ -295,7 +297,7 @@ describe('db.isAvailable()', () => {
   });
 
   it('returns true when a valid-looking DATABASE_URL is set', () => {
-    const db = freshDb({ DATABASE_URL: 'postgres://user:pass@localhost:5432/testdb' });
+    const db = freshDb({ DATABASE_URL: 'postgres://user:pass@localhost:5432/testdb', ALLOW_TEST_DATABASE: 'true' });
     expect(db.isAvailable()).toBe(true);
   });
 });
@@ -330,6 +332,7 @@ describe('db SSL config', () => {
     const db = freshDb({
       DATABASE_URL: 'postgres://u:p@localhost/db',
       DB_SSL: 'false',
+      ALLOW_TEST_DATABASE: 'true',
     });
     expect(db.isAvailable()).toBe(true);
   });

@@ -604,11 +604,17 @@ function rowToUpdate(row) {
     knownIssues:          Array.isArray(row.known_issues) ? row.known_issues : (typeof row.known_issues === 'string' ? JSON.parse(row.known_issues) : []),
     riskFactors:          Array.isArray(row.risk_factors) ? row.risk_factors : (typeof row.risk_factors === 'string' ? JSON.parse(row.risk_factors) : []),
     evidence:             Array.isArray(row.evidence)     ? row.evidence     : (typeof row.evidence     === 'string' ? JSON.parse(row.evidence)     : []),
+    sourceUrl:            (() => {
+      const evidence = Array.isArray(row.evidence) ? row.evidence : (typeof row.evidence === 'string' ? JSON.parse(row.evidence) : []);
+      return evidence.find(e => e?.url)?.url || null;
+    })(),
     securityCriticality:  row.security_criticality
       ? (typeof row.security_criticality === 'string' ? JSON.parse(row.security_criticality) : row.security_criticality)
       : { level: 'low', label: 'No Security Patches', cves: [] },
     subreddits:           Array.isArray(row.subreddits)   ? row.subreddits   : (typeof row.subreddits   === 'string' ? JSON.parse(row.subreddits)   : []),
     aiGenerated:          row.ai_generated || false,
+    aiModel:              row.ai_model || null,
+    aiGeneratedAt:        row.ai_generated_at || null,
     createdAt:            row.created_at,
   };
 }
@@ -814,12 +820,9 @@ async function getUpdateById(id) {
 
   if (!update) return null;
 
-  // Enrich with live Reddit feed
-  const feedPromises = (update.subreddits || []).map(sub => fetchSubredditPosts(sub, 3));
-  const feedResults  = await Promise.all(feedPromises);
-  const feed = feedResults.flat().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-  return { ...update, feed };
+  // Keep patch detail pages focused on first-party update information.
+  // Community/social enrichment is intentionally not required for page rendering.
+  return { ...update, feed: [] };
 }
 
 // ── getSentimentSummary — DB-first with static fallback ───────────────────────

@@ -202,7 +202,7 @@ function platformContext(platform, detected) {
     changelog: detected.changelog?.length ? detected.changelog : [reasoning],
     knownIssues: detected.knownIssues || [],
     riskFactors: detected.riskFactors || [],
-    evidence: detected.evidence || (detected.sourceUrl ? [{ source: platform, url: detected.sourceUrl, text: `Current ${platform} update verified from official source` }] : []),
+    evidence: detected.evidence?.length ? detected.evidence : (detected.sourceUrl ? [{ source: platform, url: detected.sourceUrl, text: `Current ${platform} update verified from official source` }] : []),
   };
 }
 

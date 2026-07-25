@@ -42,11 +42,12 @@
 const https  = require('https');
 const qs     = require('querystring');
 const logger = require('../utils/logger');
+const cfg = require('../config/security');
 
 const VERIFY_URL   = 'https://api.hcaptcha.com/siteverify';
 const MIN_SCORE    = parseFloat(process.env.HCAPTCHA_MIN_SCORE || '0.5');
-const isProd       = process.env.NODE_ENV === 'production';
-const isEnabled    = process.env.HCAPTCHA_ENABLED !== 'false';
+const isProd       = cfg.isProd;
+const isEnabled    = cfg.HCAPTCHA_ENABLED;
 
 /**
  * POST to hCaptcha /siteverify and return the parsed response.

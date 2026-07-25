@@ -195,6 +195,43 @@ const HSTS_MAX_AGE        = parseInt(process.env.HSTS_MAX_AGE || '31536000', 10)
 const HSTS_INCLUDE_SUBDOMAINS = true;
 const HSTS_PRELOAD        = process.env.HSTS_PRELOAD === 'true';
 
+
+// ── CAPTCHA ──────────────────────────────────────────────────────────────────
+
+const HCAPTCHA_TEST_SECRET_KEYS = new Set([
+  '0x0000000000000000000000000000000000000000',
+]);
+const HCAPTCHA_TEST_SITE_KEYS = new Set([
+  '10000000-ffff-ffff-ffff-000000000001',
+  '20000000-ffff-ffff-ffff-000000000002',
+  '30000000-ffff-ffff-ffff-000000000003',
+]);
+
+function isPlaceholderOrTestCaptcha(name, value) {
+  if (!value || value.startsWith('REPLACE_WITH') || value.startsWith('your_')) return true;
+  if (name === 'HCAPTCHA_SECRET_KEY' && HCAPTCHA_TEST_SECRET_KEYS.has(value)) return true;
+  if (name === 'HCAPTCHA_SITE_KEY' && HCAPTCHA_TEST_SITE_KEYS.has(value)) return true;
+  return false;
+}
+
+const HCAPTCHA_ENABLED = process.env.HCAPTCHA_ENABLED !== 'false';
+const HCAPTCHA_SECRET_KEY = process.env.HCAPTCHA_SECRET_KEY || '';
+const HCAPTCHA_SITE_KEY = process.env.HCAPTCHA_SITE_KEY || '';
+
+if (isProd && HCAPTCHA_ENABLED) {
+  for (const [name, value] of [
+    ['HCAPTCHA_SECRET_KEY', HCAPTCHA_SECRET_KEY],
+    ['HCAPTCHA_SITE_KEY', HCAPTCHA_SITE_KEY],
+  ]) {
+    if (isPlaceholderOrTestCaptcha(name, value)) {
+      throw new Error(
+        `[security] ${name} must be configured with a real production hCaptcha key. ` +
+        'Test keys and placeholders are blocked in production.'
+      );
+    }
+  }
+}
+
 // ── Content Security Policy ───────────────────────────────────────────────────
 
 const CSP_REPORT_URI = process.env.CSP_REPORT_URI || null;
@@ -223,6 +260,11 @@ const config = Object.freeze({
   HSTS_MAX_AGE,
   HSTS_INCLUDE_SUBDOMAINS,
   HSTS_PRELOAD,
+
+  // CAPTCHA
+  HCAPTCHA_ENABLED,
+  HCAPTCHA_SECRET_KEY,
+  HCAPTCHA_SITE_KEY,
 
   // CSP
   CSP_REPORT_URI,

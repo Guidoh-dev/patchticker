@@ -142,6 +142,17 @@ function sourceEvidence(source, url, text) {
   return [{ source, url, text: cleanText(text, 260) }];
 }
 
+function absoluteUrl(url, base) {
+  if (!url) return base;
+  try { return new URL(url, base).toString(); }
+  catch { return base; }
+}
+
+function versionFromDate(value, fallback = new Date()) {
+  const iso = toIsoDate(value, fallback);
+  return iso.slice(0, 7);
+}
+
 function metaContent($, name) {
   return $(`meta[name="${name}"], meta[property="${name}"]`).attr('content') || '';
 }
@@ -200,7 +211,7 @@ async function detectWindows() {
       name:       update.title.slice(0, 120),
       version,
       releasedAt: toIsoDate(update.pubDate),
-      changelog:  [update.description].filter(Boolean),
+      changelog:  [update.description || `Microsoft support article detected for ${version}. Review the official KB page for fixes, known issues, and deployment notes.`].filter(Boolean),
       sourceUrl:  update.link || 'https://learn.microsoft.com/windows/release-health/release-information',
     };
   } catch (err) {
@@ -228,7 +239,7 @@ async function detectNvidia() {
       version:    driver.Version,
       releasedAt: toIsoDate(driver.ReleaseDateTime),
       changelog:  driver.ReleaseNotes ? [driver.ReleaseNotes.slice(0, 400)] : [],
-      sourceUrl:  `https://www.nvidia.com/Download/driverResults.aspx/${driver.DownloadURL}`,
+      sourceUrl:  driver.DetailsURL || absoluteUrl(driver.DownloadURL || '', 'https://www.nvidia.com/en-us/geforce/drivers/'),
     };
   } catch (err) {
     logger.warn('[scraper] NVIDIA detection failed', { error: err.message });
@@ -425,17 +436,27 @@ async function detectDiscord() {
  * Battle.net — Blizzard launcher/support signal fallback
  */
 async function detectBattleNet() {
+  const statusUrl = process.env.BATTLENET_STATUS_URL || 'https://battle.net/support/article/000127080';
   try {
-    const html = await fetchHtml('https://us.battle.net/support/en/');
+    const html = await fetchHtml(statusUrl);
     const $ = cheerio.load(html);
-    const title = $('h1, h2, a').filter((_, el) => /Battle\.net|Blizzard|desktop app|launcher|maintenance/i.test($(el).text())).first().text().trim();
+    const pageTitle = cleanText($('h1').first().text() || $('title').text(), 120);
+    const body = cleanText($('body').text(), 2500);
+    const maintenance = /maintenance|service|login|download|patch|desktop app|launcher/i.test(body);
+    const title = maintenance ? 'Battle.net Desktop App / Service Update Signal' : 'Battle.net Desktop App Update Signal';
     return {
       platform:   'BattleNet',
-      name:       (title || 'Battle.net Desktop App Update Signal').slice(0, 100),
-      version:    new Date().toISOString().slice(0, 7),
+      name:       title,
+      version:    versionFromDate(),
       releasedAt: toIsoDate(),
-      changelog:  ['Battle.net support and launcher status checked for client-impacting changes'],
-      sourceUrl:  'https://us.battle.net/support/en/',
+      affects:    'Battle.net launcher / Blizzard game updates / login, repair, download, and patch installation flow',
+      changelog:  [pageTitle || 'Battle.net support checked for launcher, login, download, and maintenance issues.'],
+      knownIssues: maintenance ? [] : ['No specific launcher patch note found on the checked Battle.net support source.'],
+      riskFactors: [{ level: 'medium', text: 'Launcher or service issues can block game patching, downloads, login, or repair loops even when the game update itself is healthy.' }],
+      verdict: 'Check before large Blizzard game updates; install normally if launcher login/download services are healthy.',
+      reasoning: 'Battle.net does not expose a clean public launcher release feed. PatchTicker tracks the official support surface for client-impacting launcher, login, download, and maintenance signals.',
+      evidence: sourceEvidence('Battle.net Support', statusUrl, pageTitle || body),
+      sourceUrl:  statusUrl,
     };
   } catch (err) {
     logger.warn('[scraper] Battle.net detection failed', { error: err.message });
@@ -470,29 +491,60 @@ async function detectGog() {
  * Epic — Epic Games Launcher release notes page
  */
 async function detectEpic() {
+  const primaryUrl = 'https://www.epicgames.com/site/en-US/news?category=release-notes';
+  const fallbackUrl = 'https://status.epicgames.com/';
   try {
-    const html = await fetchHtml('https://www.epicgames.com/site/en-US/news?category=release-notes');
+    const html = await fetchHtml(primaryUrl);
     const $ = cheerio.load(html);
 
     const firstCard = $('article, [data-component="ArticleCard"]').first();
-    const title     = firstCard.find('h3, h2, [data-testid="card-title"]').first().text().trim();
+    const title     = cleanText(firstCard.find('h3, h2, [data-testid="card-title"]').first().text(), 120);
     const date      = firstCard.find('time').attr('datetime') || '';
 
-    if (!title) return null;
+    if (!title) throw new Error('No Epic release-note card found');
 
     const versionMatch = title.match(/(\d+\.\d+[\.\d]*)/);
 
     return {
       platform:   'Epic',
       name:       title.slice(0, 100),
-      version:    versionMatch ? versionMatch[1] : 'Latest',
+      version:    versionMatch ? versionMatch[1] : versionFromDate(date),
       releasedAt: toIsoDate(date),
-      changelog:  [],
-      sourceUrl:  'https://www.epicgames.com/site/en-US/news?category=release-notes',
+      affects:    'Epic Games Launcher / game downloads / store library / cloud saves / Unreal Engine and Fortnite install flow',
+      changelog:  ['Epic release-note feed checked for launcher and store client updates.'],
+      knownIssues: [],
+      riskFactors: [{ level: 'medium', text: 'Epic launcher issues can affect game downloads, cloud saves, library sync, and large patch resume behavior.' }],
+      verdict: 'Install normally if your current Epic launcher is healthy; wait if active store/download incidents are reported.',
+      reasoning: 'Epic launcher updates are most important when they affect downloads, library sync, cloud saves, or authentication. PatchTicker checks Epic release notes first and falls back to Epic service status when release pages block automation.',
+      evidence: sourceEvidence('Epic Games Release Notes', primaryUrl, title),
+      sourceUrl:  primaryUrl,
     };
   } catch (err) {
-    logger.warn('[scraper] Epic detection failed', { error: err.message });
-    return null;
+    logger.warn('[scraper] Epic release-note page unavailable; using status fallback', { error: err.message });
+    try {
+      const html = await fetchHtml(fallbackUrl);
+      const $ = cheerio.load(html);
+      const body = cleanText($('body').text(), 3000);
+      const degraded = /partial outage|major outage|degraded|incident|maintenance/i.test(body);
+      const title = degraded ? 'Epic Games Launcher / Store Status Signal' : 'Epic Games Launcher Status Signal';
+      return {
+        platform: 'Epic',
+        name: title,
+        version: versionFromDate(),
+        releasedAt: toIsoDate(),
+        affects: 'Epic Games Launcher / store login / downloads / library sync / cloud saves',
+        changelog: ['Epic status page checked because the public release-note page blocked automated access.'],
+        knownIssues: degraded ? ['Epic status page indicates a possible active service issue.'] : [],
+        riskFactors: [{ level: degraded ? 'high' : 'medium', text: 'Launcher status affects login, store access, downloads, and game patch installation.' }],
+        verdict: degraded ? 'Wait if you rely on Epic downloads or cloud saves until the service issue clears.' : 'No active Epic status issue detected from the fallback source.',
+        reasoning: 'Epic blocks automated access to parts of its news/release-note site. PatchTicker falls back to the official Epic status page so the platform remains covered instead of disappearing from the feed.',
+        evidence: sourceEvidence('Epic Games Status', fallbackUrl, body || 'Official Epic Games status page checked.'),
+        sourceUrl: fallbackUrl,
+      };
+    } catch (fallbackErr) {
+      logger.warn('[scraper] Epic detection failed', { error: fallbackErr.message });
+      return null;
+    }
   }
 }
 
@@ -507,11 +559,12 @@ async function detectXbox() {
     const body = cleanText($('body').text(), 6000);
     const os = body.match(/OS version[:\s]+([A-Z0-9_\\.\-]+)/i)?.[1] || firstVersion(body) || 'Latest';
     const date = body.match(/(?:Released|Available|Mandatory)[:\s]+([A-Z][a-z]+\s+\d{1,2},\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1];
+    const finalVersion = os === 'Latest' ? versionFromDate(date) : os;
     const bullets = sectionBullets($, ['New Features', 'Fixes', 'Known Issues', 'System Update Details'], 6);
     return {
       platform: 'Xbox',
-      name: `Xbox System Update ${os}`.slice(0, 100),
-      version: os,
+      name: `Xbox System Update ${finalVersion}`.slice(0, 100),
+      version: finalVersion,
       releasedAt: toIsoDate(date),
       affects: 'Xbox Series X|S / Xbox One / dashboard / network services / controller and game compatibility',
       changelog: bullets.length ? bullets : ['Official Xbox system update notes checked for dashboard, system, and stability changes.'],
@@ -519,7 +572,7 @@ async function detectXbox() {
       riskFactors: [{ level: 'low', text: 'Console updates are generally safe, but dashboard or network changes can temporarily affect party chat, store access, or game launch behavior.' }],
       verdict: 'Install for normal console use unless community reports show dashboard, network, or game-launch regressions.',
       reasoning: 'Xbox system updates can change dashboard behavior, networking, controller handling, and game compatibility. PatchTicker tracks the official Xbox Support update notes rather than relying on blog posts.',
-      evidence: sourceEvidence('Xbox Support', url, `Xbox update notes detected OS/version ${os}.`),
+      evidence: sourceEvidence('Xbox Support', url, `Xbox update notes detected OS/version ${finalVersion}.`),
       sourceUrl: url,
     };
   } catch (err) {
@@ -540,7 +593,7 @@ async function detectPs5() {
     const version = body.match(/Version[:\s]+([\d.\-]+)/i)?.[1]
       || body.match(/system software[^\d]+([\d]{2}\.\d{2}[\d.\-]*)/i)?.[1]
       || firstVersion(body)
-      || 'Latest';
+      || versionFromDate();
     const bullets = collectBullets($, $('body'), 8).filter(b => /update|software|system|feature|stability|security|download/i.test(b)).slice(0, 5);
     return {
       platform: 'PS5',

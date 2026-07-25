@@ -1,0 +1,64 @@
+{
+  "platform": {
+    "key": "PS5",
+    "label": "PS5",
+    "lane": "console",
+    "sourceType": "html",
+    "priority": 3,
+    "official": true
+  },
+  "window": {
+    "from": "2026-05-22",
+    "to": "2026-07-21"
+  },
+  "updates": [
+    {
+      "id": "ps5-latest",
+      "platform": "PS5",
+      "name": "PS5 System Software Latest",
+      "version": "Latest",
+      "releasedAt": "2026-07-17",
+      "status": "caution",
+      "storedScore": 5,
+      "impactScore": null,
+      "bugCount": 0,
+      "affects": "PlayStation 5 / system software / online services / controller and game compatibility",
+      "verdict": "Install for online play and system security unless early user reports flag a PS5-specific regression.",
+      "reasoning": "PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker uses the official PlayStation support page for the current update signal.",
+      "changelog": [
+        "Account & Security"
+      ],
+      "knownIssues": [],
+      "riskFactors": [
+        {
+          "text": "System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.",
+          "level": "low"
+        }
+      ],
+      "evidence": [
+        {
+          "url": "https://www.playstation.com/en-us/support/hardware/ps5/system-software/",
+          "text": "Official PS5 system software page detected version Latest.",
+          "source": "PlayStation Support"
+        }
+      ],
+      "securityCriticality": {
+        "level": "low",
+        "label": "No Security Patches",
+        "cves": []
+      },
+      "scraperGap": false,
+      "ratingTest": {
+        "score": 7.6,
+        "label": "positive",
+        "recommendation": "install candidate",
+        "notes": [
+          "Official/vendor source attached.",
+          "Version parser returned “Latest” instead of a concrete build.",
+          "Security urgency detected.",
+          "1 risk factor(s) attached."
+        ]
+      }
+    }
+  ]
+}

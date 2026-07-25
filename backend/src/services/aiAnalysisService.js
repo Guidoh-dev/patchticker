@@ -1,6 +1,6 @@
 // src/services/aiAnalysisService.js
 // ─────────────────────────────────────────────────────────────────────────────
-// AI-powered analysis of software updates using Anthropic claude-sonnet-4-20250514.
+// AI-powered analysis of software updates using Anthropic. Configure with ANTHROPIC_MODEL; defaults to Claude Sonnet 4.
 //
 // Generates: verdict, reasoning, safety score, impact score, security
 // criticality assessment, changelog bullets, and known issues.
@@ -16,7 +16,7 @@ const db      = require('../config/db');
 const logger  = require('../utils/logger');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL             = 'claude-sonnet-4-20250514';
+const MODEL             = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
 
 function isEnabled() {
   const key = process.env.ANTHROPIC_API_KEY;

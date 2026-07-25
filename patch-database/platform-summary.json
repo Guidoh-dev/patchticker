@@ -1,0 +1,114 @@
+[
+  {
+    "platform": "Windows",
+    "label": "Windows",
+    "lane": "security",
+    "updates": 1,
+    "averageRating": 9,
+    "folder": "./windows/"
+  },
+  {
+    "platform": "Apple",
+    "label": "Apple iOS",
+    "lane": "security",
+    "updates": 1,
+    "averageRating": 8.7,
+    "folder": "./apple/"
+  },
+  {
+    "platform": "macOS",
+    "label": "macOS",
+    "lane": "security",
+    "updates": 1,
+    "averageRating": 8.7,
+    "folder": "./macos/"
+  },
+  {
+    "platform": "NVIDIA",
+    "label": "NVIDIA",
+    "lane": "drivers",
+    "updates": 1,
+    "averageRating": 8.4,
+    "folder": "./nvidia/"
+  },
+  {
+    "platform": "AMD",
+    "label": "AMD",
+    "lane": "drivers",
+    "updates": 1,
+    "averageRating": 2.7,
+    "folder": "./amd/"
+  },
+  {
+    "platform": "Intel",
+    "label": "Intel",
+    "lane": "drivers",
+    "updates": 2,
+    "averageRating": 7.4,
+    "folder": "./intel/"
+  },
+  {
+    "platform": "Steam",
+    "label": "Steam",
+    "lane": "gaming",
+    "updates": 1,
+    "averageRating": 6.8,
+    "folder": "./steam/"
+  },
+  {
+    "platform": "Switch",
+    "label": "Switch",
+    "lane": "console",
+    "updates": 1,
+    "averageRating": 8.4,
+    "folder": "./switch/"
+  },
+  {
+    "platform": "Xbox",
+    "label": "Xbox",
+    "lane": "console",
+    "updates": 1,
+    "averageRating": 7,
+    "folder": "./xbox/"
+  },
+  {
+    "platform": "PS5",
+    "label": "PS5",
+    "lane": "console",
+    "updates": 1,
+    "averageRating": 7.6,
+    "folder": "./ps5/"
+  },
+  {
+    "platform": "Discord",
+    "label": "Discord",
+    "lane": "services",
+    "updates": 1,
+    "averageRating": 8.4,
+    "folder": "./discord/"
+  },
+  {
+    "platform": "BattleNet",
+    "label": "Battle.net",
+    "lane": "services",
+    "updates": 1,
+    "averageRating": 8.4,
+    "folder": "./battlenet/"
+  },
+  {
+    "platform": "GOG",
+    "label": "GOG Galaxy",
+    "lane": "services",
+    "updates": 1,
+    "averageRating": 8,
+    "folder": "./gog/"
+  },
+  {
+    "platform": "Epic",
+    "label": "Epic Games",
+    "lane": "services",
+    "updates": 1,
+    "averageRating": 5.4,
+    "folder": "./epic/"
+  }
+]

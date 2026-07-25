@@ -59,6 +59,7 @@ export default defineConfig(({ mode }) => {
 
     server: {
       port: 3000,
+      allowedHosts: ['.trycloudflare.com', '.loca.lt'],
       proxy: {
         '/api': {
           target:       'http://localhost:4000',

@@ -66,7 +66,7 @@ const SENSITIVE_FIELDS = new Set([
  * @returns {unknown}
  */
 function sanitizeBody(obj, depth = 0) {
-  if (depth > 5) return '[truncated]';
+  if (depth >= 5) return '[truncated]';
   if (obj === null || obj === undefined) return obj;
   if (typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.slice(0, 20).map(v => sanitizeBody(v, depth + 1));

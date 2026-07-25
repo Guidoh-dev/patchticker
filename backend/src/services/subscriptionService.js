@@ -32,15 +32,22 @@ const logger = require('../utils/logger');
 
 // ── Stripe singleton — lazy-loaded so startup never throws ───────────────────
 let _stripe = null;
+let _stripeKey = null;
 
 function getStripe() {
-  if (_stripe) return _stripe;
   const key = process.env.STRIPE_SECRET_KEY;
-  if (!key || key.startsWith('REPLACE_WITH') || key.startsWith('sk_test_REPLACE')) {
+  if (
+    !key ||
+    key.startsWith('REPLACE_WITH') ||
+    key.startsWith('sk_test_REPLACE') ||
+    !/^sk_(test|live)_/.test(key)
+  ) {
     throw new Error('[subscriptionService] STRIPE_SECRET_KEY is not configured');
   }
+  if (_stripe && _stripeKey === key) return _stripe;
   // apiVersion pinned — protects against breaking changes in future Stripe SDK upgrades
   _stripe = require('stripe')(key, { apiVersion: '2024-04-10' });
+  _stripeKey = key;
   return _stripe;
 }
 
@@ -308,11 +315,11 @@ async function getSubscription(userId) {
  * See server.js: app.use('/api/webhooks/stripe', express.raw(...))
  */
 function constructWebhookEvent(rawBody, signature) {
-  const stripe = getStripe();
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret || secret.startsWith('REPLACE_WITH')) {
     throw new Error('[subscriptionService] STRIPE_WEBHOOK_SECRET is not configured');
   }
+  const stripe = getStripe();
   // stripe.webhooks.constructEvent validates HMAC-SHA256 signature + timestamp tolerance
   return stripe.webhooks.constructEvent(rawBody, signature, secret);
 }
