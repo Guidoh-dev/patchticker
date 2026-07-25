@@ -917,6 +917,14 @@ const TICKER_SERVICES = [
   'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows',
   'Steam', 'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy', 'Switch', 'Xbox', 'PS5',
 ];
+const PLATFORM_CATEGORY_META = {
+  pcHardware: { title: 'PC Hardware & Drivers', subtitle: 'GPU, graphics driver, and silicon update lanes.', platforms: ['NVIDIA', 'AMD', 'Intel'] },
+  desktopOs:  { title: 'Desktop OS & Apple', subtitle: 'Windows, macOS, and iOS security and stability releases.', platforms: ['Windows', 'Apple', 'macOS'] },
+  gaming:     { title: 'Gaming Platforms', subtitle: 'Steam, Steam Deck, consoles, launchers, and live game-service tooling.', platforms: ['Steam', 'Switch', 'Xbox', 'PS5', 'Discord', 'BattleNet', 'GOG'] },
+  browsers:   { title: 'Web Browsers', subtitle: 'Browser-specific patch lanes are coming soon once official sources are wired.', platforms: [] },
+};
+const PLATFORM_CATEGORY_ORDER = ['pcHardware', 'desktopOs', 'gaming', 'browsers'];
+const PLATFORM_TO_CATEGORY = Object.fromEntries(Object.entries(PLATFORM_CATEGORY_META).flatMap(([key, meta]) => meta.platforms.map(platform => [platform, key])));
 const SEARCH_SUGGESTIONS = [
   'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy',
   'Switch OLED', 'Joy-Con', 'MacBook Pro M3', 'MacBook Air M2',
@@ -1406,6 +1414,96 @@ function renderCompareCard(label, u) {
   `;
 }
 
+function latestTimestamp(updates) {
+  const newest = [...(updates || [])].sort((a, b) => new Date(b.releasedAt) - new Date(a.releasedAt))[0];
+  return newest ? formatReleaseDate(newest.releasedAt) : 'No active patches';
+}
+
+function renderPlatformHeader(platform, updates, watchedSet = new Set()) {
+  const pSuffix = platformSuffix(platform);
+  const latest = latestTimestamp(updates);
+  const watched = watchedSet.has(platform);
+  return `
+    <header class="platform-header platform--${H(pSuffix)}" id="platform-section-${H(pSuffix)}" data-platform="${H(platform)}">
+      <div class="platform-header-main">
+        ${renderPlatformLogo(platform, 'platform-header-logo')}
+        <div>
+          <p class="platform-header-kicker">${H(PLATFORM_CATEGORY_META[PLATFORM_TO_CATEGORY[platform]]?.title || 'Tracked platform')}</p>
+          <h3>${H(platformLabel(platform))}</h3>
+          <div class="platform-header-meta">
+            <span>${H(String(updates.length))} active ${updates.length === 1 ? 'patch' : 'patches'}</span>
+            <span>Latest ${H(latest)}</span>
+          </div>
+        </div>
+      </div>
+      <div class="platform-header-actions">
+        <button class="platform-watch-btn ${watched ? 'is-watched' : ''}" type="button" data-watch-platform="${H(platform)}" aria-pressed="${watched ? 'true' : 'false'}">${watched ? 'Watching' : 'Follow'}</button>
+        <button class="platform-filter-btn" type="button" data-filter-platform="${H(platform)}">Filter feed</button>
+      </div>
+    </header>
+  `;
+}
+
+function renderGroupedUpdateSections(updates, watchedSet = new Set()) {
+  const byCategory = new Map();
+  updates.forEach((update) => {
+    const category = PLATFORM_TO_CATEGORY[update.platform] || 'gaming';
+    if (!byCategory.has(category)) byCategory.set(category, []);
+    byCategory.get(category).push(update);
+  });
+
+  return PLATFORM_CATEGORY_ORDER.map((categoryKey) => {
+    const categoryUpdates = byCategory.get(categoryKey) || [];
+    const meta = PLATFORM_CATEGORY_META[categoryKey];
+
+    if (!categoryUpdates.length && categoryKey === 'browsers') {
+      return `
+        <section class="category-feed-section category-feed-section--soon" id="category-${H(categoryKey)}">
+          <div class="category-section-header">
+            <div>
+              <p class="dash-section-kicker">Coming soon</p>
+              <h2>${H(meta.title)}</h2>
+              <span>Google Chrome, Microsoft Edge, and Firefox lanes will appear here after official parsers are enabled.</span>
+            </div>
+            <a href="#section-overview">Back to top ↑</a>
+          </div>
+          <div class="category-coming-soon">
+            <span>Chrome</span><span>Edge</span><span>Firefox</span>
+          </div>
+        </section>
+      `;
+    }
+
+    if (!categoryUpdates.length) return '';
+    const byPlatform = new Map();
+    categoryUpdates.forEach((update) => {
+      if (!byPlatform.has(update.platform)) byPlatform.set(update.platform, []);
+      byPlatform.get(update.platform).push(update);
+    });
+    const platformSections = meta.platforms
+      .filter(platform => byPlatform.has(platform))
+      .map(platform => `
+        <section class="platform-feed-block">
+          ${renderPlatformHeader(platform, byPlatform.get(platform), watchedSet)}
+          <div class="platform-feed-cards">${byPlatform.get(platform).map(renderUpdateCard).join('')}</div>
+        </section>
+      `).join('');
+    return `
+      <section class="category-feed-section" id="category-${H(categoryKey)}">
+        <div class="category-section-header">
+          <div>
+            <p class="dash-section-kicker">Category</p>
+            <h2>${H(meta.title)}</h2>
+            <span>${H(meta.subtitle)}</span>
+          </div>
+          <a href="#section-overview">Back to top ↑</a>
+        </div>
+        ${platformSections}
+      </section>
+    `;
+  }).join('');
+}
+
 function renderSubscriptionBanner(billingData) {
   if (!billingData) return '';
   const { role, subscription: sub } = billingData;
@@ -1528,6 +1626,25 @@ async function renderDashboard() {
         </aside>
 
         <main class="dash-main" aria-label="PatchTicker dashboard">
+          <section class="dash-quickbar" aria-label="Quick feed navigation">
+            <div class="dash-quickbar-search">
+              <span>Search</span>
+              <input id="dash-top-search" type="search" placeholder="Search patches, devices, versions…" autocomplete="off" />
+            </div>
+            <div class="dash-ribbon" id="platform-ribbon">
+              <button class="chip active" type="button" data-platform="">All</button>
+              ${TRACKED_PLATFORMS.map(p => `<button class="chip platform--${platformSuffix(p)}" type="button" data-platform="${H(p)}">${H(platformLabel(p))}</button>`).join('')}
+            </div>
+            <div class="dash-status-ribbon" id="status-ribbon" aria-label="Status filters">
+              <button class="chip active" type="button" data-status="">All status</button>
+              <button class="chip" type="button" data-status="stable">Stable</button>
+              <button class="chip" type="button" data-status="caution">Caution</button>
+              <button class="chip" type="button" data-status="avoid">Avoid</button>
+            </div>
+            <div class="dash-category-jumps" aria-label="Category jumps">
+              ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
+            </div>
+          </section>
           <section class="dash-command-hero topic-section" id="section-overview">
             <div class="dash-command-copy">
               <p class="dash-hero-kicker">Live update status</p>
@@ -1670,6 +1787,8 @@ async function renderDashboard() {
   // from the cache without hitting the network.
   let _allUpdates  = [];   // full dataset from last fetch
   let _filterState = { platform: '', status: '', sort: 'date_desc', search: '' };
+  let _watchedPlatforms = new Set(JSON.parse(localStorage.getItem('patchticker.dashboardWatchlist') || '[]'));
+  const saveDashboardWatchlist = () => localStorage.setItem('patchticker.dashboardWatchlist', JSON.stringify([..._watchedPlatforms]));
 
   function applyFilters() {
     const { platform, status, sort, search } = _filterState;
@@ -1703,7 +1822,7 @@ async function renderDashboard() {
         : '<p class="empty-state">No updates found.</p>';
       document.getElementById('clear-inline')?.addEventListener('click', clearAllFilters);
     } else {
-      listEl.innerHTML = filtered.map(renderUpdateCard).join('');
+      listEl.innerHTML = renderGroupedUpdateSections(filtered, _watchedPlatforms);
     }
 
     refreshMotionEffects(listEl);
@@ -1732,21 +1851,72 @@ async function renderDashboard() {
   function clearAllFilters() {
     _filterState = { platform: '', status: '', sort: _filterState.sort, search: '' };
 
-    document.querySelectorAll('#platform-filters .chip').forEach(b =>
+    document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(b =>
       b.classList.toggle('active', b.dataset.platform === '')
     );
-    document.querySelectorAll('#status-filters .chip').forEach(b =>
+    document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(b =>
       b.classList.toggle('active', b.dataset.status === '')
     );
     const searchEl = document.getElementById('dash-search');
     if (searchEl) searchEl.value = '';
+    const topSearchEl = document.getElementById('dash-top-search');
+    if (topSearchEl) topSearchEl.value = '';
     document.getElementById('dash-search-clear')?.classList.add('hidden');
     document.querySelectorAll('.setup-lens').forEach(b => b.classList.toggle('active', b.dataset.lens === ''));
 
     applyFilters();
   }
 
-  document.getElementById('updates-list')?.addEventListener('click', (e) => {
+  function setPlatformFilter(platform) {
+    _filterState.platform = platform || '';
+    document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(b =>
+      b.classList.toggle('active', b.dataset.platform === _filterState.platform)
+    );
+    applyFilters();
+  }
+
+  function syncWatchButtons(platform) {
+    const watched = _watchedPlatforms.has(platform);
+    document.querySelectorAll('[data-watch-platform]').forEach((btn) => {
+      if (btn.dataset.watchPlatform !== platform) return;
+      btn.classList.toggle('is-watched', watched);
+      btn.setAttribute('aria-pressed', watched ? 'true' : 'false');
+      btn.textContent = watched ? 'Watching' : 'Follow';
+    });
+  }
+
+  document.getElementById('updates-list')?.addEventListener('click', async (e) => {
+    const filterBtn = e.target.closest('[data-filter-platform]');
+    if (filterBtn) {
+      setPlatformFilter(filterBtn.dataset.filterPlatform || '');
+      document.getElementById('section-latest')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    const watchBtn = e.target.closest('[data-watch-platform]');
+    if (watchBtn) {
+      const platform = watchBtn.dataset.watchPlatform;
+      if (!platform) return;
+      const shouldWatch = !_watchedPlatforms.has(platform);
+      if (shouldWatch) _watchedPlatforms.add(platform);
+      else _watchedPlatforms.delete(platform);
+      saveDashboardWatchlist();
+      syncWatchButtons(platform);
+
+      if (isAuthed && (hasRole('pro') || user?.role === 'admin')) {
+        try {
+          const { upsertWatch, removeWatch } = await import('./api.js');
+          if (shouldWatch) await upsertWatch(platform, { notifyEmail: true, notifyWebhook: false });
+          else await removeWatch(platform);
+        } catch (err) {
+          showToast('Saved locally. Account watchlist sync failed.', 'error');
+        }
+      } else {
+        showToast(shouldWatch ? 'Saved locally. Pro enables email and webhook alerts.' : 'Removed from local watchlist.', 'info');
+      }
+      return;
+    }
+
     const card = e.target.closest('.decision-card');
     if (!card) return;
     if (e.target.closest('a')) return;
@@ -1826,25 +1996,22 @@ async function renderDashboard() {
       document.querySelectorAll('.setup-lens').forEach(b => b.classList.toggle('active', b === btn));
       _filterState.search = btn.dataset.lens || '';
       _filterState.platform = '';
-      document.querySelectorAll('#platform-filters .chip').forEach(b =>
+      document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(b =>
         b.classList.toggle('active', b.dataset.platform === '')
       );
       const searchEl = document.getElementById('dash-search');
-      if (searchEl) searchEl.value = btn.dataset.label === 'Everything' ? '' : btn.dataset.label;
+      const topSearchEl = document.getElementById('dash-top-search');
+      const label = btn.dataset.label === 'Everything' ? '' : btn.dataset.label;
+      if (searchEl) searchEl.value = label;
+      if (topSearchEl) topSearchEl.value = label;
       document.getElementById('dash-search-clear')?.classList.toggle('hidden', !btn.dataset.lens);
       applyFilters();
     });
   });
 
   // ── Platform chip buttons ─────────────────────────────────────────────────
-  document.querySelectorAll('#platform-filters .chip').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _filterState.platform = btn.dataset.platform;
-      document.querySelectorAll('#platform-filters .chip').forEach(b =>
-        b.classList.toggle('active', b.dataset.platform === _filterState.platform)
-      );
-      applyFilters();
-    });
+  document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(btn => {
+    btn.addEventListener('click', () => setPlatformFilter(btn.dataset.platform));
   });
 
 
@@ -1911,17 +2078,19 @@ async function renderDashboard() {
     if (filterBtn) {
       _filterState.search = filterBtn.dataset.game || '';
       const searchEl = document.getElementById('dash-search');
+      const topSearchEl = document.getElementById('dash-top-search');
       if (searchEl) searchEl.value = _filterState.search;
+      if (topSearchEl) topSearchEl.value = _filterState.search;
       document.getElementById('dash-search-clear')?.classList.remove('hidden');
       applyFilters();
     }
   });
 
   // ── Status chip buttons ───────────────────────────────────────────────────
-  document.querySelectorAll('#status-filters .chip').forEach(btn => {
+  document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(btn => {
     btn.addEventListener('click', () => {
       _filterState.status = btn.dataset.status;
-      document.querySelectorAll('#status-filters .chip').forEach(b =>
+      document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(b =>
         b.classList.toggle('active', b.dataset.status === _filterState.status)
       );
       applyFilters();
@@ -1937,10 +2106,23 @@ async function renderDashboard() {
   // ── Search input (debounced 250ms) ────────────────────────────────────────
   let _searchTimer = null;
   const searchEl   = document.getElementById('dash-search');
+  const topSearchEl = document.getElementById('dash-top-search');
   const clearBtn   = document.getElementById('dash-search-clear');
+
+  topSearchEl?.addEventListener('input', (e) => {
+    const val = e.target.value;
+    if (searchEl) searchEl.value = val;
+    clearBtn?.classList.toggle('hidden', !val);
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => {
+      _filterState.search = val.trim();
+      applyFilters();
+    }, 250);
+  });
 
   searchEl?.addEventListener('input', (e) => {
     const val = e.target.value;
+    if (topSearchEl) topSearchEl.value = val;
     clearBtn?.classList.toggle('hidden', !val);
     clearTimeout(_searchTimer);
     _searchTimer = setTimeout(() => {
@@ -1951,6 +2133,7 @@ async function renderDashboard() {
 
   clearBtn?.addEventListener('click', () => {
     if (searchEl) searchEl.value = '';
+    if (topSearchEl) topSearchEl.value = '';
     clearBtn.classList.add('hidden');
     _filterState.search = '';
     applyFilters();
@@ -2164,7 +2347,7 @@ async function renderUpdateDetail(id) {
         <div class="detail-error">
           <div class="detail-error-code">Error</div>
           <p>${H(err.message)}</p>
-          <a class="btn btn--outline" href="#/updates">← Back to dashboard</a>
+          <a class="btn btn--outline" href="#/updates">← Back to Full Ticker</a>
         </div>
       </div>
     `);
@@ -2179,7 +2362,7 @@ async function renderUpdateDetail(id) {
         <div class="detail-error">
           <div class="detail-error-code">404</div>
           <p>Update not found.</p>
-          <a class="btn btn--outline" href="#/updates">← Back to dashboard</a>
+          <a class="btn btn--outline" href="#/updates">← Back to Full Ticker</a>
         </div>
       </div>
     `);
@@ -2295,7 +2478,7 @@ async function renderUpdateDetail(id) {
 
       <!-- Breadcrumb -->
       <div class="detail-breadcrumb">
-        <a href="#/updates" class="detail-back">← Dashboard</a>
+        <a href="#/updates" class="detail-back">← Back to Full Ticker</a>
         <span class="detail-breadcrumb-sep">/</span>
         <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
         <span class="detail-breadcrumb-sep">/</span>
