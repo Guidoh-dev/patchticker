@@ -31,7 +31,7 @@ const postLimiter = rateLimit({
 
 const PostSchema = z.object({
   body:     z.string().min(1).max(280).trim(),
-  platform: z.enum(['AMD','NVIDIA','Apple','PS5','Windows','Steam','macOS','Intel','Epic','Xbox','Switch','Discord','BattleNet','GOG']).optional(),
+  platform: z.enum(['AMD','NVIDIA','Apple','PS5','Windows','Steam','macOS','Intel','Xbox','Switch','Discord','BattleNet','GOG']).optional(),
 });
 
 // ── In-process SSE client registry ───────────────────────────────────────────

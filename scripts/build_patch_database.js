@@ -8,35 +8,6 @@ const OUT = path.join(process.cwd(), 'patch-database');
 const cutoff = new Date('2026-07-21T00:00:00-04:00');
 cutoff.setDate(cutoff.getDate() - 60);
 
-const epicManual = {
-  id: 'epic-status-jul-2026',
-  platform: 'Epic',
-  name: 'Epic Games Store / Epic Online Services Status Research',
-  version: 'Jul 2026',
-  released_at: '2026-07-21T00:00:00.000Z',
-  status: 'caution',
-  score: null,
-  impact_score: null,
-  bug_count: 0,
-  affects: 'Epic Games Launcher / Epic Games Store / EOS / downloads / authentication / Fortnite downtime',
-  verdict: 'Do not treat Epic as fully covered yet. The official status and support sources are usable, but the current scraper is blocked by a 403 and needs a more reliable source strategy.',
-  reasoning: 'Epic does not currently have a clean recent launcher release-note row in PatchTicker. Official status pages show recent maintenance and Fortnite downtime, and Epic support documents the launcher update path, but the scraper needs to be switched away from the blocked page.',
-  changelog: [
-    'Epic Games Public Status listed EOS maintenance on July 21, 2026.',
-    'Epic Games Public Status listed Fortnite downtime for v41.20 on July 16, 2026.',
-    'Epic support documents manual launcher update behavior through Restart and Update.'
-  ],
-  known_issues: ['PatchTicker Epic scraper currently returns 403 from the target page.'],
-  risk_factors: [{ level: 'medium', text: 'Coverage gap: official status is available, but launcher release-note extraction is unreliable until scraper target changes.' }],
-  evidence: [
-    { source: 'Epic Games Public Status', url: 'https://status.epicgames.com/', text: 'Recent official incidents and maintenance history for Epic services.' },
-    { source: 'Epic Games Launcher Support', url: 'https://www.epicgames.com/help/c-202300000001639/c-202300000001735/update-the-epic-games-launcher-a202300000020032', text: 'Official instructions for updating the Epic Games Launcher.' },
-    { source: 'Epic Developer Recent Updates', url: 'https://dev.epicgames.com/docs/epic-games-store/whats-new/recent-updates', text: 'Official Epic Games Store developer recent updates.' }
-  ],
-  security_criticality: { level: 'low', label: 'No specific security advisory captured', cves: [] },
-  scraper_gap: true
-};
-
 function arr(v) { return Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []); }
 function obj(v) { return v && typeof v === 'string' ? JSON.parse(v) : v; }
 function dateOnly(d) { return new Date(d).toISOString().slice(0,10); }
@@ -194,8 +165,6 @@ function updateMd(u) {
     if (!byPlatform.has(r.platform)) byPlatform.set(r.platform, []);
     byPlatform.get(r.platform).push(r);
   }
-  const epic = normalizeRow(epicManual); epic.ratingTest = ratingTest(epic);
-  byPlatform.set('Epic', [epic]);
 
   const indexRows = [];
   for (const meta of PLATFORMS) {
@@ -225,7 +194,6 @@ function updateMd(u) {
     '- Labels: `positive` >= 7.2, `mixed/caution` 5.0–7.1, `negative` < 5.0.',
     '',
     '## Immediate Coverage Gaps', '',
-    '- Epic: current scraper returned HTTP 403; use Epic Public Status + Epic support as fallback until scraper target is replaced.',
     '- Reddit signal: `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` are not configured, so community scoring is not active.',
     '- Anthropic analysis: `ANTHROPIC_API_KEY` is not configured, so AI enrichment is not active; local rating test was used instead.',
   ].join('\n');

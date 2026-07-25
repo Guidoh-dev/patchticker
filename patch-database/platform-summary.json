@@ -102,13 +102,5 @@
     "updates": 1,
     "averageRating": 8,
     "folder": "./gog/"
-  },
-  {
-    "platform": "Epic",
-    "label": "Epic Games",
-    "lane": "services",
-    "updates": 1,
-    "averageRating": 5.4,
-    "folder": "./epic/"
   }
 ]

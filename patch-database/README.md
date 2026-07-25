@@ -22,7 +22,6 @@ This is a local file-based research database generated from current PatchTicker 
 | Discord | services | 1 | 8.4 | [./discord/](./discord/) |
 | Battle.net | services | 1 | 8.4 | [./battlenet/](./battlenet/) |
 | GOG Galaxy | services | 1 | 8 | [./gog/](./gog/) |
-| Epic Games | services | 1 | 5.4 | [./epic/](./epic/) |
 
 ## Rating Test Method
 
@@ -33,6 +32,5 @@ This is a local file-based research database generated from current PatchTicker 
 
 ## Immediate Coverage Gaps
 
-- Epic: current scraper returned HTTP 403; use Epic Public Status + Epic support as fallback until scraper target is replaced.
 - Reddit signal: `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` are not configured, so community scoring is not active.
 - Anthropic analysis: `ANTHROPIC_API_KEY` is not configured, so AI enrichment is not active; local rating test was used instead.

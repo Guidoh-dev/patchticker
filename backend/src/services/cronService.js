@@ -3,7 +3,7 @@
 // CRON SCHEDULER — runs the live data pipeline on a schedule
 //
 // Schedule:
-//   Every 6 hours  — full platform scan (all 10 platforms)
+//   Every 6 hours  — full platform scan (all tracked platforms)
 //   Every 1 hour   — security-priority platforms only (Windows, Apple, macOS)
 //
 // The 1-hour scan for security platforms ensures zero-days and critical

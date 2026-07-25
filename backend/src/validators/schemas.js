@@ -167,7 +167,7 @@ function rejectPrototypePollution(schema) {
  * Valid platform display names.
  * Case-sensitive exact match. "nvidia" ≠ "NVIDIA".
  */
-const PlatformEnum = z.enum(['Apple', 'NVIDIA', 'AMD', 'PS5', 'Windows', 'Steam', 'macOS', 'Intel', 'Epic', 'Xbox', 'Switch','Discord','BattleNet','GOG']);
+const PlatformEnum = z.enum(['Apple', 'NVIDIA', 'AMD', 'PS5', 'Windows', 'Steam', 'macOS', 'Intel',  'Xbox', 'Switch','Discord','BattleNet','GOG']);
 
 /** Update health status values. */
 const StatusEnum = z.enum(['stable', 'caution', 'avoid']);

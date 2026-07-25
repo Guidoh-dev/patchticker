@@ -18,7 +18,6 @@ const PLATFORMS = Object.freeze([
   { key: 'Discord',   label: 'Discord',      lane: 'services', sourceType: 'rss',      priority: 4, official: true },
   { key: 'BattleNet', label: 'Battle.net',   lane: 'services', sourceType: 'html',     priority: 4, official: true },
   { key: 'GOG',       label: 'GOG Galaxy',   lane: 'services', sourceType: 'html',     priority: 4, official: true },
-  { key: 'Epic',      label: 'Epic Games',   lane: 'services', sourceType: 'html',     priority: 4, official: true },
 ]);
 
 const PLATFORM_KEYS = Object.freeze(PLATFORMS.map(p => p.key));

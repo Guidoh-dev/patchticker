@@ -25,7 +25,6 @@ The model groups a broad multilingual query basket—`update`, `patch notes`, `r
 |---|---|---|---:|---:|---:|---:|---|
 | 1. Consoles & OS | PS5, Xbox, Switch, iOS/iPadOS, macOS, Windows | availability/status 35%; notes/features 25%; issues/rollback 25%; security 15% | 360,000 | **590,000** | 950,000 | 3–8× | 0–24 h; security tail to 72 h |
 | 2. Graphics & drivers | NVIDIA, AMD, Intel Arc | download/version 30%; game-ready performance 30%; issues/rollback 30%; notes 10% | 130,000 | **225,000** | 380,000 | 3–6× | −12 h to +24 h around game/driver launch |
-| 3. Gaming distribution | Steam client/SteamOS, Epic, Battle.net | status/issues 40%; features 25%; patch availability 20%; rollback 15% | 55,000 | **95,000** | 165,000 | 2–5× | 0–48 h |
 | 4. Browsers & utilities | Chrome, Firefox, Discord, VS Code | security/issues 35%; version/status 30%; features 25%; manual update 10% | 105,000 | **170,000** | 255,000 | 2–4× | 0–72 h |
 | **Total** | Query basket above | — | **650,000** | **1,080,000** | **1,750,000** | — | — |
 
@@ -45,7 +44,6 @@ The base case allocates to providers as follows. These are components of the tie
 | 2 | Intel Arc | 35,000 | Intel Arc driver, Game On release, performance/issues |
 | 3 | Steam client/SteamOS | 55,000 | Steam client update, SteamOS patch notes, update issue |
 | 3 | Battle.net | 25,000 | Battle.net update, launcher stuck, patch notes |
-| 3 | Epic Games Launcher | 15,000 | Epic launcher update, download/login issue |
 | 4 | Google Chrome | 75,000 | Chrome update, release notes, zero-day/security version |
 | 4 | Discord | 40,000 | Discord update, patch notes, update failed |
 | 4 | VS Code | 35,000 | VS Code update, release notes, version/features |
@@ -151,7 +149,6 @@ Prefer the most structured official source available. HTML scraping is a fallbac
 | Xbox | [Xbox Wire system-update archive](https://news.xbox.com/en-us/tag/system-update/) RSS/HTML where available | Xbox support and Insider ring notes | Filter Insider vs. general availability; preserve ring and OS-build identifiers |
 | Nintendo Switch | Official [Switch system-update history](https://www.nintendo.com/en-gb/Support/Nintendo-Switch/System-Updates/Nintendo-Switch-System-Update-Information-1445507.html) HTML | Regional Nintendo support pages | Compare locales because posting time/text can differ; canonicalize same firmware version |
 | Steam client / SteamOS | Official Steam news/RSS; [ISteamNews API](https://partner.steamgames.com/doc/webapi/ISteamNews) for known app IDs | Steam client and Steam Deck update pages | API is app-centric, not a universal release API; use RSS/community sources for client branches and label beta/stable |
-| Epic Games Launcher | Official Epic support/news HTML | Epic status API for incidents only | Launcher changelog coverage is inconsistent; separate availability updates from service incidents |
 | Battle.net | Official Blizzard news / app patch-notes HTML | In-client notes where publicly addressable | Staged regional rollouts are possible; do not infer global GA from first client observation |
 | NVIDIA GeForce / NVIDIA App | Official driver results/release-note HTML and linked PDFs | [NVIDIA RSS](https://www.nvidia.com/en-us/about-nvidia/rss/) for announcements | NVIDIA's RSS terms state non-commercial use; legal review is required before commercial ingestion. Prefer driver page polling and links over republishing text |
 | AMD Adrenalin | Official [AMD release-note HTML](https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-24-5-1.html) and driver support pages | Download metadata and community announcement | Parse headings such as support, fixed issues, known issues; release-note URLs are predictable but discovery should not depend on guessing |

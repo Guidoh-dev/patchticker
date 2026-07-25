@@ -33,7 +33,6 @@
   --platform-steam:     #536976;
   --platform-macos:     #ff9f0a;
   --platform-intel:     #0071c5;
-  --platform-epic:      #fafafa;
   --platform-xbox:      #3aeb34;
   --platform-switch:    #ff2d55;
   --platform-discord:   #5865f2;
@@ -274,7 +273,6 @@ select.field-input { cursor: pointer; }
 .platform--steam     { --platform-color: var(--platform-steam);     --platform-bg: rgba(83,105,118,.22); }
 .platform--macos     { --platform-color: var(--platform-macos);     --platform-bg: rgba(255,159,10,.16); }
 .platform--intel     { --platform-color: var(--platform-intel);     --platform-bg: rgba(0,113,197,.18); }
-.platform--epic      { --platform-color: var(--platform-epic);      --platform-bg: rgba(250,250,250,.13); }
 .platform--xbox      { --platform-color: var(--platform-xbox);      --platform-bg: rgba(58,235,52,.13); }
 .platform--switch    { --platform-color: var(--platform-switch);    --platform-bg: rgba(255,45,85,.16); }
 .platform--discord   { --platform-color: var(--platform-discord);   --platform-bg: rgba(88,101,242,.17); }
@@ -290,7 +288,6 @@ select.field-input { cursor: pointer; }
 .platform--steam,
 .platform--macos,
 .platform--intel,
-.platform--epic,
 .platform--xbox,
 .platform--switch,
 .platform--discord,
@@ -309,7 +306,6 @@ select.field-input { cursor: pointer; }
 .text-platform--steam     { color: var(--platform-steam); }
 .text-platform--macos     { color: var(--platform-macos); }
 .text-platform--intel     { color: var(--platform-intel); }
-.text-platform--epic      { color: var(--platform-epic); }
 .text-platform--xbox      { color: var(--platform-xbox); }
 .text-platform--switch    { color: var(--platform-switch); }
 .text-platform--discord   { color: var(--platform-discord); }
@@ -2522,7 +2518,6 @@ select.field-input { cursor: pointer; }
 .dash-platform-chips .chip[data-platform="BattleNet"] { --chip-platform-color: var(--platform-battlenet); }
 .dash-platform-chips .chip[data-platform="GOG"]       { --chip-platform-color: var(--platform-gog); }
 .dash-platform-chips .chip[data-platform="Switch"]    { --chip-platform-color: var(--platform-switch); }
-.dash-platform-chips .chip[data-platform="Epic"]      { --chip-platform-color: var(--platform-epic); }
 .dash-platform-chips .chip[data-platform="Xbox"]      { --chip-platform-color: var(--platform-xbox); }
 .dash-platform-chips .chip[data-platform="PS5"]       { --chip-platform-color: var(--platform-ps5); }
 

@@ -827,6 +827,7 @@ function renderLanding() {
             <span>14 tracked platforms</span>
             <span>Release-note research</span>
             <span>Live community voting</span>
+            <span>More platforms coming soon</span>
           </div>
           <div class="landing-scroll-map" aria-label="PatchTicker workflow">
             <span>Watch the tape</span>
@@ -862,7 +863,7 @@ function renderLanding() {
         <article class="landing-bento-large">
           <span class="landing-bento-tag">Live desk</span>
           <h2>One screen for updates that usually live across ten tabs.</h2>
-          <p>Windows, NVIDIA, AMD, Apple, Switch, consoles, Steam, Discord, GOG, Battle.net, Epic, and Intel all land in one decision feed.</p>
+          <p>Windows, NVIDIA, AMD, Apple, Switch, consoles, Steam, Discord, GOG, Battle.net, and Intel all land in one decision feed.</p>
         </article>
         <article>
           <span class="landing-bento-tag">Risk view</span>
@@ -892,13 +893,13 @@ function renderLanding() {
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 const PLATFORM_CLASS = {
   AMD:'amd', NVIDIA:'nvidia', Apple:'apple', PS5:'ps5', Windows:'windows', Steam:'steam',
-  macOS:'macos', Intel:'intel', Epic:'epic', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
+  macOS:'macos', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
 };
-const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Intel:'INT', Epic:'EPC', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
-const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Steam','Discord','BattleNet','GOG','Switch','Epic','Xbox','PS5'];
+const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
+const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
 const TICKER_SERVICES = [
   'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows',
-  'Steam', 'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy', 'Switch', 'Epic', 'Xbox', 'PS5',
+  'Steam', 'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy', 'Switch', 'Xbox', 'PS5',
 ];
 const SEARCH_SUGGESTIONS = [
   'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy',
@@ -1550,6 +1551,7 @@ async function renderDashboard() {
             <div class="dash-panel-head dash-panel-head--compact">
               <div><p class="dash-section-kicker">Tracked services</p><h2>Coverage</h2></div>
             </div>
+            <p class="dash-side-copy">More platforms and device-specific lanes are coming soon as reliable official sources are added.</p>
             <div class="dash-platform-strip dash-platform-strip--stacked">
               ${TRACKED_PLATFORMS.map(p => {
                 const suffix = PLATFORM_CLASS[p] || 'default';
@@ -2705,7 +2707,7 @@ async function renderAdmin() {
               <option>AMD</option><option>NVIDIA</option><option>Intel</option>
               <option>Apple</option><option>macOS</option><option>Windows</option>
               <option>Steam</option><option>Discord</option><option>BattleNet</option><option>GOG</option>
-              <option>Switch</option><option>Epic</option><option>Xbox</option><option>PS5</option>
+              <option>Switch</option><option>Xbox</option><option>PS5</option>
             </select>
             <button class="btn btn--outline btn--sm" id="pipeline-run-one">Run selected</button>
           </div>
@@ -2985,7 +2987,7 @@ async function renderPlatformPage(platformName) {
 
   const PLATFORM_COLOR = {
     AMD: '#ef4444', NVIDIA: '#22c55e', Intel: '#0071c5', Apple: '#9ca3af',
-    macOS: '#a78bfa', Windows: '#60a5fa', Steam: '#64748b', Epic: '#0a84ff',
+    macOS: '#a78bfa', Windows: '#60a5fa', Steam: '#64748b',
     Xbox: '#107c10', PS5: '#3b82f6',
   };
   const color = PLATFORM_COLOR[name] || '#888';

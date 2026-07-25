@@ -1,0 +1,19 @@
+{
+  "notice": "Third-party platform marks. Trademarks remain property of their respective owners. Use according to platform brand guidelines; no endorsement implied.",
+  "assets": [
+    { "platform": "Windows", "file": "/platform-logos/wikimedia/windows.svg", "source": "https://commons.wikimedia.org/wiki/File:Windows_logo_-_2021.svg" },
+    { "platform": "Apple iOS", "file": "/platform-logos/simple-icons/apple.svg", "source": "https://simpleicons.org/?q=apple" },
+    { "platform": "macOS", "file": "/platform-logos/simple-icons/macos.svg", "source": "https://simpleicons.org/?q=macos" },
+    { "platform": "NVIDIA", "file": "/platform-logos/simple-icons/nvidia.svg", "source": "https://simpleicons.org/?q=nvidia" },
+    { "platform": "AMD", "file": "/platform-logos/simple-icons/amd.svg", "source": "https://simpleicons.org/?q=amd" },
+    { "platform": "Intel", "file": "/platform-logos/simple-icons/intel.svg", "source": "https://simpleicons.org/?q=intel" },
+    { "platform": "Steam", "file": "/platform-logos/simple-icons/steam.svg", "source": "https://simpleicons.org/?q=steam" },
+    { "platform": "Steam Deck", "file": "/platform-logos/simple-icons/steamdeck.svg", "source": "https://simpleicons.org/?q=steamdeck" },
+    { "platform": "Switch", "file": "/platform-logos/wikimedia/nintendo-switch.svg", "source": "https://commons.wikimedia.org/wiki/File:Nintendo_Switch_Logo.svg" },
+    { "platform": "Xbox", "file": "/platform-logos/wikimedia/xbox.svg", "source": "https://commons.wikimedia.org/wiki/File:Xbox_Logo.svg" },
+    { "platform": "PS5", "file": "/platform-logos/simple-icons/playstation5.svg", "source": "https://simpleicons.org/?q=playstation5" },
+    { "platform": "Discord", "file": "/platform-logos/simple-icons/discord.svg", "source": "https://simpleicons.org/?q=discord" },
+    { "platform": "Battle.net", "file": "/platform-logos/simple-icons/battledotnet.svg", "source": "https://simpleicons.org/?q=battledotnet" },
+    { "platform": "GOG Galaxy", "file": "/platform-logos/simple-icons/gogdotcom.svg", "source": "https://simpleicons.org/?q=gog" }
+  ]
+}

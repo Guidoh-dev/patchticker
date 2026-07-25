@@ -16,7 +16,6 @@
 //   Apple iOS — Apple Security Updates HTML page
 //   macOS     — Apple Security Updates HTML page
 //   Steam     — Steam news RSS feed
-//   Epic      — Epic Games Launcher update subreddit + patch notes page
 //   Xbox      — Xbox Wire RSS feed
 //   PS5       — PlayStation RSS feed
 //   Intel     — Intel download center JSON API
@@ -487,66 +486,6 @@ async function detectGog() {
   }
 }
 
-/**
- * Epic — Epic Games Launcher release notes page
- */
-async function detectEpic() {
-  const primaryUrl = 'https://www.epicgames.com/site/en-US/news?category=release-notes';
-  const fallbackUrl = 'https://status.epicgames.com/';
-  try {
-    const html = await fetchHtml(primaryUrl);
-    const $ = cheerio.load(html);
-
-    const firstCard = $('article, [data-component="ArticleCard"]').first();
-    const title     = cleanText(firstCard.find('h3, h2, [data-testid="card-title"]').first().text(), 120);
-    const date      = firstCard.find('time').attr('datetime') || '';
-
-    if (!title) throw new Error('No Epic release-note card found');
-
-    const versionMatch = title.match(/(\d+\.\d+[\.\d]*)/);
-
-    return {
-      platform:   'Epic',
-      name:       title.slice(0, 100),
-      version:    versionMatch ? versionMatch[1] : versionFromDate(date),
-      releasedAt: toIsoDate(date),
-      affects:    'Epic Games Launcher / game downloads / store library / cloud saves / Unreal Engine and Fortnite install flow',
-      changelog:  ['Epic release-note feed checked for launcher and store client updates.'],
-      knownIssues: [],
-      riskFactors: [{ level: 'medium', text: 'Epic launcher issues can affect game downloads, cloud saves, library sync, and large patch resume behavior.' }],
-      verdict: 'Install normally if your current Epic launcher is healthy; wait if active store/download incidents are reported.',
-      reasoning: 'Epic launcher updates are most important when they affect downloads, library sync, cloud saves, or authentication. PatchTicker checks Epic release notes first and falls back to Epic service status when release pages block automation.',
-      evidence: sourceEvidence('Epic Games Release Notes', primaryUrl, title),
-      sourceUrl:  primaryUrl,
-    };
-  } catch (err) {
-    logger.warn('[scraper] Epic release-note page unavailable; using status fallback', { error: err.message });
-    try {
-      const html = await fetchHtml(fallbackUrl);
-      const $ = cheerio.load(html);
-      const body = cleanText($('body').text(), 3000);
-      const degraded = /partial outage|major outage|degraded|incident|maintenance/i.test(body);
-      const title = degraded ? 'Epic Games Launcher / Store Status Signal' : 'Epic Games Launcher Status Signal';
-      return {
-        platform: 'Epic',
-        name: title,
-        version: versionFromDate(),
-        releasedAt: toIsoDate(),
-        affects: 'Epic Games Launcher / store login / downloads / library sync / cloud saves',
-        changelog: ['Epic status page checked because the public release-note page blocked automated access.'],
-        knownIssues: degraded ? ['Epic status page indicates a possible active service issue.'] : [],
-        riskFactors: [{ level: degraded ? 'high' : 'medium', text: 'Launcher status affects login, store access, downloads, and game patch installation.' }],
-        verdict: degraded ? 'Wait if you rely on Epic downloads or cloud saves until the service issue clears.' : 'No active Epic status issue detected from the fallback source.',
-        reasoning: 'Epic blocks automated access to parts of its news/release-note site. PatchTicker falls back to the official Epic status page so the platform remains covered instead of disappearing from the feed.',
-        evidence: sourceEvidence('Epic Games Status', fallbackUrl, body || 'Official Epic Games status page checked.'),
-        sourceUrl: fallbackUrl,
-      };
-    } catch (fallbackErr) {
-      logger.warn('[scraper] Epic detection failed', { error: fallbackErr.message });
-      return null;
-    }
-  }
-}
 
 /**
  * Xbox — Xbox Wire RSS
@@ -664,7 +603,6 @@ const DETECTORS = {
   Apple:   detectAppleIos,
   macOS:   detectMacos,
   Steam:   detectSteam,
-  Epic:    detectEpic,
   Xbox:    detectXbox,
   PS5:     detectPs5,
   Intel:   detectIntel,

@@ -187,11 +187,6 @@ function platformContext(platform, detected) {
       verdict: 'Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies.',
       reasoning: 'Intel graphics drivers often bundle game optimizations, device support, display fixes, and compatibility updates for Arc and Core Ultra graphics.',
     },
-    Epic: {
-      affects: 'Epic Games Launcher / store services / game downloads / account login',
-      verdict: 'Wait for user reports if the launcher update affects downloads, sign-in, or game launch before a planned session.',
-      reasoning: 'Epic launcher or service changes can affect sign-in, game downloads, cloud saves, and library access.',
-    },
   }[platform] || {};
   const verdict = detected.verdict || defaults.verdict || `New ${platform} update available: ${detected.name}`;
   const reasoning = detected.reasoning || defaults.reasoning || `PatchTicker detected a new ${platform} release from the vendor source and is tracking user reports, known issues, and install confidence as more evidence arrives.`;
@@ -251,7 +246,6 @@ const PLATFORM_SUBREDDITS = {
   Apple:   ['iphone', 'ios'],
   macOS:   ['MacOS', 'apple'],
   Steam:   ['Steam', 'SteamDeck', 'linux_gaming'],
-  Epic:    ['EpicGamesPC', 'pcgaming'],
   Xbox:    ['XboxSeriesX', 'xboxone'],
   PS5:     ['PS5', 'playstation'],
   Intel:   ['IntelArc', 'hardware'],
