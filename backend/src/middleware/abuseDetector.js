@@ -43,6 +43,11 @@ const { isBlacklisted }      = require('../services/ipBlacklist');
 const { recordSignal, SIGNAL } = require('../services/ipAbuseService');
 const logger                 = require('../utils/logger');
 
+function isLocalDevelopmentIp(ip) {
+  if (process.env.NODE_ENV === 'production') return false;
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
+}
+
 /**
  * Format remaining block time into a human-readable string.
  * @param {number|null} expiresAt  ms timestamp or null
@@ -64,10 +69,11 @@ function formatBlockRemaining(expiresAt) {
  */
 function abuseDetector(req, res, next) {
   const ip = req.ip;
+  const bypassLocalDev = isLocalDevelopmentIp(ip);
 
   // ── 1. Blacklist check ────────────────────────────────────────────────────
   const check = isBlacklisted(ip);
-  if (check.blocked) {
+  if (check.blocked && !bypassLocalDev) {
     logger.warn('Blocked request from blacklisted IP', {
       ip,
       reason:    check.reason,
@@ -86,7 +92,7 @@ function abuseDetector(req, res, next) {
   // We only need to intercept — we never modify the response.
   const originalStatus = res.status.bind(res);
   res.status = function interceptStatus(code) {
-    if (code === 429) {
+    if (code === 429 && !bypassLocalDev) {
       // Record a rate-limit-hit signal — this feeds the backoff counter
       recordSignal(ip, SIGNAL.RATE_LIMIT_HIT, {
         path:   req.path,
@@ -102,3 +108,4 @@ function abuseDetector(req, res, next) {
 }
 
 module.exports = abuseDetector;
+module.exports.isLocalDevelopmentIp = isLocalDevelopmentIp;

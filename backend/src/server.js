@@ -177,12 +177,21 @@ if (require.main === module) {
       });
     })
     .catch((err) => {
-      logger.error('DB health check failed — refusing to start', { message: err.message });
-      alert(ALERT_TYPE.STARTUP_FAILURE, 'Server failed to start — DB health check failed', {
+      db.markUnavailable?.(err);
+      const canFallback = !cfg.isProd || process.env.ALLOW_DB_STARTUP_FALLBACK === 'true';
+      logger.error(canFallback ? 'DB health check failed — starting with static fallback data' : 'DB health check failed — refusing to start', { message: err.message });
+      alert(ALERT_TYPE.STARTUP_FAILURE, canFallback ? 'DB health check failed — static fallback active' : 'Server failed to start — DB health check failed', {
         error: err.message,
       });
-      // Give the alert webhook a moment to dispatch before exiting
-      setTimeout(() => process.exit(1), 500);
+      if (!canFallback) {
+        // Give the alert webhook a moment to dispatch before exiting
+        setTimeout(() => process.exit(1), 500);
+        return;
+      }
+      app.listen(cfg.PORT, cfg.BIND_HOST, () => {
+        logger.info(`PatchTicker API on ${cfg.BIND_HOST}:${cfg.PORT} [${cfg.NODE_ENV}] — DB fallback mode`);
+        cronService.start();
+      });
     });
 }
 

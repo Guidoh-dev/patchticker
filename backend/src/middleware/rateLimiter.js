@@ -111,6 +111,7 @@ const SHARED_OPTIONS = {
   legacyHeaders:   false,   // X-RateLimit-* (deprecated — don't send both)
 };
 
+
 // ── Limiters ──────────────────────────────────────────────────────────────────
 
 /**
@@ -120,7 +121,9 @@ const SHARED_OPTIONS = {
 const standardLimiter = rateLimit({
   ...SHARED_OPTIONS,
   windowMs: 15 * 60 * 1000,
-  max:      100,
+  max:      parseInt(process.env.STANDARD_RATE_LIMIT_MAX || '300', 10),
+  skipSuccessfulRequests: true,
+  skipFailedRequests: false,
   message:  { error: 'Too many requests. Please slow down.' },
   handler:  makeHandler('standard'),
 });
@@ -223,7 +226,8 @@ const voteLimiter = rateLimit({
 const ratingsReadLimiter = rateLimit({
   ...SHARED_OPTIONS,
   windowMs: 60 * 1000,   // 1 minute
-  max:      60,
+  max:      parseInt(process.env.RATINGS_READ_LIMIT_MAX || '180', 10),
+  skipSuccessfulRequests: true,
   message:  { error: 'Too many rating requests. Please slow down.' },
   handler:  makeHandler('ratings-read'),
 });

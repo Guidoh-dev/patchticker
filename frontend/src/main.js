@@ -1281,69 +1281,35 @@ function renderInlineUpdatePanel(u, decision, rating, risk) {
 
 function renderUpdateCard(u) {
   const pSuffix = platformSuffix(u.platform);
-  const short   = PLATFORM_SHORT[u.platform] ?? u.platform.slice(0,3).toUpperCase();
   const decision = decisionForUpdate(u);
   const rating = peerRatingMeta(u);
-  const install = rating.install || 0;
   const risk = primaryRiskText(u);
   const age = timeAgo(u.releasedAt);
-  const affected = (u.affects || '').split('/').map(x => x.trim()).filter(Boolean).slice(0, 3);
+  const ratingLabel = rating.votes
+    ? `${rating.score !== null ? rating.score.toFixed(1) : '—'}/10 user rating`
+    : `${u.score ?? '—'}/10 recommendation`;
+  const routeId = encodeURIComponent(u.id);
   return `
-    <article class="decision-card decision-card--${H(decision.cls)}" data-id="${H(u.id)}">
-      <div class="decision-card-answer">
-        <span class="decision-action decision-action--${H(decision.cls)}">${H(decision.action)}</span>
-        <strong>${H(decision.label)}</strong>
-        <span>${H(String(u.score))}/10 safety</span>
-      </div>
-
-      <div class="decision-card-body">
-        <div class="decision-card-head">
+    <article class="decision-card decision-card--compact decision-card--${H(decision.cls)}" data-id="${H(u.id)}">
+      <a class="decision-card-link" href="#/updates/${H(routeId)}" aria-label="Open ${H(u.name)} details">
+        <div class="decision-card-mainline">
           ${renderPlatformLogo(u.platform, 'update-platform-icon decision-platform-icon')}
-          <div>
-            <button class="decision-title decision-title--button" type="button" data-expand-toggle aria-expanded="false">${H(u.name)}</button>
-            <div class="decision-meta">
-              <a class="text-platform--${pSuffix}" href="#/platform/${H(u.platform)}">${H(platformLabel(u.platform))}</a>
-              <span>·</span><span>${H(formatReleaseDate(u.releasedAt))}</span>
-              <span>·</span><span>${H(age)}</span>
+          <div class="decision-card-copy">
+            <div class="decision-card-eyebrow">
+              <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
+              <span>${H(formatReleaseDate(u.releasedAt))}</span>
+              <span>${H(age)}</span>
             </div>
+            <h3 class="decision-title">${H(u.name)}</h3>
+            <p class="decision-one-line">${H(u.verdict || risk)}</p>
           </div>
         </div>
-
-        <p class="decision-takeaway">${H(u.verdict || risk)}</p>
-
-        <div class="decision-chips">
-          ${affected.map(a => `<span>${H(a)}</span>`).join('') || `<span>${H(platformLabel(u.platform))}</span>`}
+        <div class="decision-card-metrics" aria-label="Patch recommendation">
+          <span class="decision-action decision-action--${H(decision.cls)}">${H(decision.action)}</span>
+          <strong>${H(ratingLabel)}</strong>
+          <em>${H(decision.label)}</em>
         </div>
-
-        <div class="decision-timeline" aria-label="Update review timeline">
-          <span class="is-done">Released</span>
-          <span class="is-done">Reports checked</span>
-          <span class="is-active">Patch notes</span>
-        </div>
-
-      </div>
-
-      <div class="decision-card-side">
-        ${rating.votes ? `
-        <div class="decision-user-meter">
-          <span>User rating</span>
-          <strong>${rating.score !== null ? rating.score.toFixed(1) : '—'}</strong>
-          <div class="decision-meter-track"><i style="width:${install}%"></i></div>
-          <em>${install}% install</em>
-        </div>` : `
-        <div class="decision-user-meter decision-user-meter--empty">
-          <span>Patch notes</span>
-          <strong>—</strong>
-          <em>Source notes</em>
-        </div>`}
-        <div class="decision-risk">
-          <span>Watch for</span>
-          <p>${H(risk)}</p>
-        </div>
-        <button class="decision-open" type="button" data-expand-toggle aria-expanded="false">Click to open ↓</button>
-      </div>
-
-      ${renderInlineUpdatePanel(u, decision, rating, risk)}
+      </a>
     </article>
   `;
 }
@@ -1363,7 +1329,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const short   = PLATFORM_SHORT[u.platform] ?? u.platform.slice(0, 3).toUpperCase();
   const tone    = variant === 'compact' ? ' mini-update-card--compact' : '';
   return `
-    <a class="mini-update-card${tone}" href="#/update/${H(u.id)}">
+    <a class="mini-update-card${tone}" href="#/updates/${H(u.id)}">
       <div class="mini-update-top">
         ${renderPlatformLogo(u.platform, 'update-platform-icon mini-update-icon')}
         <span class="mini-update-status status-badge ${H(u.status)}">${H(u.status)}</span>
@@ -1401,7 +1367,7 @@ function renderCompareCard(label, u) {
   const decision = decisionForUpdate(u);
   const rating = peerRatingMeta(u);
   return `
-    <a class="compare-card compare-card--${H(decision.cls)}" href="#/update/${H(u.id)}">
+    <a class="compare-card compare-card--${H(decision.cls)}" href="#/updates/${H(u.id)}">
       <span class="compare-label">${H(label)}</span>
       <strong>${H(u.name)}</strong>
       <div class="compare-meta">
@@ -1944,7 +1910,7 @@ async function renderDashboard() {
         ? tapeItems.map((u) => {
             const d = decisionForUpdate(u);
             const delta = u.status === 'stable' ? '↑' : u.status === 'avoid' ? '↓' : '•';
-            return `<a class="update-tape-item update-tape-item--${H(d.cls)}" href="#/update/${H(u.id)}"><b>${H(platformLabel(u.platform))}</b><span>${H(String(u.score))}</span><em>${H(d.action)} ${delta}</em></a>`;
+            return `<a class="update-tape-item update-tape-item--${H(d.cls)}" href="#/updates/${H(u.id)}"><b>${H(platformLabel(u.platform))}</b><span>${H(String(u.score))}</span><em>${H(d.action)} ${delta}</em></a>`;
           }).join('')
         : `<span class="update-tape-empty">${H(message)}</span>`;
     }
@@ -2522,6 +2488,12 @@ async function renderUpdateDetail(id) {
         <p class="detail-verdict-text">${H(u.verdict || 'No takeaway available for this update yet.')}</p>
       </div>
 
+      <div class="detail-action-row" aria-label="Update actions">
+        <button class="detail-action-btn detail-action-btn--primary" id="mark-installed-btn" type="button" data-update-id="${H(u.id)}">Mark as Installed</button>
+        <button class="detail-action-btn" id="share-update-btn" type="button">Share Update</button>
+        <button class="detail-action-btn detail-action-btn--danger" id="report-issue-btn" type="button">Report Issue</button>
+      </div>
+
       <!-- Main content grid -->
       <div class="detail-grid">
 
@@ -2541,6 +2513,16 @@ async function renderUpdateDetail(id) {
           <section class="detail-section">
             <h2 class="detail-section-title">Known issues</h2>
             <ul class="detail-list">${issuesHTML}</ul>
+          </section>
+
+          <section class="detail-section detail-section--requirements">
+            <h2 class="detail-section-title">Systems affected & performance impact</h2>
+            <div class="detail-requirement-grid">
+              <div><span>Applies to</span><strong>${H(u.affects || platformLabel(u.platform))}</strong></div>
+              <div><span>Version</span><strong>${H(u.version || 'Current release')}</strong></div>
+              <div><span>Impact index</span><strong>${impactScore !== null ? H(String(impactScore)) : 'Pending'}</strong></div>
+              <div><span>Recommendation</span><strong>${H(decisionForUpdate(u).action)}</strong></div>
+            </div>
           </section>
 
         </div>
@@ -2605,6 +2587,41 @@ async function renderUpdateDetail(id) {
     </div>
   `);
   attachNavHandlers(user);
+
+  const installedKey = `patchticker.installed.${u.id}`;
+  const installedBtn = document.getElementById('mark-installed-btn');
+  if (installedBtn && localStorage.getItem(installedKey) === 'true') {
+    installedBtn.classList.add('is-done');
+    installedBtn.textContent = 'Installed ✓';
+  }
+  installedBtn?.addEventListener('click', () => {
+    const next = localStorage.getItem(installedKey) !== 'true';
+    if (next) localStorage.setItem(installedKey, 'true');
+    else localStorage.removeItem(installedKey);
+    installedBtn.classList.toggle('is-done', next);
+    installedBtn.textContent = next ? 'Installed ✓' : 'Mark as Installed';
+    showToast(next ? 'Marked installed on this device.' : 'Install mark removed.', 'success');
+  });
+
+  document.getElementById('share-update-btn')?.addEventListener('click', async () => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}#/updates/${encodeURIComponent(u.id)}`;
+    const shareData = { title: `${u.name} — PatchTicker`, text: u.verdict || `PatchTicker notes for ${u.name}`, url: shareUrl };
+    try {
+      if (navigator.share) await navigator.share(shareData);
+      else {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast('Update link copied.', 'success');
+      }
+    } catch (err) {
+      if (err?.name !== 'AbortError') showToast('Share failed. Copy the URL from the address bar.', 'error');
+    }
+  });
+
+  document.getElementById('report-issue-btn')?.addEventListener('click', () => {
+    const target = document.getElementById('detail-bug-feed');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    showToast(isLoggedIn() ? 'Use the bug report tools from your account dashboard.' : 'Sign in with Pro to submit issue reports.', 'info');
+  });
 
   // ── Load live bug reports ─────────────────────────────────────────────────
   const bugFeedEl = document.getElementById('detail-bug-feed');
@@ -3274,7 +3291,7 @@ async function renderPlatformPage(platformName) {
             <div class="platform-status-badge" style="color:${statusColors[status]||'#888'};border-color:${statusColors[status]||'#888'}">
               ${status.toUpperCase()}
             </div>
-            <a class="btn btn--outline btn--sm" href="#/update/${H(current.id)}">Full details →</a>
+            <a class="btn btn--outline btn--sm" href="#/updates/${H(current.id)}">Full details →</a>
           </div>
         </div>
       `;
@@ -3315,7 +3332,7 @@ async function renderPlatformPage(platformName) {
                   <td class="history-td"><span style="color:${c};font-weight:700">${h.score?.toFixed(1)}</span></td>
                   <td class="history-td"><span class="history-status" style="color:${statusColors[h.status]||'#888'}">${(h.status||'').toUpperCase()}</span></td>
                   <td class="history-td">${h.bugCount ?? '—'}</td>
-                  <td class="history-td"><a class="history-link" href="#/update/${H(h.id)}">View →</a></td>
+                  <td class="history-td"><a class="history-link" href="#/updates/${H(h.id)}">View →</a></td>
                 </tr>`;
               }).join('')}
             </tbody>
@@ -3524,7 +3541,8 @@ async function boot() {
   // Register routes
   route('/', () => renderLanding());
   route('/updates', () => renderDashboard());
-  route('/update/:id', ({ id }) => renderUpdateDetail(id));
+  route('/updates/:id', ({ id }) => renderUpdateDetail(id));
+  route('/update/:id', ({ id }) => renderUpdateDetail(id)); // legacy permalink alias
   route('/login', () => isLoggedIn() ? navigate('/updates') : renderLogin());
   route('/register', () => isLoggedIn() ? navigate('/updates') : renderRegister());
   route('/pricing', () => renderPricing());

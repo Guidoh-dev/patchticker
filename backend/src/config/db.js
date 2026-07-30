@@ -213,6 +213,8 @@ function createPool() {
 }
 
 const pool = createPool();
+let _healthy = !pool;
+let _lastHealthError = null;
 
 // ── Public query API ──────────────────────────────────────────────────────────
 
@@ -337,6 +339,9 @@ async function healthCheck() {
       );
     }
 
+    _healthy = true;
+    _lastHealthError = null;
+
     logger.info('DB health check passed', {
       version: version.split(' ').slice(0, 2).join(' '), // "PostgreSQL 16.2"
       sslActive,
@@ -365,9 +370,18 @@ async function shutdown() {
 
 // ── isAvailable ───────────────────────────────────────────────────────────────
 
-/** Returns true if a pool is configured (DATABASE_URL was set). */
+/** Returns true only when the app has no DB requirement or the last health check passed. */
 function isAvailable() {
-  return pool !== null;
+  return pool !== null && (_healthy || isTest);
+}
+
+function markUnavailable(err) {
+  _healthy = false;
+  _lastHealthError = err?.message || String(err || 'Unknown DB error');
+}
+
+function status() {
+  return { configured: pool !== null, healthy: _healthy, lastError: _lastHealthError };
 }
 
 module.exports = {
@@ -376,4 +390,6 @@ module.exports = {
   healthCheck,
   shutdown,
   isAvailable,
+  markUnavailable,
+  status,
 };
