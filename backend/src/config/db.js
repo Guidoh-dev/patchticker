@@ -126,6 +126,25 @@ function buildSslConfig() {
   return { rejectUnauthorized: false };
 }
 
+
+function normalizeConnectionStringForPg(connectionString) {
+  if (!connectionString) return connectionString;
+  try {
+    const parsed = new URL(connectionString);
+    // node-postgres gives sslmode query params precedence over the explicit
+    // `ssl` object. When DB_SSL_CA is absent we intentionally use
+    // rejectUnauthorized:false for managed providers such as Supabase; remove
+    // sslmode=require so the explicit config is honored.
+    if (!process.env.DB_SSL_CA && parsed.searchParams.get('sslmode') === 'require') {
+      parsed.searchParams.delete('sslmode');
+      return parsed.toString();
+    }
+  } catch {
+    return connectionString;
+  }
+  return connectionString;
+}
+
 // ── Pool creation ─────────────────────────────────────────────────────────────
 
 function createPool() {
@@ -157,7 +176,7 @@ function createPool() {
   const ssl = buildSslConfig();
 
   const pool = new Pool({
-    connectionString,
+    connectionString: normalizeConnectionStringForPg(connectionString),
     ssl,
     // Pool sizing
     max:              parseInt(process.env.DB_POOL_MAX    || '10',   10),
@@ -321,15 +340,23 @@ async function healthCheck() {
     const versionResult = await client.query('SELECT version()');
     const version = versionResult.rows[0].version;
 
-    // Check whether the current connection is using SSL
-    // ssl_is_used() returns true if the connection is encrypted
-    let sslActive = false;
-    try {
-      const sslResult = await client.query('SELECT ssl_is_used() AS ssl');
-      sslActive = sslResult.rows[0]?.ssl === true;
-    } catch {
-      // ssl_is_used() may not exist on very old Postgres versions
-      logger.warn('[db] Could not verify SSL status — ssl_is_used() unavailable');
+    // Check whether the current client connection is using TLS. Supabase's
+    // pooler terminates TLS before forwarding to Postgres, so server-side
+    // helpers such as ssl_is_used() or pg_stat_ssl can report false even when
+    // the application-to-pooler socket is encrypted. Prefer the Node TLS socket.
+    let sslActive = !!client.connection?.stream?.encrypted;
+    if (!sslActive) {
+      try {
+        const sslResult = await client.query('SELECT ssl_is_used() AS ssl');
+        sslActive = sslResult.rows[0]?.ssl === true;
+      } catch {
+        try {
+          const sslResult = await client.query('SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()');
+          sslActive = sslResult.rows[0]?.ssl === true;
+        } catch {
+          logger.warn('[db] Could not verify SSL status via server-side helpers');
+        }
+      }
     }
 
     if (isProd && !sslActive) {

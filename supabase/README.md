@@ -20,10 +20,10 @@ Open the SQL editor and run:
 
 ## Required backend `.env` values
 
-Use the Supabase transaction pooler on port `6543`:
+Use the Supabase transaction pooler on port `6543`. Do not use the direct `db.<project-ref>.supabase.co:5432` host for local review if DNS does not resolve:
 
 ```env
-DATABASE_URL=postgresql://postgres.YOUR_PROJECT_REF:YOUR_POOLER_PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
+DATABASE_URL=postgresql://postgres.YOUR_PROJECT_REF:YOUR_POOLER_PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 DB_SSL=true
 ```
 
