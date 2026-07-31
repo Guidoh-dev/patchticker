@@ -659,7 +659,7 @@ function renderPricing() {
     <div class="pricing-page">
       <div class="pricing-header">
         <div class="pricing-eyebrow">For patch-heavy setups</div>
-        <h1 class="pricing-headline">Stay on top of games, launchers,<br>drivers, and platform services.</h1>
+        <h1 class="pricing-headline">Stay on top of games, launchers,<br> drivers, and platform services.</h1>
         <p class="pricing-subhead">Browse recent patches for free, then upgrade when you want alerts, watchlists, and deeper rollout intel.</p>
       </div>
 
