@@ -18,7 +18,10 @@
     "start": "cd backend && npm start",
     "audit": "npm audit --workspaces --audit-level=moderate",
     "audit:fix": "npm audit fix --workspaces",
-    "test": "cd backend && npm test"
+    "test": "cd backend && npm test",
+    "check:launch": "node scripts/production-check.js",
+    "check:launch:strict": "node scripts/production-check.js --strict",
+    "launch:verify": "npm run build && npm test && npm run audit && npm run check:launch"
   },
   "devDependencies": {
     "concurrently": "^9.2.4"

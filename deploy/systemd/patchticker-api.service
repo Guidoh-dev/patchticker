@@ -1,0 +1,27 @@
+[Unit]
+Description=PatchTicker Express API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=patchticker
+Group=patchticker
+WorkingDirectory=/opt/patchticker/backend
+EnvironmentFile=/opt/patchticker/backend/.env
+ExecStart=/usr/bin/node /opt/patchticker/backend/src/server.js
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+SyslogIdentifier=patchticker-api
+
+# Basic hardening. Keep /opt/patchticker writable only where app logs need it.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/patchticker/backend/logs /opt/patchticker/logs
+
+[Install]
+WantedBy=multi-user.target

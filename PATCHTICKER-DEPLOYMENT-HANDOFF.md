@@ -55,7 +55,9 @@ GOG_TRACKING_ENABLED=true
 Optional but recommended:
 
 ```env
-SENDGRID_API_KEY=...
+BREVO_SMTP_LOGIN=...
+BREVO_SMTP_KEY=...
+# or SENDGRID_API_KEY=...
 REDDIT_CLIENT_ID=...
 REDDIT_CLIENT_SECRET=...
 REDDIT_USER_AGENT=PatchTicker/1.0 by DornVentures
@@ -65,3 +67,17 @@ CLOUDFLARE_MODE=true
 ## Auth
 
 PatchTicker uses custom JWT auth with argon2id password hashes and encrypted emails. Supabase Auth is not currently wired into the frontend/backend.
+
+
+## Launch verification
+
+Run this before public launch from the project root:
+
+```bash
+npm run launch:verify
+npm run check:launch:strict
+```
+
+`launch:verify` runs the frontend build, backend tests, dependency audit, and a non-secret environment/database readiness check. `check:launch:strict` enforces production-domain settings for `patchticker.app`.
+
+Full server runbook: `deploy/README.md`.

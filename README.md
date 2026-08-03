@@ -109,34 +109,33 @@ Frontend proxies `/api/*` → `localhost:4000` automatically via Vite.
 
 ## Production Deployment
 
-1. Set `NODE_ENV=production` in your environment
-2. Set `ALLOWED_ORIGIN=https://yourdomain.com`
-3. Build the frontend: `npm run build` (outputs to `frontend/dist/`)
-4. Serve `frontend/dist/` as static files via Nginx/Caddy
-5. Configure Nginx to proxy `/api/*` → Express backend
-6. Run backend with a process manager: `pm2 start src/server.js`
+PatchTicker is intended to run as:
 
-### Nginx snippet
+```text
+Cloudflare DNS/TLS → Nginx static frontend + /api reverse proxy → Node/Express on 127.0.0.1:4000 → Supabase Postgres pooler
+```
 
-```nginx
-location /api/ {
-    proxy_pass http://localhost:4000;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-}
+Use the full runbook in `/deploy/README.md`. The repo includes:
 
-location / {
-    root /var/www/patchticker/frontend/dist;
-    try_files $uri $uri/ /index.html;
-}
+- `/deploy/nginx/patchticker.conf` — production Nginx config for `patchticker.app`
+- `/deploy/systemd/patchticker-api.service` — hardened backend service unit
+- `/deploy/scripts/deploy.sh` — repeatable pull/build/audit/restart deploy script
+- `/scripts/production-check.js` — non-secret launch readiness checker
+
+Verification commands:
+
+```bash
+npm run launch:verify          # build + tests + audit + local launch readiness
+npm run check:launch:strict    # enforce production-domain settings on the server
 ```
 
 ---
 
-## Next Steps
+## Current Launch Requirements
 
-- [ ] Replace in-memory bug report store with PostgreSQL
-- [ ] Add Redis for rate limit state (multi-instance support)
-- [ ] Wire Anthropic API for AI-powered changelog summaries
-- [ ] Add WebSocket support for real-time ticker updates
-- [ ] Implement user auth (JWT) for report ownership
+- Supabase migrations applied and `DATABASE_URL` using the transaction pooler on port `6543`
+- Stripe live keys + live monthly/annual price IDs + webhook endpoint
+- hCaptcha production site key/secret for `patchticker.app`
+- Brevo SMTP credentials or another transactional email provider
+- Cloudflare DNS pointed to the production server
+- Certbot SSL issued for `patchticker.app` and `www.patchticker.app`
