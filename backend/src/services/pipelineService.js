@@ -203,6 +203,8 @@ function platformContext(platform, detected) {
 
 async function updateExistingMetadata(platform, version, detected) {
   const context = platformContext(platform, detected);
+  const fallbackScore = deriveInitialScore(platform, detected, context);
+  const fallbackStatus = deriveInitialStatus(fallbackScore);
   await db.query(
     `UPDATE software_updates SET
        affects = COALESCE($3, affects),
@@ -212,6 +214,8 @@ async function updateExistingMetadata(platform, version, detected) {
        known_issues = CASE WHEN $7::jsonb <> '[]'::jsonb THEN $7::jsonb ELSE known_issues END,
        risk_factors = CASE WHEN $8::jsonb <> '[]'::jsonb THEN $8::jsonb ELSE risk_factors END,
        evidence = CASE WHEN $9::jsonb <> '[]'::jsonb THEN $9::jsonb ELSE evidence END,
+       score = CASE WHEN ai_generated = FALSE AND (score IS NULL OR score = 5.0) THEN $10 ELSE score END,
+       status = CASE WHEN ai_generated = FALSE AND (score IS NULL OR score = 5.0) THEN $11 ELSE status END,
        updated_at = now()
      WHERE platform = $1 AND version = $2`,
     [
@@ -224,6 +228,8 @@ async function updateExistingMetadata(platform, version, detected) {
       JSON.stringify(context.knownIssues),
       JSON.stringify(context.riskFactors),
       JSON.stringify(context.evidence),
+      fallbackScore,
+      fallbackStatus,
     ]
   );
 }
@@ -235,6 +241,45 @@ function deriveInitialStatus(score) {
   if (score >= 7.5) return 'stable';
   if (score >= 5.0) return 'caution';
   return 'avoid';
+}
+
+function deriveInitialScore(platform, detected, context) {
+  let score = 7.2;
+  const text = `${detected.name || ''} ${detected.version || ''} ${(context.changelog || []).join(' ')} ${(context.knownIssues || []).join(' ')} ${(context.riskFactors || []).map(r => `${r.level || ''} ${r.label || ''} ${r.text || ''}`).join(' ')}`.toLowerCase();
+
+  if (/preview|beta|insider|canary|experimental/.test(text)) score -= 1.4;
+  if (/out-of-band|oob|hotfix|security|cve|vulnerab|zero-day|actively exploited/.test(text)) score += 0.8;
+  if (/not currently aware of any issues|no known issues|stability improvements|bug fixes|quality improvements/.test(text)) score += 0.4;
+
+  const knownIssueCount = context.knownIssues?.length || 0;
+  score -= Math.min(2.4, knownIssueCount * 0.45);
+
+  for (const risk of context.riskFactors || []) {
+    const level = String(risk.level || '').toLowerCase();
+    if (level === 'critical') score -= 2.4;
+    else if (level === 'high') score -= 1.6;
+    else if (level === 'medium') score -= 0.8;
+    else if (level === 'low') score -= 0.3;
+  }
+
+  const platformBaselines = {
+    Apple: 0.4,
+    macOS: 0.2,
+    Windows: -0.1,
+    NVIDIA: -0.2,
+    AMD: -0.2,
+    Intel: -0.1,
+    Steam: 0.1,
+    Switch: 0.2,
+    Xbox: 0.2,
+    PS5: 0.2,
+    Discord: -0.1,
+    BattleNet: -0.1,
+    GOG: 0.0,
+  };
+  score += platformBaselines[platform] || 0;
+
+  return Math.max(1, Math.min(9.2, Math.round(score * 10) / 10));
 }
 
 // ── Platform subreddit map ────────────────────────────────────────────────────
@@ -292,17 +337,20 @@ async function processPlatform(platform) {
 
   logger.info('[pipeline] New version detected', { ...logCtx, knownVersion, newVersion: detected.version });
 
-  // 3. Build initial update row with placeholder score
+  // 3. Build initial update row with deterministic fallback scoring.
+  // AI can refine this later, but the public feed should never default every
+  // newly detected patch to 5/10 when an AI provider is unavailable.
   const id = makeUpdateId(platform, detected.version);
   const context = platformContext(platform, detected);
+  const initialScore = deriveInitialScore(platform, detected, context);
   const initialUpdate = {
     id,
     platform,
     name:        detected.name,
     version:     detected.version,
     releasedAt:  detected.releasedAt,
-    status:      'caution',   // default until AI refines
-    score:       5.0,
+    status:      deriveInitialStatus(initialScore),
+    score:       initialScore,
     bugCount:    0,
     affects:     context.affects,
     verdict:     context.verdict,

@@ -187,31 +187,84 @@ function parseRssItems(xml, limit = 5) {
 // ── Platform detectors ────────────────────────────────────────────────────────
 
 /**
- * Windows — Microsoft Windows Release Health RSS
- * https://learn.microsoft.com/api/search/rss?search=&locale=en-us&facet=product&facet=content_type&$top=5&metaDataScope=Windows%2011
+ * Windows — Microsoft Support Windows 11 update history pages.
+ * The old Microsoft Support RSS endpoint now returns HTTP 410, so this parser
+ * reads the official update-history index and then opens the newest KB detail
+ * page for release notes / known issues context.
  */
 async function detectWindows() {
+  const historyUrls = [
+    'https://support.microsoft.com/en-us/servicing/os/windows-11/2025/07/windows-11-version-25h2-update-history',
+    'https://support.microsoft.com/en-us/servicing/os/windows-11/2024/09/windows-11-version-24h2-update-history',
+  ];
+
   try {
-    const xml = await fetchXml(
-      'https://support.microsoft.com/en-us/feed/rss/6ae59d69-36fc-8e4d-23dd-631d98bf74a9'
-    );
-    const items = parseRssItems(xml, 3);
-    // Look for KB articles (Cumulative Update / Security Update)
-    const update = items.find(i =>
-      /KB\d{7}|Cumulative Update|Security Update/i.test(i.title)
-    );
+    const candidates = [];
+
+    for (const historyUrl of historyUrls) {
+      const html = await fetchHtml(historyUrl);
+      const $ = cheerio.load(html);
+
+      $('a[href*="/kb"], a[href*="KB"], a[href*="-kb"]').each((_, a) => {
+        const title = cleanText($(a).text(), 180);
+        if (!/KB\d{7}/i.test(title)) return;
+        if (/\.NET Framework|Dynamic Update|Safe OS|Setup Dynamic/i.test(title)) return;
+
+        const kb = title.match(/KB\d{7}/i)?.[0]?.toUpperCase();
+        const dateText = title.match(/[A-Z][a-z]+\s+\d{1,2},\s+20\d{2}/)?.[0];
+        candidates.push({
+          title,
+          kb,
+          releasedAt: toIsoDate(dateText),
+          sourceUrl: absoluteUrl($(a).attr('href'), historyUrl),
+          isPreview: /preview/i.test(title),
+        });
+      });
+    }
+
+    const uniqueByKb = new Map();
+    for (const c of candidates) {
+      if (!uniqueByKb.has(c.kb)) uniqueByKb.set(c.kb, c);
+    }
+
+    const sorted = [...uniqueByKb.values()].sort((a, b) => {
+      const dateDelta = new Date(b.releasedAt) - new Date(a.releasedAt);
+      if (dateDelta !== 0) return dateDelta;
+      return Number(a.isPreview) - Number(b.isPreview);
+    });
+
+    const update = sorted[0];
     if (!update) return null;
 
-    const kbMatch = update.title.match(/KB\d{7}/);
-    const version = kbMatch ? kbMatch[0] : update.title.slice(0, 40);
+    let changelog = [];
+    let knownIssues = [];
+    try {
+      const detailHtml = await fetchHtml(update.sourceUrl);
+      const detail = cheerio.load(detailHtml);
+      changelog = sectionBullets(detail, ['Highlights', 'Improvements', 'This update'], 5);
+      knownIssues = sectionBullets(detail, ['Known issues'], 4);
+      if (!changelog.length) {
+        const firstBody = cleanText(detail('main p, article p').first().text(), 260);
+        if (firstBody) changelog = [firstBody];
+      }
+    } catch (detailErr) {
+      logger.warn('[scraper] Windows detail page parse failed', { error: detailErr.message, url: update.sourceUrl });
+    }
+
+    const previewNote = update.isPreview
+      ? 'This is a Microsoft preview update; preview releases are generally optional and should be reviewed before broad installation.'
+      : 'This is an official Microsoft cumulative update; review the KB page for deployment notes and known issues.';
 
     return {
       platform:   'Windows',
-      name:       update.title.slice(0, 120),
-      version,
-      releasedAt: toIsoDate(update.pubDate),
-      changelog:  [update.description || `Microsoft support article detected for ${version}. Review the official KB page for fixes, known issues, and deployment notes.`].filter(Boolean),
-      sourceUrl:  update.link || 'https://learn.microsoft.com/windows/release-health/release-information',
+      name:       `Windows 11 ${update.title}`.slice(0, 140),
+      version:    update.kb,
+      releasedAt: update.releasedAt,
+      affects:    'Windows 11 supported releases / cumulative OS servicing / security and quality updates',
+      changelog:  unique([previewNote, ...changelog]).slice(0, 6),
+      knownIssues,
+      evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title),
+      sourceUrl:  update.sourceUrl,
     };
   } catch (err) {
     logger.warn('[scraper] Windows detection failed', { error: err.message });

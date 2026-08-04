@@ -36,6 +36,22 @@ const failures = [];
 const warnings = [];
 const passes = [];
 
+
+const HCAPTCHA_TEST_SITE_KEYS = new Set([
+  '10000000-ffff-ffff-ffff-000000000001',
+  '20000000-ffff-ffff-ffff-000000000002',
+  '30000000-ffff-ffff-ffff-000000000003',
+]);
+const HCAPTCHA_TEST_SECRET_KEYS = new Set([
+  '0x0000000000000000000000000000000000000000',
+]);
+
+function isTestCaptchaKey(key, value) {
+  if (key === 'HCAPTCHA_SITE_KEY' || key === 'VITE_HCAPTCHA_SITE_KEY') return HCAPTCHA_TEST_SITE_KEYS.has(value);
+  if (key === 'HCAPTCHA_SECRET_KEY') return HCAPTCHA_TEST_SECRET_KEYS.has(value);
+  return false;
+}
+
 function isPlaceholder(value) {
   if (!value) return true;
   return /^(REPLACE_WITH|YOUR_|your_|changeme|example|todo)/.test(value) || /REPLACE_WITH|YOUR-PASSWORD|placeholder/i.test(value);
@@ -47,6 +63,7 @@ function fail(msg) { failures.push(msg); }
 
 function requireSet(env, key, label = key) {
   if (isPlaceholder(env[key])) fail(`${label} missing or placeholder`);
+  else if (isTestCaptchaKey(key, env[key])) fail(`${label} is an hCaptcha test key; use production hCaptcha keys`);
   else pass(`${label} set`);
 }
 
