@@ -14,6 +14,8 @@ services:
         value: production
       - key: BIND_HOST
         value: 0.0.0.0
+      - key: PORT
+        value: "10000"
       - key: TRUST_PROXY
         value: "1"
       - key: HTTPS_REDIRECT
