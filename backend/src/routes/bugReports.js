@@ -29,7 +29,7 @@ router.post(
       // req.body is Zod-parsed + sanitized at this point
       const { updateId, severity, description } = req.body;
       const userAgent = req.headers['user-agent'];
-      const report = await createReport({ updateId, severity, description, userAgent });
+      const report = await createReport({ updateId, severity, description, userAgent, userId: req.user.id });
       // escapeOutput ensures any persisted user text is safe to reflect back
       res.status(201).json({
         data: escapeOutput(report),

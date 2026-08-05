@@ -1,6 +1,6 @@
 # PatchTicker Supabase setup
 
-Create a new Supabase project named `patchticker`, then run the schema migration.
+Create a new Supabase project named `patchticker`, then run the migrations in order.
 
 ## Option A: Supabase CLI
 
@@ -12,10 +12,12 @@ supabase db push
 
 ## Option B: Supabase SQL editor
 
-Open the SQL editor and run:
+Open the SQL editor and run these files in order:
 
 ```sql
--- supabase/migrations/202607160001_initial_patchticker_schema.sql
+-- 1. supabase/migrations/202607160001_initial_patchticker_schema.sql
+-- 2. supabase/migrations/202607200001_email_delivery_log.sql
+-- 3. supabase/migrations/202608040001_launch_schema_repair.sql
 ```
 
 ## Required backend `.env` values

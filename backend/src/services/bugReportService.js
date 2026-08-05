@@ -3,8 +3,8 @@
 // BUG REPORT STORE — PostgreSQL backend with field-level encryption
 //
 // description and user_agent are user-supplied free text — encrypted at rest
-// using AES-256-GCM. The update_id and severity are enum values validated by
-// Zod before reaching this service — no free-text SQL risk.
+// using AES-256-GCM. The update_id is a constrained scraper slug and
+// severity is an enum validated before persistence — no free-text SQL risk.
 //
 // All DB operations use parameterized queries.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@
 const logger          = require('../utils/logger');
 const db              = require('../config/db');
 const { encrypt, decrypt, encryptNullable, decryptNullable } = require('../utils/encrypt');
-const { VALID_PLATFORMS, VALID_SEVERITIES } = require('../validators/schemas');
+const { UpdateIdSlug, VALID_SEVERITIES } = require('../validators/schemas');
 
 // ── In-memory fallback ────────────────────────────────────────────────────────
 const _reports = [];
@@ -35,9 +35,10 @@ function rowToReport(row) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-async function createReport({ updateId, severity, description, userAgent }) {
-  if (!VALID_PLATFORMS.includes(updateId)) {
-    const err = new Error(`Unknown update ID: ${updateId}`);
+async function createReport({ updateId, severity, description, userAgent, userId = null }) {
+  const parsedUpdateId = UpdateIdSlug.safeParse(updateId);
+  if (!parsedUpdateId.success) {
+    const err = new Error(`Invalid update ID: ${updateId}`);
     err.status = 400;
     throw err;
   }
@@ -49,10 +50,10 @@ async function createReport({ updateId, severity, description, userAgent }) {
 
   if (db.isAvailable()) {
     const result = await db.query(
-      `INSERT INTO bug_reports (update_id, severity, description_encrypted, user_agent_encrypted)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO bug_reports (update_id, severity, description_encrypted, user_agent_encrypted, user_id)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, update_id, severity, description_encrypted, user_agent_encrypted, created_at`,
-      [updateId, severity, descEncrypted, uaEncrypted]
+      [updateId, severity, descEncrypted, uaEncrypted, userId]
     );
     const report = rowToReport(result.rows[0]);
     logger.info('Bug report submitted', { updateId, severity, reportId: report.id });
@@ -108,6 +109,5 @@ module.exports = {
   createReport,
   getReportsByUpdateId,
   getReportCounts,
-  VALID_PLATFORMS,
   VALID_SEVERITIES,
 };
