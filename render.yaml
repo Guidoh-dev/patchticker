@@ -1,0 +1,82 @@
+services:
+  - type: web
+    name: patchticker
+    runtime: node
+    plan: free
+    region: ohio
+    branch: main
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BIND_HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: "1"
+      - key: HTTPS_REDIRECT
+        value: "true"
+      - key: SERVE_FRONTEND
+        value: "true"
+      - key: DB_SSL
+        value: "true"
+      - key: ALLOWED_ORIGINS
+        value: https://patchticker.app,https://www.patchticker.app
+      - key: APP_URL
+        value: https://patchticker.app
+      - key: VITE_APP_URL
+        value: https://patchticker.app
+      - key: HCAPTCHA_ENABLED
+        value: "true"
+      - key: CLOUDFLARE_MODE
+        value: "false"
+      - key: CLOUDFLARE_VALIDATE_IPS
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: CSRF_SECRET
+        sync: false
+      - key: DB_ENCRYPTION_KEY
+        sync: false
+      - key: HEALTH_SECRET
+        sync: false
+      - key: HCAPTCHA_SECRET_KEY
+        sync: false
+      - key: HCAPTCHA_SITE_KEY
+        sync: false
+      - key: VITE_HCAPTCHA_SITE_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_PRICE_PRO_MONTHLY
+        sync: false
+      - key: STRIPE_PRICE_PRO_ANNUAL
+        sync: false
+      - key: VITE_STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: VITE_STRIPE_PRICE_MONTHLY
+        sync: false
+      - key: VITE_STRIPE_PRICE_ANNUAL
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+      - key: BREVO_SMTP_USER
+        sync: false
+      - key: BREVO_SMTP_KEY
+        sync: false
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"

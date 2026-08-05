@@ -51,8 +51,11 @@ const cfg = require('./config/security');
 
 const express      = require('express');
 const cookieParser = require('cookie-parser');
+const fs           = require('fs');
+const path         = require('path');
 
 const securityHeaders              = require('./middleware/securityHeaders');
+const { frontendSecurityHeaders }  = require('./middleware/securityHeaders');
 const httpsRedirect                = require('./middleware/httpsRedirect');
 const corsMiddleware               = require('./middleware/cors');
 const { httpLogger, accessLogAnalyser } = require('./middleware/httpLogger');
@@ -103,8 +106,11 @@ app.use(cloudflare);
 // ── 2. HTTPS redirect ─────────────────────────────────────────────────────────
 app.use(httpsRedirect);
 
-// ── 3. Security headers ───────────────────────────────────────────────────────
-app.use(...securityHeaders);
+// ── 3. API security headers ───────────────────────────────────────────────────
+// Keep API JSON responses on the strict API CSP. Frontend HTML/static assets get
+// the separate frontend CSP when Express serves frontend/dist on platforms such
+// as Render.
+app.use('/api', ...securityHeaders);
 
 // ── 4. CORS ───────────────────────────────────────────────────────────────────
 app.use(corsMiddleware);
@@ -152,6 +158,40 @@ app.use('/api/feed',        feedRouter);
 app.use('/api/watchlist',   watchlistRouter);
 app.use('/api/ratings',     ratingsRouter);
 app.use('/api/account',     accountRouter);
+
+// API 404s must remain JSON. Without this guard, single-server deployments could
+// incorrectly serve index.html for a missing /api/* route.
+app.use('/api', notFound);
+
+// ── Frontend static hosting ───────────────────────────────────────────────────
+// Render/free-PaaS deployments run one Node service instead of Nginx + Node.
+// When frontend/dist exists, Express serves the built SPA and falls back to
+// index.html for direct deep links. Nginx deployments can disable this with
+// SERVE_FRONTEND=false and serve frontend/dist directly.
+const shouldServeFrontend = process.env.SERVE_FRONTEND !== 'false';
+const frontendDistDir = path.join(__dirname, '..', '..', 'frontend', 'dist');
+const frontendIndex = path.join(frontendDistDir, 'index.html');
+
+if (shouldServeFrontend && fs.existsSync(frontendIndex)) {
+  app.use(...frontendSecurityHeaders);
+  app.use(express.static(frontendDistDir, {
+    fallthrough: true,
+    index: 'index.html',
+    maxAge: cfg.isProd ? '1h' : 0,
+  }));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next();
+    res.sendFile(frontendIndex);
+  });
+
+  logger.info('Frontend static hosting enabled', { frontendDistDir });
+} else {
+  logger.info('Frontend static hosting disabled or build output missing', {
+    shouldServeFrontend,
+    frontendDistDir,
+  });
+}
 
 // ── 404 & global error handler ────────────────────────────────────────────────
 app.use(notFound);
