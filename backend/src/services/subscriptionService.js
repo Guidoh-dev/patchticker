@@ -134,13 +134,14 @@ async function createCheckoutSession(user, priceId) {
   const stripe     = getStripe();
   const customerId = await getOrCreateStripeCustomer(user);
 
-  // ── Stripe Radar fraud signals ───────────────────────────────────────────────
-  // ip_address and user_agent are fed to Radar's ML model to score the session.
-  // Without these, Radar has no behavioural data and card-testing goes undetected.
-  // user.ip and user.userAgent are set by billing.js from req.ip / req headers.
-  const radarOptions = {};
-  if (user.ip)        radarOptions.ip_address = user.ip;
-  if (user.userAgent) radarOptions.user_agent  = user.userAgent;
+  // Keep request context in Stripe metadata for support/chargeback review.
+  // Stripe Checkout subscription sessions do not accept arbitrary Radar fields
+  // such as ip_address/user_agent in payment_intent_data; passing them causes
+  // Stripe to reject checkout creation.
+  const requestContext = {
+    signup_ip:        user.ip || 'unknown',
+    signup_user_agent: (user.userAgent || 'unknown').slice(0, 500),
+  };
 
   const session = await stripe.checkout.sessions.create({
     mode:     'subscription',
@@ -154,16 +155,17 @@ async function createCheckoutSession(user, priceId) {
     subscription_data: {
       metadata: {
         patchticker_user_id: user.id,
-        // Embed IP at subscription level for chargeback evidence
-        signup_ip: user.ip || 'unknown',
+        ...requestContext,
       },
       trial_period_days: process.env.STRIPE_TRIAL_DAYS
         ? parseInt(process.env.STRIPE_TRIAL_DAYS, 10)
         : undefined,
     },
 
-    // Radar: pass fraud signals so Stripe can score the session
-    ...(Object.keys(radarOptions).length > 0 && { payment_intent_data: radarOptions }),
+    metadata: {
+      patchticker_user_id: user.id,
+      ...requestContext,
+    },
 
     allow_promotion_codes: true,
 
