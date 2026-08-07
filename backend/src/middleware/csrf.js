@@ -58,7 +58,12 @@ const {
   // tokens signed with the old secret remain valid for ROTATION_OVERLAP_MS.
   // After the overlap window only [current] is returned.
   getSecret: () => secrets.getCsrfSecrets(),
-  getSessionIdentifier: (req) => req.cookies?.refreshToken || req.ip || 'anonymous',
+  // Do not bind unauthenticated CSRF tokens to req.ip. On Cloudflare/PaaS
+  // deployments the visible client/proxy IP can shift between the token GET and
+  // the subsequent mutation, which invalidates legitimate signup/login requests.
+  // The signed double-submit protection still requires the token cookie and
+  // X-CSRF-Token header to match and validate against CSRF_SECRET.
+  getSessionIdentifier: (req) => req.cookies?.refreshToken || 'anonymous',
   cookieName:      'pp-csrf',
   cookieOptions: {
     sameSite: 'strict',   // blocks cross-site CSRF entirely for modern browsers

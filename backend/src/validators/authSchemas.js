@@ -68,7 +68,9 @@ const RegisterBodySchema = z
     email:           EmailField,
     password:        RegistrationPasswordField,
     confirmPassword: z.string().min(1, 'Please confirm your password'),
-    'h-captcha-response': z.string().min(1, 'CAPTCHA verification required'),
+    // Accepted when hCaptcha is enabled; middleware enforces presence in prod.
+    // Keep optional here so dev/test schemas do not reject legitimate local flows.
+    'h-captcha-response': z.string().min(1, 'CAPTCHA verification required').optional(),
   })
   .strict()
   .superRefine(({ password, confirmPassword }, ctx) => {
