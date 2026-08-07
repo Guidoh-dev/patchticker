@@ -219,6 +219,10 @@ if (require.main === module) {
     .catch((err) => {
       db.markUnavailable?.(err);
       const canFallback = !cfg.isProd || process.env.ALLOW_DB_STARTUP_FALLBACK === 'true';
+      // Render can suppress structured logger output when the process exits
+      // during startup. Keep a plain stderr line here so deployment failures
+      // expose the actual DB/auth/network error without revealing secrets.
+      console.error(`[startup] DB health check failed: ${err.message}`);
       logger.error(canFallback ? 'DB health check failed — starting with static fallback data' : 'DB health check failed — refusing to start', { message: err.message });
       alert(ALERT_TYPE.STARTUP_FAILURE, canFallback ? 'DB health check failed — static fallback active' : 'Server failed to start — DB health check failed', {
         error: err.message,
