@@ -47,7 +47,7 @@ const crossAccountStuffing     = require('../middleware/crossAccountStuffing');
 const { RegisterBodySchema, LoginBodySchema, RefreshBodySchema, LogoutBodySchema }
   = require('../validators/authSchemas');
 
-const { createUser, verifyCredentials }    = require('../services/userService');
+const { createUser, verifyCredentials, findUserById } = require('../services/userService');
 const { issueAccessToken, issueRefreshToken,
         consumeRefreshToken, revokeRefreshToken,
         ACCESS_TTL }                        = require('../services/tokenService');
