@@ -97,8 +97,16 @@ async function request(path, options = {}) {
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-export async function register({ email, password }) {
-  const data = await request('/auth/register', { method: 'POST', body: JSON.stringify({ email, password }) });
+export async function register({ email, password, confirmPassword, ...rest }) {
+  const body = {
+    email,
+    password,
+    confirmPassword: confirmPassword || password,
+  };
+  if (rest['h-captcha-response']) {
+    body['h-captcha-response'] = rest['h-captcha-response'];
+  }
+  const data = await request('/auth/register', { method: 'POST', body: JSON.stringify(body) });
   _accessToken = data.accessToken; return data;
 }
 export async function login({ email, password }) {

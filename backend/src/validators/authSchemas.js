@@ -68,6 +68,7 @@ const RegisterBodySchema = z
     email:           EmailField,
     password:        RegistrationPasswordField,
     confirmPassword: z.string().min(1, 'Please confirm your password'),
+    'h-captcha-response': z.string().min(1, 'CAPTCHA verification required'),
   })
   .strict()
   .superRefine(({ password, confirmPassword }, ctx) => {
