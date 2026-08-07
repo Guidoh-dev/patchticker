@@ -1,13 +1,14 @@
 // src/services/emailService.js
 // ─────────────────────────────────────────────────────────────────────────────
-// EMAIL SERVICE — Nodemailer wrapper with support for Brevo, SMTP, and SendGrid
+// EMAIL SERVICE — Brevo API/SMTP + SendGrid/Nodemailer delivery
 //
 // TRANSPORT SELECTION
 // ────────────────────
-//  1. If BREVO_SMTP_KEY is set   → use Brevo SMTP relay
-//  2. If SENDGRID_API_KEY is set → use SendGrid SMTP relay
-//  3. If SMTP_HOST is set        → use custom SMTP server
-//  4. Otherwise (dev/test)       → use Ethereal (auto-created test account)
+//  1. If BREVO_API_KEY is set    → use Brevo HTTPS Transactional Email API
+//  2. If BREVO_SMTP_KEY is set   → use Brevo SMTP relay
+//  3. If SENDGRID_API_KEY is set → use SendGrid SMTP relay
+//  4. If SMTP_HOST is set        → use custom SMTP server
+//  5. Otherwise (dev/test)       → use Ethereal (auto-created test account)
 //     Ethereal messages are never delivered; preview them at ethereal.email
 //
 // EMAILS SENT BY THIS SERVICE
@@ -31,6 +32,7 @@
 
 const crypto     = require('crypto');
 const nodemailer = require('nodemailer');
+const https      = require('https');
 const db         = require('../config/db');
 const logger     = require('../utils/logger');
 
@@ -42,6 +44,16 @@ const H = (s) => String(s).replace(/[&<>"']/g, (c) => ({
 // ── Transport factory ─────────────────────────────────────────────────────────
 
 let _transport = null;
+
+function brevoApiKey() {
+  const key = process.env.BREVO_API_KEY;
+  if (!key || key.startsWith('REPLACE_WITH')) return null;
+  return key;
+}
+
+function brevoApiConfigured() {
+  return !!brevoApiKey();
+}
 
 function wantsBrevo() {
   return !!(process.env.BREVO_SMTP_LOGIN || process.env.BREVO_SMTP_USER || process.env.BREVO_SMTP_KEY || process.env.SMTP_HOST === 'smtp-relay.brevo.com');
@@ -134,28 +146,99 @@ function appBaseUrl() {
   return (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 }
 
+function senderObject() {
+  return {
+    name:  process.env.EMAIL_FROM_NAME || 'PatchTicker',
+    email: process.env.EMAIL_FROM_ADDRESS || 'noreply@patchticker.app',
+  };
+}
+
+function postJsonHttps(url, headers, payload) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload);
+    const req = https.request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept':       'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        ...headers,
+      },
+      timeout: 10000,
+    }, (res) => {
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { raw += chunk; });
+      res.on('end', () => {
+        let parsed = {};
+        try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = { raw }; }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          return resolve({ statusCode: res.statusCode, body: parsed });
+        }
+        const msg = parsed.message || parsed.error || raw || `HTTP ${res.statusCode}`;
+        const err = new Error(`Brevo API send failed: ${msg}`);
+        err.statusCode = res.statusCode;
+        err.response = parsed;
+        reject(err);
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('Brevo API request timed out')));
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+async function sendViaBrevoApi({ to, subject, html, text }) {
+  const sender = senderObject();
+  const response = await postJsonHttps(
+    'https://api.brevo.com/v3/smtp/email',
+    { 'api-key': brevoApiKey() },
+    {
+      sender,
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }
+  );
+  return {
+    messageId: response.body?.messageId || response.body?.message_id || null,
+    response,
+    provider: 'brevo-api',
+  };
+}
+
 function getEmailConfigStatus() {
-  const provider = wantsBrevo()
-    ? 'brevo'
-    : process.env.SENDGRID_API_KEY
-      ? 'sendgrid'
-      : process.env.SMTP_HOST
-        ? 'smtp'
-        : 'ethereal';
+  const provider = brevoApiConfigured()
+    ? 'brevo-api'
+    : wantsBrevo()
+      ? 'brevo'
+      : process.env.SENDGRID_API_KEY
+        ? 'sendgrid'
+        : process.env.SMTP_HOST
+          ? 'smtp'
+          : 'ethereal';
   const from = process.env.EMAIL_FROM_ADDRESS || 'noreply@patchticker.app';
-  const configured = provider === 'brevo'
-    ? brevoConfigured()
-    : provider === 'sendgrid'
-      ? !!process.env.SENDGRID_API_KEY
-      : provider === 'smtp'
-        ? !!process.env.SMTP_HOST && (!process.env.SMTP_USER || !!process.env.SMTP_PASS)
-        : false;
+  const configured = provider === 'brevo-api'
+    ? brevoApiConfigured()
+    : provider === 'brevo'
+      ? brevoConfigured()
+      : provider === 'sendgrid'
+        ? !!process.env.SENDGRID_API_KEY
+        : provider === 'smtp'
+          ? !!process.env.SMTP_HOST && (!process.env.SMTP_USER || !!process.env.SMTP_PASS)
+          : false;
   return {
     provider,
     from,
     fromName: process.env.EMAIL_FROM_NAME || 'PatchTicker',
     configured,
     deliverableInProduction: configured && !!from,
+    brevoApi: {
+      configured: brevoApiConfigured(),
+      endpoint: 'https://api.brevo.com/v3/smtp/email',
+    },
     brevo: {
       configured: brevoConfigured(),
       host: 'smtp-relay.brevo.com',
@@ -172,6 +255,9 @@ function getEmailConfigStatus() {
 }
 
 async function verifyEmailTransport() {
+  if (brevoApiConfigured()) {
+    return getEmailConfigStatus();
+  }
   const transport = await getTransport();
   await transport.verify();
   return getEmailConfigStatus();
@@ -197,8 +283,15 @@ async function logEmailDelivery({ to, subject, category, status, messageId = nul
 }
 
 async function send({ to, subject, html, text, category = 'transactional' }) {
-  const transport = await getTransport();
   try {
+    if (brevoApiConfigured()) {
+      const info = await sendViaBrevoApi({ to, subject, html, text });
+      logger.info('[email] Sent via Brevo API', { messageId: info.messageId, to, subject });
+      await logEmailDelivery({ to, subject, category, status: 'sent', messageId: info.messageId || null });
+      return info;
+    }
+
+    const transport = await getTransport();
     const info = await transport.sendMail({
       from:    fromAddress(),
       to,
