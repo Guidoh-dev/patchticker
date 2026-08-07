@@ -178,10 +178,20 @@ if (shouldServeFrontend && fs.existsSync(frontendIndex)) {
     fallthrough: true,
     index: 'index.html',
     maxAge: cfg.isProd ? '1h' : 0,
+    setHeaders: (res, filePath) => {
+      if (path.basename(filePath) === 'index.html') {
+        // The SPA shell points at fingerprinted JS/CSS assets. Cache-busting only
+        // works if browsers revalidate index.html after each deployment.
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      } else if (cfg.isProd) {
+        res.setHeader('Cache-Control', 'public, max-age=3600, immutable');
+      }
+    },
   }));
 
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(frontendIndex);
   });
 
