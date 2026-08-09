@@ -1321,7 +1321,12 @@ function normaliseUpdatesResponse(res) {
 function formatReleaseDate(value) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 function renderMiniUpdateCard(u, variant = 'default') {
