@@ -151,6 +151,7 @@ function unloadAds() {
 
 const app = document.getElementById('app');
 const THEME_STORAGE_KEY = 'patchticker.theme';
+let _quickbarScrollController = null;
 
 function preferredTheme() {
   const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -174,7 +175,11 @@ const H = (s) => String(s).replace(/[&<>"']/g,
 );
 
 // ── Render helpers ────────────────────────────────────────────────────────────
-function setHTML(html) { app.innerHTML = html; }
+function setHTML(html) {
+  _quickbarScrollController?.abort();
+  _quickbarScrollController = null;
+  app.innerHTML = html;
+}
 
 function showToast(msg, type = 'info') {
   const t = document.createElement('div');
@@ -269,6 +274,60 @@ function attachTopicScrollNav() {
   }, { rootMargin: '-34% 0px -52% 0px', threshold: [0.1, 0.25, 0.5] });
 
   sections.forEach(section => observer.observe(section));
+}
+
+function attachQuickbarScrollBehavior() {
+  const quickbar = document.querySelector('.dash-quickbar');
+  const toggle = document.getElementById('dash-quickbar-toggle');
+  const search = document.getElementById('dash-top-search');
+  if (!quickbar || !toggle) return;
+
+  _quickbarScrollController?.abort();
+  _quickbarScrollController = new AbortController();
+  const { signal } = _quickbarScrollController;
+  let lastY = window.scrollY;
+  let framePending = false;
+  let manualOpenUntil = 0;
+
+  const setCollapsed = (collapsed) => {
+    quickbar.classList.toggle('is-collapsed', collapsed);
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+    toggle.setAttribute('aria-label', collapsed ? 'Show update filters' : 'Hide update filters');
+    toggle.querySelector('span').textContent = collapsed ? 'Show filters' : 'Hide filters';
+    toggle.querySelector('b').textContent = collapsed ? '↓' : '↑';
+  };
+
+  const updateForScroll = () => {
+    framePending = false;
+    const currentY = window.scrollY;
+    const delta = currentY - lastY;
+    const searchActive = document.activeElement === search;
+
+    if (currentY <= 140 || searchActive) {
+      setCollapsed(false);
+    } else if (Date.now() >= manualOpenUntil && delta > 8) {
+      setCollapsed(true);
+    } else if (delta < -18) {
+      setCollapsed(false);
+    }
+    lastY = currentY;
+  };
+
+  const onScroll = () => {
+    if (framePending) return;
+    framePending = true;
+    requestAnimationFrame(updateForScroll);
+  };
+
+  toggle.addEventListener('click', () => {
+    const willCollapse = !quickbar.classList.contains('is-collapsed');
+    if (!willCollapse) manualOpenUntil = Date.now() + 1200;
+    setCollapsed(willCollapse);
+  }, { signal });
+  search?.addEventListener('focus', () => setCollapsed(false), { signal });
+  window.addEventListener('scroll', onScroll, { passive: true, signal });
+
+  setCollapsed(lastY > 180);
 }
 
 
@@ -1639,22 +1698,27 @@ async function renderDashboard({ focusId = null } = {}) {
 
         <main class="dash-main" aria-label="PatchTicker dashboard">
           <section class="dash-quickbar" aria-label="Quick feed navigation">
-            <div class="dash-quickbar-search">
-              <span>Search</span>
-              <input id="dash-top-search" type="search" placeholder="Search patches, devices, versions…" autocomplete="off" />
+            <div class="dash-quickbar-primary">
+              <div class="dash-quickbar-search">
+                <span>Search</span>
+                <input id="dash-top-search" type="search" placeholder="Search patches, devices, versions…" autocomplete="off" />
+              </div>
+              <button class="dash-quickbar-toggle" id="dash-quickbar-toggle" type="button" aria-controls="dash-quickbar-details" aria-expanded="true" aria-label="Hide update filters"><span>Hide filters</span><b aria-hidden="true">↑</b></button>
             </div>
-            <div class="dash-ribbon" id="platform-ribbon">
-              <button class="chip active" type="button" data-platform="">All</button>
-              ${TRACKED_PLATFORMS.map(p => `<button class="chip platform--${platformSuffix(p)}" type="button" data-platform="${H(p)}">${H(platformLabel(p))}</button>`).join('')}
-            </div>
-            <div class="dash-status-ribbon" id="status-ribbon" aria-label="Status filters">
-              <button class="chip active" type="button" data-status="">All status</button>
-              <button class="chip" type="button" data-status="stable">Stable</button>
-              <button class="chip" type="button" data-status="caution">Caution</button>
-              <button class="chip" type="button" data-status="avoid">Avoid</button>
-            </div>
-            <div class="dash-category-jumps" aria-label="Category jumps">
-              ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
+            <div class="dash-quickbar-details" id="dash-quickbar-details">
+              <div class="dash-ribbon" id="platform-ribbon">
+                <button class="chip active" type="button" data-platform="">All</button>
+                ${TRACKED_PLATFORMS.map(p => `<button class="chip platform--${platformSuffix(p)}" type="button" data-platform="${H(p)}">${H(platformLabel(p))}</button>`).join('')}
+              </div>
+              <div class="dash-status-ribbon" id="status-ribbon" aria-label="Status filters">
+                <button class="chip active" type="button" data-status="">All status</button>
+                <button class="chip" type="button" data-status="stable">Stable</button>
+                <button class="chip" type="button" data-status="caution">Caution</button>
+                <button class="chip" type="button" data-status="avoid">Avoid</button>
+              </div>
+              <div class="dash-category-jumps" aria-label="Category jumps">
+                ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
+              </div>
             </div>
           </section>
           <section class="dash-command-hero topic-section" id="section-overview">
@@ -1765,6 +1829,7 @@ async function renderDashboard({ focusId = null } = {}) {
   `);
   attachNavHandlers(user);
   attachTopicScrollNav();
+  attachQuickbarScrollBehavior();
   refreshMotionEffects();
   if (focusId) {
     requestAnimationFrame(() => {
