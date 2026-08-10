@@ -2,6 +2,7 @@
   "name": "patchticker-frontend",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
@@ -10,6 +11,7 @@
     "dev": "vite --port 3000",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "node --test test/*.test.mjs",
     "audit:check": "npm audit --audit-level=moderate"
   },
   "dependencies": {},

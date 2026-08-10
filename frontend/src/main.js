@@ -18,7 +18,7 @@ import {
   fetchUpdateById, fetchRecentPosts, submitPost, openFeedStream,
 } from './api.js';
 import { restoreSession, setUser, signOut, getUser, isLoggedIn, hasRole, onAuthChange } from './auth.js';
-import { route, navigate, start, queryParams } from './router.js';
+import { route, fallback, navigate, start, queryParams } from './router.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -150,6 +150,23 @@ function unloadAds() {
 }
 
 const app = document.getElementById('app');
+const THEME_STORAGE_KEY = 'patchticker.theme';
+
+function preferredTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  if (saved === 'light' || saved === 'dark') return saved;
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+function applyTheme(theme) {
+  const next = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  document.documentElement.style.colorScheme = next;
+  localStorage.setItem(THEME_STORAGE_KEY, next);
+  return next;
+}
+
+applyTheme(preferredTheme());
 
 // ── HTML escape ───────────────────────────────────────────────────────────────
 const H = (s) => String(s).replace(/[&<>"']/g,
@@ -177,6 +194,7 @@ function spinner() {
 
 // ── Nav bar ───────────────────────────────────────────────────────────────────
 function renderNav(user) {
+  const theme = document.documentElement.dataset.theme || 'dark';
   const roleLabel = user?.role ? `<span class="nav-role nav-role--${user.role}">${user.role.toUpperCase()}</span>` : '';
   const userEmail = user ? `<span class="nav-email">${H(user.email)}</span>` : '';
   const rightLinks = user
@@ -191,7 +209,8 @@ function renderNav(user) {
         <span class="brand-pulse">Patch</span>Ticker
       </a>
       <div class="nav-right">
-        ${user ? `<a class="nav-link" href="#/updates">Updates</a><a class="nav-link" href="#/pricing">Pricing</a>${adminLink}` : `<a class="nav-link" href="#/updates">Updates</a><a class="nav-link" href="#/pricing">Pricing</a>`}
+        ${user ? `<a class="nav-link nav-link--updates" href="#/updates">Updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>${adminLink}` : `<a class="nav-link nav-link--updates" href="#/updates">Updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>`}
+        <button class="nav-theme-toggle" id="nav-theme-toggle" type="button" aria-label="Switch to ${theme === 'dark' ? 'light' : 'dark'} theme" title="Switch appearance">${theme === 'dark' ? '☀' : '☾'}</button>
         ${rightLinks}
       </div>
     </nav>
@@ -199,6 +218,14 @@ function renderNav(user) {
 }
 
 function attachNavHandlers(user) {
+  const themeBtn = document.getElementById('nav-theme-toggle');
+  themeBtn?.addEventListener('click', () => {
+    const current = document.documentElement.dataset.theme || 'dark';
+    const next = applyTheme(current === 'dark' ? 'light' : 'dark');
+    themeBtn.textContent = next === 'dark' ? '☀' : '☾';
+    themeBtn.setAttribute('aria-label', `Switch to ${next === 'dark' ? 'light' : 'dark'} theme`);
+  });
+
   const logoutBtn = document.getElementById('nav-logout');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
@@ -210,31 +237,21 @@ function attachNavHandlers(user) {
 }
 
 function attachTopicScrollNav() {
-  const links = [...document.querySelectorAll('.topic-nav-link')];
-  const jumpLinks = [...document.querySelectorAll('.topic-jump[href^="#section-"]')];
+  const links = [...document.querySelectorAll('.topic-nav-link[data-scroll-target]')];
+  const jumpLinks = [...document.querySelectorAll('[data-scroll-target]:not(.topic-nav-link)')];
   const sections = links
-    .map(link => document.querySelector(link.getAttribute('href')))
+    .map(link => document.getElementById(link.dataset.scrollTarget))
     .filter(Boolean);
 
   if (!links.length || !sections.length) return;
 
   const setActive = (id) => {
-    links.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${id}`));
+    links.forEach(link => link.classList.toggle('active', link.dataset.scrollTarget === id));
   };
 
-  links.forEach(link => {
+  [...links, ...jumpLinks].forEach(link => {
     link.addEventListener('click', (e) => {
-      const target = document.querySelector(link.getAttribute('href'));
-      if (!target) return;
-      e.preventDefault();
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setActive(target.id);
-    });
-  });
-
-  jumpLinks.forEach(link => {
-    link.addEventListener('click', (e) => {
-      const target = document.querySelector(link.getAttribute('href'));
+      const target = document.getElementById(link.dataset.scrollTarget);
       if (!target) return;
       e.preventDefault();
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -370,7 +387,7 @@ function renderRegister() {
             <div class="h-captcha"
                  id="hcaptcha-widget"
                  data-sitekey="${H(HCAPTCHA_SITE_KEY)}"
-                 data-theme="dark"
+                 data-theme="${H(document.documentElement.dataset.theme || 'dark')}"
                  data-size="normal">
             </div>
           </div>
@@ -404,7 +421,7 @@ function renderRegister() {
     if (typeof window.hcaptcha !== 'undefined' && captchaWidgetId === null) {
       captchaWidgetId = window.hcaptcha.render('hcaptcha-widget', {
         sitekey: HCAPTCHA_SITE_KEY,
-        theme:   'dark',
+        theme:   document.documentElement.dataset.theme || 'dark',
         size:    'normal',
       });
     }
@@ -1297,6 +1314,7 @@ function renderUpdateCard(u) {
           <div class="decision-card-copy">
             <div class="decision-card-eyebrow">
               <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
+              ${u.version ? `<span>Version ${H(u.version)}</span>` : ''}
               <span>${H(formatReleaseDate(u.releasedAt))}</span>
               <span>${H(age)}</span>
             </div>
@@ -1436,7 +1454,7 @@ function renderGroupedUpdateSections(updates, watchedSet = new Set()) {
               <h2>${H(meta.title)}</h2>
               <span>Google Chrome, Microsoft Edge, and Firefox lanes will appear here after official parsers are enabled.</span>
             </div>
-            <a href="#section-overview">Back to top ↑</a>
+            <a href="#/updates" data-scroll-target="section-overview">Back to top ↑</a>
           </div>
           <div class="category-coming-soon">
             <span>Chrome</span><span>Edge</span><span>Firefox</span>
@@ -1467,12 +1485,35 @@ function renderGroupedUpdateSections(updates, watchedSet = new Set()) {
             <h2>${H(meta.title)}</h2>
             <span>${H(meta.subtitle)}</span>
           </div>
-          <a href="#section-overview">Back to top ↑</a>
+          <a href="#/updates" data-scroll-target="section-overview">Back to top ↑</a>
         </div>
         ${platformSections}
       </section>
     `;
   }).join('');
+}
+
+function renderFilteredUpdateResults(updates, { platform, status, sort, search }) {
+  const labels = [];
+  if (platform) labels.push(platformLabel(platform));
+  if (status) labels.push(status[0].toUpperCase() + status.slice(1));
+  if (search) labels.push(`“${search}”`);
+  if (sort === 'score_desc') labels.push('Highest score first');
+  if (sort === 'score_asc') labels.push('Lowest score first');
+  if (sort === 'date_asc') labels.push('Oldest first');
+
+  return `
+    <section class="filtered-feed-section" aria-label="Filtered update results">
+      <header class="filtered-feed-header">
+        <div>
+          <p class="dash-section-kicker">Current view</p>
+          <h2>${H(String(updates.length))} ${updates.length === 1 ? 'update' : 'updates'}</h2>
+        </div>
+        <span>${H(labels.join(' · ') || 'Newest first')}</span>
+      </header>
+      <div class="filtered-update-cards">${updates.map(renderUpdateCard).join('')}</div>
+    </section>
+  `;
 }
 
 function renderSubscriptionBanner(billingData) {
@@ -1506,7 +1547,7 @@ function renderSubscriptionBanner(billingData) {
   `;
 }
 
-async function renderDashboard() {
+async function renderDashboard({ focusId = null } = {}) {
   const user = getUser();
   const isAuthed = !!user;
 
@@ -1533,11 +1574,11 @@ async function renderDashboard() {
           </div>
 
           <nav class="topic-nav topic-nav--rail" aria-label="PatchTicker sections">
-            <a class="topic-nav-link active" href="#section-overview">Overview</a>
-            <a class="topic-nav-link" href="#section-tape">Live tape</a>
-            <a class="topic-nav-link" href="#section-latest">Patch desk</a>
-            <a class="topic-nav-link" href="#section-services">Services</a>
-            ${hasRole('pro') || user?.role === 'admin' ? '<a class="topic-nav-link" href="#section-games">My games</a>' : ''}
+            <a class="topic-nav-link active" href="#/updates" data-scroll-target="section-overview">Overview</a>
+            <a class="topic-nav-link" href="#/updates" data-scroll-target="section-tape">Live tape</a>
+            <a class="topic-nav-link" href="#/updates" data-scroll-target="section-latest">Patch desk</a>
+            <a class="topic-nav-link" href="#/updates" data-scroll-target="section-services">Services</a>
+            ${hasRole('pro') || user?.role === 'admin' ? '<a class="topic-nav-link" href="#/updates" data-scroll-target="section-games">My games</a>' : ''}
           </nav>
 
           <section class="dash-filter-card" aria-label="Precise update filters">
@@ -1558,9 +1599,9 @@ async function renderDashboard() {
             <div class="dash-filter-head"><span>Setup lens</span></div>
             <div class="setup-lens-grid">
               <button class="setup-lens active" type="button" data-lens="" data-label="Everything">Everything</button>
-              <button class="setup-lens" type="button" data-lens="windows nvidia amd intel steam discord battle.net gog galaxy" data-label="PC stack">PC stack</button>
-              <button class="setup-lens" type="button" data-lens="steam steamdeck steamos switch ps5 xbox" data-label="Gaming stack">Gaming stack</button>
-              <button class="setup-lens" type="button" data-lens="apple macos ios macbook" data-label="Apple stack">Apple stack</button>
+              <button class="setup-lens" type="button" data-lens="windows nvidia amd intel steam discord battle.net gog galaxy" data-label="PC &amp; Steam">PC &amp; Steam</button>
+              <button class="setup-lens" type="button" data-lens="steam steamdeck steamos switch ps5 xbox" data-label="Console &amp; handheld">Console &amp; handheld</button>
+              <button class="setup-lens" type="button" data-lens="apple macos ios macbook" data-label="Apple devices">Apple devices</button>
             </div>
           </section>
 
@@ -1613,7 +1654,7 @@ async function renderDashboard() {
               <button class="chip" type="button" data-status="avoid">Avoid</button>
             </div>
             <div class="dash-category-jumps" aria-label="Category jumps">
-              ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
+              ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
             </div>
           </section>
           <section class="dash-command-hero topic-section" id="section-overview">
@@ -1622,7 +1663,7 @@ async function renderDashboard() {
               <h1 class="dash-command-title">Decide what belongs on your machine today.</h1>
               <p class="dash-command-sub">PatchTicker turns vendor release notes, stability signals, security context, and real user votes into a clear install / wait / avoid read.</p>
               <div class="dash-hero-actions">
-                <a class="btn btn--primary topic-jump" href="#section-latest">Open the patch desk</a>
+                <a class="btn btn--primary topic-jump" href="#/updates" data-scroll-target="section-latest">Open the patch desk</a>
                 ${isAuthed
                   ? '<a class="btn btn--secondary" href="#/account">Manage watchlist</a>'
                   : '<a class="btn btn--outline" href="#/register">Create free account</a>'}
@@ -1679,7 +1720,7 @@ async function renderDashboard() {
               <div><p class="dash-section-kicker">Tracked services</p><h2>Coverage</h2></div>
             </div>
             <p class="dash-side-copy">More platforms and device-specific lanes are coming soon as reliable official sources are added.</p>
-            <div class="dash-platform-strip dash-platform-strip--stacked">
+            <div class="dash-platform-strip dash-platform-strip--vertical">
               ${TRACKED_PLATFORMS.map(p => {
                 const suffix = PLATFORM_CLASS[p] || 'default';
                 const short  = PLATFORM_SHORT[p] || p.slice(0,3).toUpperCase();
@@ -1725,6 +1766,11 @@ async function renderDashboard() {
   attachNavHandlers(user);
   attachTopicScrollNav();
   refreshMotionEffects();
+  if (focusId) {
+    requestAnimationFrame(() => {
+      document.getElementById(focusId)?.scrollIntoView({ block: 'start' });
+    });
+  }
 
   // Inject AdSense banner for free-tier users.
   injectAd('ad-slot-dashboard', 'auto');
@@ -1793,7 +1839,10 @@ async function renderDashboard() {
         : '<p class="empty-state">No updates found.</p>';
       document.getElementById('clear-inline')?.addEventListener('click', clearAllFilters);
     } else {
-      listEl.innerHTML = renderGroupedUpdateSections(filtered, _watchedPlatforms);
+      const keepsPlatformBrowse = sort === 'date_desc' && !status && !search;
+      listEl.innerHTML = keepsPlatformBrowse
+        ? renderGroupedUpdateSections(filtered, _watchedPlatforms)
+        : renderFilteredUpdateResults(filtered, _filterState);
     }
 
     refreshMotionEffects(listEl);
@@ -2418,6 +2467,10 @@ async function renderUpdateDetail(id) {
       <span class="detail-evidence-arrow">↗</span>
     </a>
   `).join('');
+  const officialEvidence = (u.evidence || []).find(e =>
+    e?.url && !/(?:reddit\.com|^r\/)/i.test(`${e.source || ''} ${e.url}`)
+  );
+  const officialSourceUrl = u.sourceUrl || officialEvidence?.url || null;
 
   const changelogHTML = (u.changelog || []).map(c => `
     <li class="detail-list-item detail-list-item--positive">
@@ -2463,11 +2516,11 @@ async function renderUpdateDetail(id) {
           <div>
             <p class="detail-kicker">${H(platformLabel(u.platform))} update brief</p>
             <h1 class="detail-title">${H(u.name)}</h1>
-            <div class="detail-meta">
-              <span>Version ${H(u.version)}</span>
-              <span class="detail-meta-sep">·</span>
-              <span>Released ${H(formatReleaseDate(u.releasedAt))}</span>
-              ${u.affects ? `<span class="detail-meta-sep">·</span><span>${H(u.affects)}</span>` : ''}
+            <div class="detail-meta-grid" aria-label="Update metadata">
+              <div><span>Platform</span><strong>${H(platformLabel(u.platform))}</strong></div>
+              <div><span>Version</span><strong>${H(u.version || 'Current release')}</strong></div>
+              <div><span>Released</span><strong>${H(formatReleaseDate(u.releasedAt))}</strong></div>
+              <div><span>Applies to</span><strong>${H(u.affects || platformLabel(u.platform))}</strong></div>
             </div>
           </div>
         </div>
@@ -2483,7 +2536,9 @@ async function renderUpdateDetail(id) {
             <div><strong>${H(String(u.bugCount ?? 0))}</strong><span>Bug reports</span></div>
             <div><strong>${H(sec.label || 'No data')}</strong><span>Security note</span></div>
           </div>
-          <a class="detail-source-primary" href="${H(u.sourceUrl || '#')}" target="_blank" rel="noopener">Open official source ↗</a>
+          ${officialSourceUrl
+            ? `<a class="detail-source-primary" href="${H(officialSourceUrl)}" target="_blank" rel="noopener">Open official source ↗</a>`
+            : '<span class="detail-source-primary detail-source-primary--disabled" aria-disabled="true">Official source unavailable</span>'}
         </aside>
       </div>
 
@@ -3382,6 +3437,7 @@ function renderFooter() {
           <a href="#/" class="site-footer-link">Home</a>
           <a href="#/updates" class="site-footer-link">Updates</a>
           <a href="#/pricing" class="site-footer-link">Pricing</a>
+          <a href="#/about" class="site-footer-link">About</a>
           <a href="#/privacy" class="site-footer-link">Privacy Policy</a>
           <a href="#/terms" class="site-footer-link">Terms of Service</a>
         </nav>
@@ -3389,6 +3445,51 @@ function renderFooter() {
       </div>
     </footer>
   `;
+}
+
+function renderAbout() {
+  const user = getUser();
+  setHTML(`
+    ${renderNav(user)}
+    <main class="legal-page about-page">
+      <div class="legal-header">
+        <p class="dash-section-kicker">Know before you update</p>
+        <h1 class="legal-title">A decision desk for the software you depend on.</h1>
+        <p class="legal-effective">PatchTicker tracks official release notes, stability signals, security context, and verified user feedback across operating systems, drivers, consoles, and launchers.</p>
+      </div>
+      <div class="legal-body about-grid">
+        <section><h2>What we track</h2><p>Vendor releases, version history, known issues, system impact, and community install decisions—organized by platform instead of scattered across support pages.</p></section>
+        <section><h2>How to use it</h2><p>Search for your platform or version, read the current recommendation, then open the update brief for sources and detailed notes before installing.</p></section>
+        <section><h2>Who operates it</h2><p>PatchTicker is operated by Dorn Ventures LLC. Guidance is informational and always links back to official sources where available.</p></section>
+        <div class="detail-action-row">
+          <a class="btn btn--primary" href="#/updates">Browse live updates</a>
+          <a class="btn btn--outline" href="#/pricing">Compare plans</a>
+        </div>
+      </div>
+    </main>
+    ${renderFooter()}
+  `);
+  attachNavHandlers(user);
+}
+
+function renderNotFound(path) {
+  const user = getUser();
+  setHTML(`
+    ${renderNav(user)}
+    <main class="detail-page">
+      <div class="detail-error">
+        <div class="detail-error-code">404</div>
+        <h1 class="detail-title">Page not found</h1>
+        <p>That PatchTicker directory does not exist: <strong>${H(path)}</strong></p>
+        <div class="detail-action-row">
+          <a class="btn btn--primary" href="#/updates">Open update feed</a>
+          <a class="btn btn--outline" href="#/">Return home</a>
+        </div>
+      </div>
+    </main>
+    ${renderFooter()}
+  `);
+  attachNavHandlers(user);
 }
 
 
@@ -3556,10 +3657,15 @@ async function boot() {
   route('/verify-email', (params) => renderVerifyEmail(params));
 
   route('/account',          () => renderAccount());
+  route('/settings',         () => navigate('/account'));
+  route('/games',            () => renderDashboard({ focusId: 'category-gaming' }));
+  route('/categories',       () => renderDashboard({ focusId: 'section-latest' }));
   route('/admin',            () => renderAdmin());
   route('/platform/:name',   ({ name }) => renderPlatformPage(name));
+  route('/about',            () => renderAbout());
   route('/privacy',          () => renderPrivacy());
   route('/terms',            () => renderTerms());
+  fallback(({ path }) => renderNotFound(path));
 
   // Handle Stripe redirect params
   const hash = window.location.hash;

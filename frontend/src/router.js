@@ -14,9 +14,14 @@
 
 const _routes = new Map();
 let _current  = null;
+let _fallback = null;
 
 export function route(path, handler) {
   _routes.set(path, handler);
+}
+
+export function fallback(handler) {
+  _fallback = handler;
 }
 
 export function navigate(path) {
@@ -35,7 +40,7 @@ export function queryParams() {
   return Object.fromEntries(new URLSearchParams(hash.slice(idx + 1)));
 }
 
-function matchRoute(path) {
+export function resolveRoute(path) {
   // Exact match first
   if (_routes.has(path)) return { handler: _routes.get(path), params: {} };
   // Pattern match: /segment/:param
@@ -56,14 +61,18 @@ function matchRoute(path) {
 export function start() {
   function dispatch() {
     const path    = currentPath();
-    const match   = matchRoute(path);
+    const match   = resolveRoute(path);
     if (match && _current !== path) {
       _current = path;
       match.handler({ ...queryParams(), ...match.params });
     } else if (!match) {
-      _current = '/';
-      const root = _routes.get('/');
-      if (root) root({});
+      _current = path;
+      if (_fallback) {
+        _fallback({ path });
+      } else {
+        const root = _routes.get('/');
+        if (root) root({});
+      }
     }
   }
 
