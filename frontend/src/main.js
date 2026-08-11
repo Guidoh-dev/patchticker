@@ -1767,8 +1767,8 @@ async function renderDashboard({ focusId = null } = {}) {
         <aside class="dash-aside" aria-label="Live signals and service list">
           <section class="dash-panel dash-live-feed">
             <div class="dash-panel-head dash-panel-head--compact">
-              <div><p class="dash-section-kicker">User feed</p><h2>Live signal</h2></div>
-              <span class="feed-status"><span class="feed-dot" id="feed-dot"></span> Live</span>
+              <div><p class="dash-section-kicker">User feed</p><h2>Community signal</h2></div>
+              <span class="feed-status"><span class="feed-dot" id="feed-dot"></span> ${isAuthed ? 'Live' : 'Recent'}</span>
             </div>
             <div class="feed-messages" id="feed-messages" aria-live="polite">
               <div class="feed-empty">Checking recent community activity…</div>
@@ -2270,8 +2270,9 @@ async function renderDashboard({ focusId = null } = {}) {
 
     function appendMessage(post, animate = true) {
       messagesEl.querySelector('.feed-empty')?.remove();
-      const isOwn    = post.userEmail === getUser()?.email;
-      const letter   = avatarLetter(post.userEmail);
+      const userLabel = post.userLabel || post.userEmail?.split('@')[0] || 'Member';
+      const isOwn    = Boolean(post.isOwn);
+      const letter   = avatarLetter(userLabel);
       const el       = document.createElement('div');
       el.className   = `feed-msg${animate ? ' feed-msg--in' : ''}${isOwn ? ' feed-msg--own' : ''}`;
       el.dataset.id  = post.id;
@@ -2279,7 +2280,7 @@ async function renderDashboard({ focusId = null } = {}) {
         <div class="feed-msg-avatar">${H(letter)}</div>
         <div class="feed-msg-content">
           <div class="feed-msg-meta">
-            <span class="feed-msg-name">${H(post.userEmail.split('@')[0])}</span>
+            <span class="feed-msg-name">${H(userLabel)}</span>
             ${platformBadge(post.platform)}
             <span class="feed-msg-time">${formatTime(post.createdAt)}</span>
           </div>

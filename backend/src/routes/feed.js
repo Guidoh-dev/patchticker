@@ -34,6 +34,10 @@ const PostSchema = z.object({
   platform: z.enum(['AMD','NVIDIA','Apple','PS5','Windows','Steam','macOS','Intel','Xbox','Switch','Discord','BattleNet','GOG']).optional(),
 });
 
+function feedUserLabel(userId) {
+  return `Member ${String(userId || '').slice(0, 4).toUpperCase() || 'USER'}`;
+}
+
 // ── In-process SSE client registry ───────────────────────────────────────────
 // Map<userId, Set<res>>  — multiple tabs per user supported
 const _clients = new Map();
@@ -48,17 +52,21 @@ function broadcast(post) {
 }
 
 function register(userId, res) {
-  if (!_clients.has(userId)) _clients.set(userId, new Set());
+  if (!_clients.has(userId)) {
+    _clients.set(userId, new Set());
+  }
   _clients.get(userId).add(res);
 }
 
 function unregister(userId, res) {
   _clients.get(userId)?.delete(res);
-  if (_clients.get(userId)?.size === 0) _clients.delete(userId);
+  if (_clients.get(userId)?.size === 0) {
+    _clients.delete(userId);
+  }
 }
 
 // ── GET /api/feed/recent — initial payload ────────────────────────────────────
-router.get('/recent', requireAuth, async (req, res, next) => {
+router.get('/recent', async (req, res, next) => {
   try {
     const result = await db.query(`
       SELECT
@@ -66,9 +74,8 @@ router.get('/recent', requireAuth, async (req, res, next) => {
         cp.body,
         cp.platform,
         cp.created_at  AS "createdAt",
-        u.email        AS "userEmail"
+        CONCAT('Member ', UPPER(LEFT(cp.user_id::text, 4))) AS "userLabel"
       FROM community_posts cp
-      JOIN users u ON u.id = cp.user_id
       WHERE cp.created_at > NOW() - INTERVAL '24 hours'
       ORDER BY cp.created_at DESC
       LIMIT 60
@@ -121,7 +128,7 @@ router.post('/post', requireAuth, postLimiter, async (req, res, next) => {
 
     const post = {
       ...result.rows[0],
-      userEmail: req.user.email,
+      userLabel: feedUserLabel(userId),
     };
 
     broadcast(post);

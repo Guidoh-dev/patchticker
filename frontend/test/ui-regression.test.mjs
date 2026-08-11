@@ -7,6 +7,7 @@ import { route, resolveRoute } from '../src/router.js';
 const root = resolve(import.meta.dirname, '..');
 const mainSource = await readFile(resolve(root, 'src/main.js'), 'utf8');
 const cssSource = await readFile(resolve(root, 'src/styles.css'), 'utf8');
+const apiSource = await readFile(resolve(root, 'src/api.js'), 'utf8');
 
 test('router resolves exact and dynamic update directories', () => {
   const updatesHandler = () => 'updates';
@@ -98,4 +99,10 @@ test('an unavailable or empty community feed renders a compact status state', ()
   assert.match(mainSource, /No community notes yet\. Live updates will appear here\./);
   assert.match(mainSource, /Community feed is reconnecting/);
   assert.match(cssSource, /\.dash-aside \.feed-messages:has\(> \.feed-empty:only-child\)\s*\{[^}]*min-height:\s*104px/s);
+});
+
+test('public community reads use privacy-safe display labels', () => {
+  assert.match(apiSource, /request\('\/feed\/recent', \{ skipAuth: true \}\)/);
+  assert.match(mainSource, /post\.userLabel \|\| post\.userEmail\?\.split/);
+  assert.match(mainSource, /Community signal/);
 });

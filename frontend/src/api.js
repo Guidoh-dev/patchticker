@@ -154,7 +154,7 @@ export async function fetchUpdates({ platform, status, sort, search } = {}) {
 // ── Community feed ────────────────────────────────────────────────────────────
 
 export async function fetchRecentPosts() {
-  return request('/feed/recent');
+  return request('/feed/recent', { skipAuth: true });
 }
 
 export async function submitPost({ body, platform }) {
