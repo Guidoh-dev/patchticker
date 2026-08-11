@@ -191,11 +191,17 @@ input, select, textarea { font-family: var(--font-mono); }
 /* ── Form fields ─────────────────────────────────────────────────────────────── */
 .field-group  { display: flex; flex-direction: column; gap: 6px; }
 .field-label  { font-size: 12px; color: var(--text-2); display: flex; justify-content: space-between; align-items: center; }
-.field-link   { font-size: 12px; color: var(--green-primary); }
+.field-link   {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 12px;
+  color: var(--green-primary);
+}
 .field-input  {
   background: var(--bg-3); border: 1px solid var(--border-2);
   border-radius: var(--radius-sm); color: var(--text); padding: 10px 12px;
-  font-size: 14px; transition: border-color .15s; width: 100%;
+  min-height: 44px; font-size: 14px; transition: border-color .15s; width: 100%;
 }
 .field-input:focus { outline: none; border-color: var(--green-primary); }
 .field-input::placeholder { color: var(--text-3); }
@@ -2790,6 +2796,9 @@ select.field-input { cursor: pointer; }
 .chip {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
   padding: 5px 12px;
   border-radius: 99px;
   border: 1px solid var(--border);
@@ -2965,6 +2974,7 @@ select.field-input { cursor: pointer; }
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   background: #000;
+  min-width: 0;
   min-height: 46px;
 }
 .update-tape-label {
@@ -2976,7 +2986,12 @@ select.field-input { cursor: pointer; }
   letter-spacing: .16em;
   text-transform: uppercase;
 }
-.update-tape-window { overflow: hidden; }
+.update-tape-window {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
 .update-tape-track {
   display: flex;
   gap: 12px;
@@ -5472,7 +5487,7 @@ body { overflow-x: hidden; }
 .dash-search-row .dash-search,
 .dash-sort {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   border: 1px solid var(--border-2);
   border-radius: 14px;
   padding: 0 36px 0 12px;
@@ -5651,6 +5666,10 @@ body { overflow-x: hidden; }
   margin: 0 0 12px;
   padding-right: 4px;
 }
+.dash-aside .feed-messages:has(> .feed-empty:only-child) {
+  height: auto;
+  min-height: 104px;
+}
 
 .feed-compose {
   display: grid;
@@ -5659,7 +5678,7 @@ body { overflow-x: hidden; }
 }
 
 .feed-input {
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid var(--border-2);
   border-radius: 12px;
   padding: 0 10px;
@@ -5668,6 +5687,7 @@ body { overflow-x: hidden; }
 }
 
 .feed-send {
+  min-height: 44px;
   border: 0;
   border-radius: 12px;
   padding: 0 14px;
@@ -6403,6 +6423,7 @@ body { overflow-x: hidden; }
   min-height: 44px;
 }
 .site-footer-link { min-width: 44px; justify-content: center; }
+.history-link { min-width: 44px; justify-content: center; }
 .dash-clear-link {
   min-width: 44px;
   justify-content: center;
@@ -6438,11 +6459,15 @@ body { overflow-x: hidden; }
   .nav-link { padding-inline: 6px; }
   .dash-category-jumps,
   .dash-ribbon,
-  .dash-status-ribbon,
-  .update-tape-window {
+  .dash-status-ribbon {
     max-width: 100%;
     overflow-x: auto;
     overscroll-behavior-x: contain;
+  }
+  .update-tape-window {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
   }
   .update-tape-track { min-width: max-content; }
   .detail-breadcrumb {

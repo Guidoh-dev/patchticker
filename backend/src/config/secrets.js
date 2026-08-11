@@ -401,7 +401,10 @@ if (AUTO_ROTATE_MS > 0 && AUTO_ROTATE_MS >= 60 * 1000) {
 // On Windows: SIGUSR2 is not supported. Use the HTTP /api/admin/rotate-secrets
 // endpoint (requires admin auth) or restart the process instead.
 
-if (process.platform !== 'win32') {
+// Jest reloads modules between cases; registering process signal handlers in
+// that environment creates duplicate listeners without exercising production
+// behavior. The live rotation signal remains enabled in development/production.
+if (!isTest && process.platform !== 'win32') {
   process.on('SIGUSR2', () => {
     logger.warn('SIGUSR2 received — triggering secret rotation');
     try {

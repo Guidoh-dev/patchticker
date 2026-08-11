@@ -77,3 +77,25 @@ test('sticky update filters collapse on downward scroll and remain accessible', 
   assert.match(cssSource, /\.dash-quickbar-toggle\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /@media \(max-width: 760px\)[\s\S]*?html, body, #app\s*\{[^}]*overflow-x:\s*clip/s);
 });
+
+test('mobile ticker viewport clips its moving track without widening the page', () => {
+  assert.match(cssSource, /\.update-tape-window\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*overflow:\s*hidden;/s);
+  assert.doesNotMatch(cssSource, /\.dash-status-ribbon,\s*\.update-tape-window\s*\{[^}]*overflow-x:\s*auto;/s);
+});
+
+test('auth, feed, and history controls meet the touch target floor', () => {
+  assert.match(cssSource, /\.chip\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.dash-search-row \.dash-search,\s*\.dash-sort\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.field-input\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.field-link\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.history-link\s*\{[^}]*min-width:\s*44px/s);
+  assert.match(cssSource, /\.feed-input\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.feed-send\s*\{[^}]*min-height:\s*44px/s);
+});
+
+test('an unavailable or empty community feed renders a compact status state', () => {
+  assert.match(mainSource, /Checking recent community activity/);
+  assert.match(mainSource, /No community notes yet\. Live updates will appear here\./);
+  assert.match(mainSource, /Community feed is reconnecting/);
+  assert.match(cssSource, /\.dash-aside \.feed-messages:has\(> \.feed-empty:only-child\)\s*\{[^}]*min-height:\s*104px/s);
+});

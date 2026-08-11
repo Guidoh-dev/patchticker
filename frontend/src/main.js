@@ -1770,7 +1770,9 @@ async function renderDashboard({ focusId = null } = {}) {
               <div><p class="dash-section-kicker">User feed</p><h2>Live signal</h2></div>
               <span class="feed-status"><span class="feed-dot" id="feed-dot"></span> Live</span>
             </div>
-            <div class="feed-messages" id="feed-messages" aria-live="polite"></div>
+            <div class="feed-messages" id="feed-messages" aria-live="polite">
+              <div class="feed-empty">Checking recent community activity…</div>
+            </div>
             ${isAuthed ? `
               <div class="feed-compose">
                 <input class="feed-input" id="feed-input" type="text" maxlength="280" placeholder="Share an update note…" />
@@ -2267,6 +2269,7 @@ async function renderDashboard({ focusId = null } = {}) {
     }
 
     function appendMessage(post, animate = true) {
+      messagesEl.querySelector('.feed-empty')?.remove();
       const isOwn    = post.userEmail === getUser()?.email;
       const letter   = avatarLetter(post.userEmail);
       const el       = document.createElement('div');
@@ -2303,16 +2306,18 @@ async function renderDashboard({ focusId = null } = {}) {
     // Load historical posts first
     async function loadHistory() {
       try {
-      const posts = await fetchRecentPosts();
+        const posts = await fetchRecentPosts();
         if (posts.length === 0) {
-          const empty = document.createElement('div');
-          empty.className   = 'feed-empty';
-          empty.textContent = 'No posts yet. Be the first.';
-          messagesEl.appendChild(empty);
+          const empty = messagesEl.querySelector('.feed-empty') || document.createElement('div');
+          empty.className = 'feed-empty';
+          empty.textContent = 'No community notes yet. Live updates will appear here.';
+          if (!empty.isConnected) messagesEl.appendChild(empty);
         } else {
           posts.forEach(p => appendMessage(p, false));
         }
       } catch {
+        const empty = messagesEl.querySelector('.feed-empty');
+        if (empty) empty.textContent = 'Community feed is reconnecting…';
         /* non-fatal — SSE will deliver new posts regardless */
       }
     }
