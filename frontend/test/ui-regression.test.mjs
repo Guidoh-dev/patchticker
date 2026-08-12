@@ -162,6 +162,7 @@ test('security releases expose bounded CVE context without flooding the detail p
   assert.match(mainSource, /function securitySignalMeta\(update\)/);
   assert.match(mainSource, /CVE\$\{total === 1 \? '' : 's'\} documented/);
   assert.match(mainSource, /const visibleCves = secCves\.slice\(0, 12\)/);
+  assert.match(mainSource, /decisionSecurityValue[\s\S]*?Security fixes/);
   assert.match(mainSource, /more in the official advisory/);
   assert.match(mainSource, /security-signal--\$\{H\(securitySignal\.tone\)\}/);
   assert.match(cssSource, /\.security-signal--critical,[\s\S]*?\.security-signal--high\s*\{[^}]*var\(--red\)/s);

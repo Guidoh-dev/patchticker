@@ -2814,6 +2814,10 @@ async function renderUpdateDetail(id) {
     `<span class="detail-cve-tag">${H(c)}</span>`
   ).join('');
   const detailSecuritySignal = securitySignalMeta(u);
+  const decisionSecurityValue = secCveTotal
+    ? `${secCveTotal} CVE${secCveTotal === 1 ? '' : 's'}`
+    : (sec.level && sec.level !== 'none' ? sec.level : 'No data');
+  const decisionSecurityLabel = secCveTotal ? 'Security fixes' : 'Security note';
 
   // ── User Rating (live votes only; hidden until votes exist) ──────────────────
   const ur = u.userRating || null;
@@ -2941,7 +2945,7 @@ async function renderUpdateDetail(id) {
           <div class="detail-decision-facts">
             <div><strong>${impactScore !== null ? H(String(impactScore)) : 'N/A'}</strong><span>${impactScore !== null ? H(impactLabel) : 'Impact pending'}</span></div>
             <div><strong>${H(String(u.bugCount ?? 0))}</strong><span>Bug reports</span></div>
-            <div><strong>${H(sec.label || 'No data')}</strong><span>Security note</span></div>
+            <div><strong>${H(decisionSecurityValue)}</strong><span>${H(decisionSecurityLabel)}</span></div>
           </div>
           ${officialSourceUrl
             ? `<a class="detail-source-primary" href="${H(officialSourceUrl)}" target="_blank" rel="noopener">Open official source ↗</a>`
