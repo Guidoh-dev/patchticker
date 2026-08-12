@@ -322,6 +322,12 @@ describe('scraper accuracy guards', () => {
       knownIssueCount: 1,
       releaseNotesUrl: 'https://us.download.nvidia.com/Windows/610.88/610.88-win11-win10-release-notes.pdf',
     });
+    expect(__test.nvidiaImpactMetadata({ DownloadURLFileSize: '979.65 MB' }, parsed)).toMatchObject({
+      packageSize: '979.65 MB',
+      gameSupportCount: 3,
+      gameFixCount: 2,
+      whql: true,
+    });
     expect(parsed.changelog[0]).toContain('Halo: Campaign Evolved');
     expect(parsed.knownIssues).toEqual(['Prefer Maximum Performance mode may not be applied correctly [6007998]']);
   });

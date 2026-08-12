@@ -1490,6 +1490,16 @@ function freshnessMeta(update) {
   const officialSources = Number.isFinite(Number(update?.officialSourceCount))
     ? Number(update.officialSourceCount)
     : evidence.filter(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`)).length;
+
+  if (update?.releasePosition === 'previous') {
+    return {
+      label: 'Earlier release',
+      tone: 'archive',
+      detail: 'Official source archived',
+      officialSources,
+    };
+  }
+
   const checkedAt = update?.lastCheckedAt
     || update?.updatedAt
     || evidence.find(item => item?.checkedAt)?.checkedAt
@@ -1695,10 +1705,11 @@ function renderUpdateCard(u) {
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const methodLabel = analysisMethodLabel(u);
   const ratingValue = rating.votes && rating.score !== null ? rating.score.toFixed(1) : (u.score ?? '—');
-  const ratingSource = rating.votes ? 'User rating' : 'PatchTicker score';
+  const scoreLabel = rating.votes ? 'User rating' : 'Safety score';
+  const ratingSource = rating.votes ? 'Live community' : 'PatchTicker';
   const ratingDetail = rating.votes
     ? `${rating.votes.toLocaleString()} vote${rating.votes === 1 ? '' : 's'}`
-    : decision.label;
+    : sourceLabel;
   const routeId = encodeURIComponent(u.id);
   return `
     <article class="decision-card decision-card--compact decision-card--${H(decision.cls)}" data-id="${H(u.id)}">
@@ -1710,6 +1721,7 @@ function renderUpdateCard(u) {
               <div class="decision-card-kicker">
                 <span class="decision-card-platform text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
                 ${u.version ? `<span class="decision-card-version">Version ${H(u.version)}</span>` : ''}
+                <span class="release-position release-position--${H(u.releasePosition || 'current')}">${u.releasePosition === 'previous' ? 'Earlier release' : 'Latest release'}</span>
               </div>
               <h3 class="decision-title">${H(u.name)}</h3>
             </div>
@@ -1738,7 +1750,7 @@ function renderUpdateCard(u) {
         </div>
         <aside class="decision-card-rating" aria-label="Patch recommendation and rating">
           <span class="decision-action decision-action--${H(decision.cls)}">${H(decision.action)}</span>
-          <span class="decision-card-rating-label">Rating</span>
+          <span class="decision-card-rating-label">${H(scoreLabel)}</span>
           <div class="decision-card-rating-value"><strong>${H(String(ratingValue))}</strong><span>/10</span></div>
           <em>${H(ratingSource)}</em>
           <small>${H(ratingDetail)}</small>
@@ -1750,6 +1762,25 @@ function renderUpdateCard(u) {
 
 function normaliseUpdatesResponse(res) {
   return Array.isArray(res) ? res : (res?.data || []);
+}
+
+function annotateReleasePositions(updates = []) {
+  const latestByPlatform = new Map();
+  for (const update of updates) {
+    const parsedReleaseMs = Date.parse(update?.releasedAt || '');
+    const releasedMs = Number.isFinite(parsedReleaseMs) ? parsedReleaseMs : 0;
+    const tieBreakMs = Date.parse(update?.createdAt || update?.updatedAt || '') || 0;
+    const current = latestByPlatform.get(update?.platform);
+    if (!current
+      || releasedMs > current.releasedMs
+      || (releasedMs === current.releasedMs && tieBreakMs > current.tieBreakMs)) {
+      latestByPlatform.set(update?.platform, { id: update.id, releasedMs, tieBreakMs });
+    }
+  }
+  return updates.map(update => ({
+    ...update,
+    releasePosition: latestByPlatform.get(update?.platform)?.id === update.id ? 'current' : 'previous',
+  }));
 }
 
 function formatReleaseDate(value) {
@@ -1770,7 +1801,8 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const packageSize = packageSizeMeta(u);
   const rating = peerRatingMeta(u);
   const ratingValue = rating.votes && rating.score !== null ? rating.score.toFixed(1) : (u.score ?? '—');
-  const ratingSource = rating.votes ? 'User rating' : 'PatchTicker score';
+  const scoreLabel = rating.votes ? 'User rating' : 'Safety score';
+  const ratingSource = rating.votes ? 'Live community' : 'PatchTicker';
   return `
     <a class="mini-update-card${tone}" href="#/updates/${H(u.id)}">
       <div class="mini-update-top">
@@ -1785,7 +1817,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
       <dl class="mini-update-facts" aria-label="Update facts">
         <div><dt>Released</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
         <div class="${packageSize.available ? '' : 'is-unavailable'}"><dt>Size</dt><dd>${H(packageSize.value)}</dd></div>
-        <div><dt>Rating</dt><dd style="color:${scoreColor(Number(ratingValue) || 0)}">${H(String(ratingValue))}/10</dd><small>${H(ratingSource)}</small></div>
+        <div><dt>${H(scoreLabel)}</dt><dd style="color:${scoreColor(Number(ratingValue) || 0)}">${H(String(ratingValue))}/10</dd><small>${H(ratingSource)}</small></div>
       </dl>
       <div class="mini-update-freshness freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)} · ${H(freshness.detail)}</div>
       <p class="mini-update-copy">${H(u.verdict || u.affects || 'Recent patch coverage available.')}</p>
@@ -2500,8 +2532,10 @@ async function renderDashboard({ focusId = null } = {}) {
   // ── Initial data load ─────────────────────────────────────────────────────
   async function loadUpdates() {
     try {
-      _allUpdates = normaliseUpdatesResponse(await fetchUpdates({}))
-        .filter(update => isUpdateWithinDisplayWindow(update));
+      _allUpdates = annotateReleasePositions(
+        normaliseUpdatesResponse(await fetchUpdates({}))
+          .filter(update => isUpdateWithinDisplayWindow(update))
+      );
       updateReturnBrief(_allUpdates);
       renderTapeAndLatest(_allUpdates);
       renderSourceHeartbeats(_allUpdates);
@@ -3932,7 +3966,7 @@ async function renderPlatformPage(platformName) {
   const { fetchUpdates } = await import('./api.js');
   try {
     const res  = await fetchUpdates({ platform: name });
-    const updates = res.data || [];
+    const updates = annotateReleasePositions(res.data || []);
     const current = updates[0];
     const currentEl = document.getElementById('platform-current');
 

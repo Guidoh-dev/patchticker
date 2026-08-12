@@ -6700,6 +6700,21 @@ body { overflow-x: hidden; }
   background: rgba(255,255,255,.035);
   color: var(--text-2);
 }
+.release-position {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--green-primary) 35%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--green-primary) 9%, transparent);
+  color: var(--green-primary);
+}
+.release-position--previous {
+  border-color: color-mix(in srgb, var(--purple) 28%, var(--border));
+  background: color-mix(in srgb, var(--purple) 7%, transparent);
+  color: var(--text-3);
+}
 .decision-card--compact .decision-title {
   display: block;
   margin: 6px 0 0;
@@ -6814,6 +6829,7 @@ body { overflow-x: hidden; }
 .freshness-signal--aging { color: var(--yellow); }
 .freshness-signal--stale { color: var(--red); }
 .freshness-signal--snapshot { color: var(--text-2); }
+.freshness-signal--archive { color: var(--purple); }
 .security-signal {
   display: inline-flex;
   align-items: center;

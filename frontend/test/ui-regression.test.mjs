@@ -71,7 +71,8 @@ test('update cards organize title, release date, package size, and rating withou
   assert.match(mainSource, /class="decision-card-facts" aria-label="Update facts"/);
   assert.match(mainSource, /<dt>Package size<\/dt>/);
   assert.match(mainSource, /class="decision-card-rating" aria-label="Patch recommendation and rating"/);
-  assert.match(mainSource, /const ratingSource = rating\.votes \? 'User rating' : 'PatchTicker score'/);
+  assert.match(mainSource, /const scoreLabel = rating\.votes \? 'User rating' : 'Safety score'/);
+  assert.match(mainSource, /const ratingSource = rating\.votes \? 'Live community' : 'PatchTicker'/);
   assert.match(cssSource, /\.decision-card-facts\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
   assert.match(cssSource, /\.decision-card-link:hover,[\s\S]*?text-decoration:\s*none !important/s);
   assert.match(cssSource, /\.decision-card-rating-value strong\s*\{[^}]*font-size:\s*36px/s);
@@ -163,7 +164,8 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /detail-source-health/);
   assert.match(mainSource, /official source/);
   assert.match(mainSource, /Source \+ issue signals/);
-  assert.match(mainSource, /ratingSource = rating\.votes \? 'User rating' : 'PatchTicker score'/);
+  assert.match(mainSource, /scoreLabel = rating\.votes \? 'User rating' : 'Safety score'/);
+  assert.match(mainSource, /ratingSource = rating\.votes \? 'Live community' : 'PatchTicker'/);
   assert.match(mainSource, /updateDateLabel\(u\)/);
   assert.match(mainSource, /id="dash-coverage-pulse"/);
   assert.match(mainSource, /No demo records shown/);
@@ -172,8 +174,17 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /All live lanes current/);
   assert.match(cssSource, /\.freshness-signal--fresh\s*\{[^}]*var\(--green-primary\)/s);
   assert.match(cssSource, /\.freshness-signal--stale\s*\{[^}]*var\(--red\)/s);
+  assert.match(cssSource, /\.freshness-signal--archive\s*\{[^}]*var\(--purple\)/s);
   assert.match(cssSource, /\.dash-coverage-pulse\s*\{[^}]*border-radius:\s*999px/s);
   assert.match(cssSource, /\.dash-coverage-pulse\.is-degraded\s*\{[^}]*var\(--yellow\)/s);
+});
+
+test('feed distinguishes the latest release from archived platform history', () => {
+  assert.match(mainSource, /function annotateReleasePositions\(updates = \[\]\)/);
+  assert.match(mainSource, /releasePosition: latestByPlatform/);
+  assert.match(mainSource, /Earlier release/);
+  assert.match(mainSource, /Official source archived/);
+  assert.match(cssSource, /\.release-position--previous/);
 });
 
 test('security releases expose bounded CVE context without flooding the detail page', () => {

@@ -38,20 +38,41 @@ function makeUpdateId(platform, version) {
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
-async function getLatestKnownVersion(platform) {
+const SOURCE_REGRESSION_TOLERANCE_MS = 36 * 60 * 60 * 1000;
+
+async function getLatestKnownRelease(platform) {
   if (!db.isAvailable()) return null;
   const row = await db.query(
-    `SELECT version FROM software_updates
+    `SELECT id, version, released_at FROM software_updates
      WHERE platform = $1
      ORDER BY released_at DESC, created_at DESC
      LIMIT 1`,
     [platform]
   );
-  return row.rows[0]?.version || null;
+  return row.rows[0] || null;
+}
+
+async function getKnownReleaseByVersion(platform, version) {
+  if (!db.isAvailable()) return null;
+  const row = await db.query(
+    `SELECT id, version, released_at FROM software_updates
+     WHERE platform = $1 AND version = $2
+     LIMIT 1`,
+    [platform, version]
+  );
+  return row.rows[0] || null;
+}
+
+function isSourceVersionRegression(latest, detected) {
+  if (!latest?.version || latest.version === detected?.version) return false;
+  const latestMs = Date.parse(latest.released_at || latest.releasedAt || '');
+  const detectedMs = Date.parse(detected?.releasedAt || '');
+  if (!Number.isFinite(latestMs) || !Number.isFinite(detectedMs)) return false;
+  return detectedMs + SOURCE_REGRESSION_TOLERANCE_MS < latestMs;
 }
 
 async function insertUpdate(update) {
-  await db.query(
+  const result = await db.query(
     `INSERT INTO software_updates
        (id, platform, name, version, released_at, status, score,
         impact_score, bug_count, affects, verdict, reasoning,
@@ -59,7 +80,8 @@ async function insertUpdate(update) {
         security_criticality, subreddits,
         ai_generated, ai_model, ai_generated_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
-     ON CONFLICT (id) DO NOTHING`,
+     ON CONFLICT (id) DO NOTHING
+     RETURNING id`,
     [
       update.id,
       update.platform,
@@ -84,6 +106,7 @@ async function insertUpdate(update) {
       update.aiGeneratedAt   || null,
     ]
   );
+  return Boolean(result.rows?.[0]?.id);
 }
 
 async function updateWithAiResults(id, ai) {
@@ -343,11 +366,50 @@ async function processPlatform(platform) {
     return { platform, status: 'db_unavailable', version: detected.version, latencyMs: detection.latencyMs };
   }
 
-  const knownVersion = await getLatestKnownVersion(platform);
+  const latestKnown = await getLatestKnownRelease(platform);
+  const knownVersion = latestKnown?.version || null;
   if (knownVersion === detected.version) {
     await updateExistingMetadata(platform, detected.version, detected);
     logger.info('[pipeline] Version unchanged — metadata refreshed', { ...logCtx, knownVersion });
     return { platform, status: 'unchanged', version: detected.version, latencyMs: detection.latencyMs, attempts: detection.attempts };
+  }
+
+  // Vendor APIs and CDNs can briefly return a cached older artifact. Refresh
+  // known history without alerting, and reject unknown releases whose source
+  // date materially predates the current release. This keeps a source wobble
+  // from becoming a false "new update" notification.
+  const historicalRelease = await getKnownReleaseByVersion(platform, detected.version);
+  if (historicalRelease) {
+    await updateExistingMetadata(platform, detected.version, detected);
+    logger.warn('[pipeline] Historical source version refreshed without alerting', {
+      ...logCtx,
+      currentVersion: knownVersion,
+    });
+    return {
+      platform,
+      status: 'historical_refresh',
+      version: detected.version,
+      currentVersion: knownVersion,
+      latencyMs: detection.latencyMs,
+      attempts: detection.attempts,
+    };
+  }
+
+  if (isSourceVersionRegression(latestKnown, detected)) {
+    logger.warn('[pipeline] Rejected regressed source version', {
+      ...logCtx,
+      currentVersion: knownVersion,
+      currentReleasedAt: latestKnown?.released_at,
+      detectedReleasedAt: detected.releasedAt,
+    });
+    return {
+      platform,
+      status: 'source_regression',
+      version: detected.version,
+      currentVersion: knownVersion,
+      latencyMs: detection.latencyMs,
+      attempts: detection.attempts,
+    };
   }
 
   logger.info('[pipeline] New version detected', { ...logCtx, knownVersion, newVersion: detected.version });
@@ -379,7 +441,18 @@ async function processPlatform(platform) {
   };
 
   // 4. Insert into DB (ON CONFLICT DO NOTHING = idempotent)
-  await insertUpdate(initialUpdate);
+  const inserted = await insertUpdate(initialUpdate);
+  if (!inserted) {
+    logger.warn('[pipeline] Duplicate release ignored without alerting', logCtx);
+    return {
+      platform,
+      status: 'duplicate',
+      version: detected.version,
+      id,
+      latencyMs: detection.latencyMs,
+      attempts: detection.attempts,
+    };
+  }
   logger.info('[pipeline] Inserted new update', logCtx);
 
   // 5. Run AI analysis if configured
@@ -447,6 +520,9 @@ async function runAll() {
     total:      platforms.length,
     newUpdates: 0,
     unchanged:  0,
+    historicalRefreshes: 0,
+    regressed:  0,
+    duplicates: 0,
     unavailable: 0,
     failed:     0,
     results:    [],
@@ -458,6 +534,9 @@ async function runAll() {
       summary.results.push(r.value);
       if (r.value.status === 'new_update') summary.newUpdates++;
       else if (r.value.status === 'unchanged') summary.unchanged++;
+      else if (r.value.status === 'historical_refresh') summary.historicalRefreshes++;
+      else if (r.value.status === 'source_regression') summary.regressed++;
+      else if (r.value.status === 'duplicate') summary.duplicates++;
       else if (r.value.status === 'source_unavailable') summary.unavailable++;
     } else {
       summary.failed++;
@@ -470,6 +549,9 @@ async function runAll() {
   logger.info('[pipeline] Run complete', {
     newUpdates: summary.newUpdates,
     unchanged:  summary.unchanged,
+    historicalRefreshes: summary.historicalRefreshes,
+    regressed:  summary.regressed,
+    duplicates: summary.duplicates,
     unavailable: summary.unavailable,
     failed:     summary.failed,
   });
@@ -480,5 +562,11 @@ async function runAll() {
 module.exports = {
   processPlatform,
   runAll,
-  __test: { platformContext, updateExistingMetadata, deriveInitialScore, deriveInitialStatus },
+  __test: {
+    platformContext,
+    updateExistingMetadata,
+    deriveInitialScore,
+    deriveInitialStatus,
+    isSourceVersionRegression,
+  },
 };

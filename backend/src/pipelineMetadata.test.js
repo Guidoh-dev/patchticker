@@ -5,12 +5,17 @@ jest.mock('./config/db', () => ({
   query: jest.fn(),
 }));
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
-jest.mock('./services/scraperService', () => ({ DETECTORS: {} }));
+jest.mock('./services/scraperService', () => ({
+  DETECTORS: {},
+  detectPlatformDetailed: jest.fn(),
+}));
 jest.mock('./services/aiAnalysisService', () => ({ isEnabled: jest.fn(() => false), analyseUpdate: jest.fn() }));
 jest.mock('./services/watchlistService', () => ({ notifySubscribers: jest.fn() }));
 
 const db = require('./config/db');
-const { __test } = require('./services/pipelineService');
+const scraperService = require('./services/scraperService');
+const watchlistService = require('./services/watchlistService');
+const { processPlatform, __test } = require('./services/pipelineService');
 
 describe('pipeline source metadata preservation', () => {
   beforeEach(() => jest.clearAllMocks());
@@ -91,5 +96,66 @@ describe('pipeline source metadata preservation', () => {
     const score = __test.deriveInitialScore('Intel', detected, context);
     expect(score).toBe(5);
     expect(__test.deriveInitialStatus(score)).toBe('caution');
+  });
+
+  test('materially older unknown source versions are rejected as regressions', () => {
+    expect(__test.isSourceVersionRegression(
+      { version: '2.0.0', released_at: '2026-08-12' },
+      { version: '1.9.0', releasedAt: '2026-08-08' },
+    )).toBe(true);
+    expect(__test.isSourceVersionRegression(
+      { version: '2.0.0', released_at: '2026-08-12' },
+      { version: '2.0.1', releasedAt: '2026-08-11' },
+    )).toBe(false);
+  });
+
+  test('a cached historical version refreshes metadata without sending a new-update alert', async () => {
+    scraperService.detectPlatformDetailed.mockResolvedValue({
+      ok: true,
+      attempts: 1,
+      latencyMs: 25,
+      result: {
+        platform: 'NVIDIA',
+        name: 'NVIDIA Driver 609.99',
+        version: '609.99',
+        releasedAt: '2026-07-20',
+        changelog: ['Historical source metadata refreshed.'],
+        evidence: [{ source: 'NVIDIA', url: 'https://www.nvidia.com/drivers/609-99' }],
+      },
+    });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 'nvidia-610-88', version: '610.88', released_at: '2026-07-28' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'nvidia-609-99', version: '609.99', released_at: '2026-07-20' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await processPlatform('NVIDIA');
+
+    expect(result).toMatchObject({ status: 'historical_refresh', version: '609.99', currentVersion: '610.88' });
+    expect(watchlistService.notifySubscribers).not.toHaveBeenCalled();
+  });
+
+  test('an unknown regressed source version cannot insert or notify', async () => {
+    scraperService.detectPlatformDetailed.mockResolvedValue({
+      ok: true,
+      attempts: 1,
+      latencyMs: 25,
+      result: {
+        platform: 'NVIDIA',
+        name: 'NVIDIA Driver 608.10',
+        version: '608.10',
+        releasedAt: '2026-07-01',
+        changelog: ['Unexpected older source result.'],
+        evidence: [{ source: 'NVIDIA', url: 'https://www.nvidia.com/drivers/608-10' }],
+      },
+    });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 'nvidia-610-88', version: '610.88', released_at: '2026-07-28' }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await processPlatform('NVIDIA');
+
+    expect(result).toMatchObject({ status: 'source_regression', version: '608.10', currentVersion: '610.88' });
+    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(watchlistService.notifySubscribers).not.toHaveBeenCalled();
   });
 });

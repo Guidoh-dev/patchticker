@@ -50,8 +50,14 @@ async function runTargetedScan(label, platforms) {
     const unavailable = results.filter(
       r => r.status === 'fulfilled' && r.value.status === 'source_unavailable'
     ).length;
+    const regressed = results.filter(
+      r => r.status === 'fulfilled' && r.value.status === 'source_regression'
+    ).length;
+    const historicalRefreshes = results.filter(
+      r => r.status === 'fulfilled' && r.value.status === 'historical_refresh'
+    ).length;
     const failed = results.filter(r => r.status === 'rejected').length;
-    logger.info(`[cron] ${label} scan complete`, { newUpdates, unavailable, failed });
+    logger.info(`[cron] ${label} scan complete`, { newUpdates, historicalRefreshes, regressed, unavailable, failed });
   } catch (err) {
     logger.error(`[cron] ${label} scan error`, { error: err.message });
   } finally {

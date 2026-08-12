@@ -345,6 +345,17 @@ function parseNvidiaReleaseNotes(encodedNotes, encodedOtherNotes = '', pdfText =
   };
 }
 
+function nvidiaImpactMetadata(driver, parsed) {
+  return {
+    gameSupportCount: parsed.gameSupportCount,
+    gameFixCount: parsed.gameFixCount,
+    generalFixCount: parsed.generalFixCount,
+    knownIssueCount: parsed.knownIssueCount,
+    whql: true,
+    packageSize: cleanText(driver?.DownloadURLFileSize, 48) || undefined,
+  };
+}
+
 function parseIntelReleaseNotes(pdfText) {
   const source = String(pdfText || '');
   const versionLine = source.match(/Driver Version:\s*([\d.]+)\s*(Non-WHQL|WHQL)?/i);
@@ -985,13 +996,7 @@ async function detectNvidia() {
       }
     }
     const parsed = parseNvidiaReleaseNotes(driver.ReleaseNotes, driver.OtherNotes, releasePdfText);
-    const impactMeta = {
-      gameSupportCount: parsed.gameSupportCount,
-      gameFixCount: parsed.gameFixCount,
-      generalFixCount: parsed.generalFixCount,
-      knownIssueCount: parsed.knownIssueCount,
-      whql: true,
-    };
+    const impactMeta = nvidiaImpactMetadata(driver, parsed);
 
     return {
       platform:   'NVIDIA',
@@ -1645,5 +1650,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
 };
