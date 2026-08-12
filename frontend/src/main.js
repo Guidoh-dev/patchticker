@@ -2032,6 +2032,12 @@ async function renderDashboard({ focusId = null } = {}) {
                 <span id="coverage-health">Health check pending</span>
                 <span id="coverage-last">Last sweep pending</span>
               </div>
+              <div class="dash-source-heartbeats" aria-label="Platform source heartbeat">
+                <span>Source heartbeat</span>
+                <div class="dash-source-heartbeat-track" id="coverage-heartbeats">
+                  <em>Checking platform lanes…</em>
+                </div>
+              </div>
             </div>
             <div class="dash-command-stats" id="dash-hero-stats" aria-label="Current update status totals">
               <div class="dash-command-stat"><span class="dash-stat-val" id="stat-stable">—</span><small>Stable</small></div>
@@ -2250,6 +2256,7 @@ async function renderDashboard({ focusId = null } = {}) {
     if (topSearchEl) topSearchEl.value = '';
     document.getElementById('dash-search-clear')?.classList.add('hidden');
     document.querySelectorAll('.setup-lens').forEach(b => b.classList.toggle('active', b.dataset.lens === ''));
+    document.querySelectorAll('[data-source-platform]').forEach(b => b.classList.remove('active'));
 
     applyFilters();
   }
@@ -2258,6 +2265,9 @@ async function renderDashboard({ focusId = null } = {}) {
     _filterState.platform = platform || '';
     document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(b =>
       b.classList.toggle('active', b.dataset.platform === _filterState.platform)
+    );
+    document.querySelectorAll('[data-source-platform]').forEach(b =>
+      b.classList.toggle('active', b.dataset.sourcePlatform === _filterState.platform)
     );
     applyFilters();
   }
@@ -2369,6 +2379,37 @@ async function renderDashboard({ focusId = null } = {}) {
       </div>`;
   }
 
+  function renderSourceHeartbeats(updates = []) {
+    const track = document.getElementById('coverage-heartbeats');
+    if (!track) return;
+    const latestByPlatform = new Map();
+    for (const update of updates) {
+      const checkedAt = update.lastCheckedAt || update.updatedAt || null;
+      const timestamp = Date.parse(checkedAt);
+      if (!Number.isFinite(timestamp)) continue;
+      const current = latestByPlatform.get(update.platform);
+      if (!current || timestamp > current.timestamp) latestByPlatform.set(update.platform, { update, checkedAt, timestamp });
+    }
+
+    track.innerHTML = TRACKED_PLATFORMS.map(platform => {
+      const latest = latestByPlatform.get(platform);
+      const ageHours = latest ? Math.max(0, (Date.now() - latest.timestamp) / 3600000) : Infinity;
+      const tone = ageHours <= 24 ? 'fresh' : ageHours <= 96 ? 'aging' : 'stale';
+      const detail = latest ? `checked ${timeAgo(latest.checkedAt)}` : 'check unavailable';
+      return `<button class="dash-source-heartbeat dash-source-heartbeat--${tone} platform--${H(platformSuffix(platform))}" type="button" data-source-platform="${H(platform)}" aria-label="Filter to ${H(platformLabel(platform))}; ${H(detail)}" title="${H(platformLabel(platform))} · ${H(detail)}">
+        ${renderPlatformLogo(platform, 'dash-source-heartbeat-logo')}
+        <i aria-hidden="true"></i>
+      </button>`;
+    }).join('');
+
+    track.querySelectorAll('[data-source-platform]').forEach(button => {
+      button.addEventListener('click', () => {
+        setPlatformFilter(button.dataset.sourcePlatform || '');
+        document.getElementById('section-latest')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  }
+
   // ── Initial data load ─────────────────────────────────────────────────────
   async function loadUpdates() {
     try {
@@ -2376,6 +2417,7 @@ async function renderDashboard({ focusId = null } = {}) {
         .filter(update => isUpdateWithinDisplayWindow(update));
       updateReturnBrief(_allUpdates);
       renderTapeAndLatest(_allUpdates);
+      renderSourceHeartbeats(_allUpdates);
       renderVerifiedFeedFallback();
       applyFilters();
     } catch (err) {

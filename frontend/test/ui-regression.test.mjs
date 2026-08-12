@@ -182,6 +182,18 @@ test('hardware driver cards expose compact game support, fix, and issue counts',
   assert.match(cssSource, /\.driver-impact-signal\s*\{[^}]*display:\s*inline-flex;[^}]*border-radius:\s*999px/s);
 });
 
+test('source heartbeat makes per-platform check recency visible and filterable', () => {
+  assert.match(mainSource, /id="coverage-heartbeats"/);
+  assert.match(mainSource, /function renderSourceHeartbeats\(updates = \[\]\)/);
+  assert.match(mainSource, /update\.lastCheckedAt \|\| update\.updatedAt/);
+  assert.match(mainSource, /data-source-platform="\$\{H\(platform\)\}"/);
+  assert.match(mainSource, /setPlatformFilter\(button\.dataset\.sourcePlatform \|\| ''\)/);
+  assert.match(mainSource, /renderSourceHeartbeats\(_allUpdates\)/);
+  assert.match(cssSource, /\.dash-source-heartbeat-track\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(cssSource, /\.dash-source-heartbeat\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px/s);
+  assert.match(cssSource, /\.dash-source-heartbeat--fresh > i\s*\{[^}]*var\(--green-primary\)/s);
+});
+
 test('offline update feeds remain honest instead of reviving demo records', () => {
   assert.match(mainSource, /function renderOfflineRails[\s\S]*?_allUpdates = \[\][\s\S]*?renderTapeAndLatest\(\[\], message\)/);
   assert.match(mainSource, /Verified patch data will return when the connection recovers/);

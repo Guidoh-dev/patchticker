@@ -326,6 +326,56 @@ describe('scraper accuracy guards', () => {
     expect(parsed.knownIssues).toEqual(['Prefer Maximum Performance mode may not be applied correctly [6007998]']);
   });
 
+  test('AMD driver page discovery selects the newest official Adrenalin notes', () => {
+    const parsed = __test.parseAmdDriverPage(`
+      <article><a href="/en/resources/support-articles/release-notes/RN-RAD-WIN-26-6-4.html">Release Notes</a></article>
+      <article>
+        <a href="/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html">Release Notes</a>
+        <a href="https://drivers.amd.com/drivers/installer/26.10/whql/amd-software-adrenalin-edition-26.7.1.exe">Download</a>
+      </article>
+    `, 'https://www.amd.com/en/support/downloads/drivers.html/graphics/radeon-rx-9000.html');
+
+    expect(parsed).toEqual({
+      url: 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html',
+      version: '26.7.1',
+      whql: true,
+    });
+  });
+
+  test('AMD release parser separates game support, fixes, and known issues', () => {
+    const parsed = __test.parseAmdReleaseNotes(`
+      <h1>AMD Software: Adrenalin Edition 26.7.1 Driver Release Notes</h1>
+      <p>Last Updated: July 28th, 2026.</p>
+      <h2>Highlights</h2>
+      <ul>
+        <li>New Product Support<ul><li>AMD Radeon RX 9050</li></ul></li>
+        <li>New Game Support<ul><li>Gears of War: E-Day Open Beta Early Access</li><li>Out of Control Evolution</li></ul></li>
+        <li>Fixed Issues<ul><li>Directional indicators may fail to render in Fortnite.</li><li>Blender may crash on RX 7000 series products.</li></ul></li>
+      </ul>
+      <h2>Known Issues</h2>
+      <ul><li>Battlefield 6 may experience a driver timeout.</li><li>Smart Access Memory may become disabled after installation.</li></ul>
+      <h2>Additional Information</h2>
+    `, 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html', { whql: true });
+
+    expect(parsed).toMatchObject({
+      version: '26.7.1',
+      releasedAt: '2026-07-28',
+      gameSupportCount: 2,
+      gameFixCount: 2,
+      productSupportCount: 1,
+      knownIssueCount: 2,
+      whql: true,
+    });
+    expect(parsed.changelog).toEqual(expect.arrayContaining([
+      expect.stringContaining('Gears of War: E-Day Open Beta Early Access'),
+      'Fixed — Directional indicators may fail to render in Fortnite.',
+    ]));
+    expect(parsed.knownIssues).toEqual([
+      'Battlefield 6 may experience a driver timeout.',
+      'Smart Access Memory may become disabled after installation.',
+    ]);
+  });
+
   test('Intel parser deduplicates model-specific fixes and preserves Non-WHQL risk context', () => {
     const parsed = __test.parseIntelReleaseNotes(`
       Date: July 20, 2026

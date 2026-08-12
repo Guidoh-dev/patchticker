@@ -685,15 +685,110 @@ function parseXboxContentApi(payload) {
 }
 
 function amdNestedBullets($, label, max = 5) {
+  const pattern = label instanceof RegExp ? label : new RegExp(label, 'i');
   const bullets = [];
   $('li').each((_, li) => {
-    const own = cleanText($(li).clone().children('ul,ol').remove().end().text(), 120);
-    if (!new RegExp(label, 'i').test(own)) return;
+    const own = cleanText($(li).clone().children('ul,ol').remove().end().text(), 160);
+    pattern.lastIndex = 0;
+    if (!pattern.test(own)) return;
     $(li).children('ul,ol').first().children('li').each((__, child) => {
-      bullets.push(cleanText($(child).text(), 260));
+      bullets.push(cleanDriverText($(child).text(), 520));
     });
   });
-  return unique(bullets).slice(0, max);
+  return unique(bullets, 520).slice(0, max);
+}
+
+function amdHeadingBullets($, label, max = 12) {
+  const pattern = label instanceof RegExp ? label : new RegExp(label, 'i');
+  const bullets = [];
+  const heading = $('h2,h3,h4').filter((_, element) => {
+    pattern.lastIndex = 0;
+    return pattern.test(cleanText($(element).text(), 160));
+  }).first();
+  if (!heading.length) return bullets;
+
+  let node = heading.next();
+  let guard = 0;
+  while (node.length && guard++ < 8 && !/^h[234]$/i.test(node[0]?.tagName || '')) {
+    const items = node.is('ul,ol') ? node.children('li') : node.find('li');
+    items.each((_, item) => bullets.push(cleanDriverText($(item).text(), 520)));
+    node = node.next();
+  }
+  return unique(bullets, 520).slice(0, max);
+}
+
+function compareVersionParts(left, right) {
+  const a = String(left || '').split('.').map(Number);
+  const b = String(right || '').split('.').map(Number);
+  for (let index = 0; index < Math.max(a.length, b.length); index++) {
+    const delta = (a[index] || 0) - (b[index] || 0);
+    if (delta) return delta;
+  }
+  return 0;
+}
+
+function parseAmdDriverPage(html, baseUrl) {
+  const $ = cheerio.load(html);
+  const candidates = $('a[href*="/release-notes/RN-RAD-WIN-"]')
+    .map((_, link) => {
+      const url = absoluteUrl($(link).attr('href'), baseUrl);
+      const version = url.match(/RN-RAD-WIN-(\d+(?:-\d+)+)\.html/i)?.[1]?.replace(/-/g, '.') || null;
+      return version && /^https:\/\/www\.amd\.com\/en\/resources\/support-articles\/release-notes\/RN-RAD-WIN-/i.test(url)
+        ? {
+            url,
+            version,
+            whql: /(?:\/whql\/|\bWHQL Recommended\b|whql-amd-software)/i.test($(link).closest('article').html() || ''),
+          }
+        : null;
+    })
+    .get()
+    .filter(Boolean)
+    .sort((a, b) => compareVersionParts(b.version, a.version));
+  const latest = candidates[0];
+  if (!latest) return null;
+  return latest;
+}
+
+function parseAmdReleaseNotes(html, sourceUrl, options = {}) {
+  const $ = cheerio.load(html);
+  const title = cleanDriverText($('h1').first().text() || $('title').text(), 160);
+  const body = cleanText($('body').text(), 12000);
+  const version = title.match(/Adrenalin Edition\s+(\d+(?:\.\d+)+)/i)?.[1]
+    || sourceUrl?.match(/RN-RAD-WIN-(\d+(?:-\d+)+)\.html/i)?.[1]?.replace(/-/g, '.')
+    || null;
+  const dateText = cleanText($('p').filter((_, element) => /Last Updated/i.test($(element).text())).first().text(), 160)
+    .match(/([A-Z][a-z]+\s+\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/i)
+    ?.slice(1, 3).join(', ')
+    || body.match(/(?:Last Updated|Date|Released)[:\s]+([A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]?.replace(/(\d)(st|nd|rd|th)/i, '$1');
+  const gameTitles = amdNestedBullets($, /^New Game Support$/i, 10);
+  const fsrTitles = amdNestedBullets($, /^New Game Support for AMD FidelityFX/i, 12);
+  const productSupport = amdNestedBullets($, /^New Product Support$/i, 8);
+  const fixedIssues = amdNestedBullets($, /^Fixed Issues?(?: and Improvements)?$/i, 12);
+  const knownIssues = unique([
+    ...amdHeadingBullets($, /^Known Issues$/i, 12),
+    ...amdNestedBullets($, /^Known Issues$/i, 12),
+  ], 520).slice(0, 12);
+  const supportedGames = unique([...gameTitles, ...fsrTitles], 140);
+  const changelog = unique([
+    gameTitles.length ? `Game support — ${gameTitles.join('; ')}.` : '',
+    fsrTitles.length ? `FSR support — ${fsrTitles.join('; ')}.` : '',
+    productSupport.length ? `Product support — ${productSupport.join('; ')}.` : '',
+    ...fixedIssues.map(item => `Fixed — ${item}`),
+  ], 520);
+
+  if (!version || !toIsoDate(dateText)) return null;
+  return {
+    title: title || `AMD Software: Adrenalin Edition ${version}`,
+    version,
+    releasedAt: toIsoDate(dateText),
+    changelog,
+    knownIssues,
+    gameSupportCount: supportedGames.length,
+    gameFixCount: fixedIssues.length,
+    knownIssueCount: knownIssues.length,
+    productSupportCount: productSupport.length,
+    whql: Boolean(options.whql),
+  };
 }
 
 function parseSwitchReleasePage(html) {
@@ -925,48 +1020,64 @@ async function detectNvidia() {
 }
 
 /**
- * AMD — AMD driver JSON feed
+ * AMD — official Radeon product download page + Adrenalin release notes
  */
 async function detectAmd() {
-  const releaseUrls = [
-    'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-6-4.html',
-    'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-6-1.html',
-    'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-25-3-1.html',
-  ];
+  const driverPageUrl = 'https://www.amd.com/en/support/downloads/drivers.html/graphics/radeon-rx/radeon-rx-9000-series/amd-radeon-rx-9070-xt.html';
+  let discovered = null;
   try {
-    for (const url of releaseUrls) {
-      const html = await fetchHtml(url);
-      const $ = cheerio.load(html);
-      const title = cleanText($('h1').first().text() || $('title').text(), 120);
-      const body = cleanText($('body').text(), 5000);
-      const version = title.match(/Adrenalin Edition\s+([\d.]+)/i)?.[1] || firstVersion(body);
-      if (!version) continue;
-      const dateText = cleanText($('p').filter((_, el) => /Last Updated/i.test($(el).text())).first().text(), 120)
-        .match(/([A-Z][a-z]+\s+\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})/i)
-        ?.slice(1, 3).join(', ')
-        || body.match(/(?:Last Updated|Date|Released)[:\s]+([A-Z][a-z]+\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]?.replace(/(\d)(st|nd|rd|th)/i, '$1');
-      const fixed = amdNestedBullets($, 'Fixed Issues?', 5);
-      const known = amdNestedBullets($, 'Known Issues?', 5);
+    discovered = parseAmdDriverPage(await fetchHtml(driverPageUrl), driverPageUrl);
+  } catch (err) {
+    logger.warn('[scraper] AMD latest-release discovery failed', { error: err.message });
+  }
+
+  const fallbackUrls = [
+    'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html',
+    'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-6-4.html',
+  ];
+  const releaseUrls = [...new Set([discovered?.url, ...fallbackUrls].filter(Boolean))];
+
+  for (const url of releaseUrls) {
+    try {
+      const parsed = parseAmdReleaseNotes(await fetchHtml(url), url, {
+        whql: discovered?.url === url && discovered.whql,
+      });
+      if (!parsed) continue;
+      const impactMeta = {
+        gameSupportCount: parsed.gameSupportCount,
+        gameFixCount: parsed.gameFixCount,
+        knownIssueCount: parsed.knownIssueCount,
+        productSupportCount: parsed.productSupportCount,
+        whql: parsed.whql,
+      };
       return {
         platform: 'AMD',
-        name: title || `AMD Software: Adrenalin Edition ${version}`,
-        version,
-        releasedAt: toIsoDate(dateText),
-        affects: 'AMD Radeon GPUs / Adrenalin driver / Windows gaming performance / game compatibility',
-        changelog: fixed.length ? fixed : [`AMD Software: Adrenalin Edition ${version} release notes detected from AMD.`],
-        knownIssues: known,
-        riskFactors: known.slice(0, 3).map(text => ({ level: 'medium', text })),
-        verdict: 'Check game-specific fixes and known issues before updating, especially if your current Radeon driver is stable.',
-        reasoning: 'AMD Adrenalin releases can improve game support and fix crashes, but driver updates may also introduce regressions for specific GPU families or titles. PatchTicker tracks the official AMD release notes and highlights fixed and known issues.',
-        evidence: sourceEvidence('AMD Release Notes', url, `${title}. ${fixed[0] || known[0] || 'Official AMD driver release notes.'}`, { dateBasis: 'released', releaseType: 'official-release' }),
+        name: parsed.title,
+        version: parsed.version,
+        releasedAt: parsed.releasedAt,
+        affects: 'AMD Radeon RX 5000–9000 series / Radeon mobile GPUs / Adrenalin driver / Windows gaming and creator workloads',
+        changelog: parsed.changelog,
+        knownIssues: parsed.knownIssues,
+        knownIssuesAuthoritative: true,
+        riskFactors: [{
+          level: 'low',
+          text: 'AMD’s package is a reference driver for notebooks, is not intended for Apple Boot Camp, and excludes handheld gaming devices; use the OEM-qualified driver for those systems.',
+        }],
+        verdict: parsed.knownIssueCount
+          ? 'Install if the new game, product, or listed fixes apply to your Radeon setup; otherwise wait if your current driver is stable and review the game-specific known issues first.'
+          : 'Install if the new game, product, or listed fixes apply to your Radeon setup; otherwise stay on your current stable OEM-qualified driver.',
+        reasoning: `AMD’s official ${parsed.whql ? 'WHQL ' : ''}release documents ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} fixed issue${parsed.gameFixCount === 1 ? '' : 's'}, ${parsed.productSupportCount} newly supported product${parsed.productSupportCount === 1 ? '' : 's'}, and ${parsed.knownIssueCount} known issue${parsed.knownIssueCount === 1 ? '' : 's'}.`,
+        evidence: [
+          ...(discovered ? sourceEvidence('AMD Driver Downloads', driverPageUrl, `AMD’s Radeon RX driver page identifies Adrenalin Edition ${parsed.version} as the current ${parsed.whql ? 'WHQL ' : ''}package.`, { dateBasis: 'checked', releaseType: 'official-download-index', ...impactMeta }) : []),
+          ...sourceEvidence('AMD Release Notes', url, `${parsed.title}; ${parsed.gameFixCount} fixed and ${parsed.knownIssueCount} known issues documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }),
+        ],
         sourceUrl: url,
       };
+    } catch (err) {
+      logger.warn('[scraper] AMD release candidate failed', { error: err.message, url });
     }
-    return null;
-  } catch (err) {
-    logger.warn('[scraper] AMD detection failed', { error: err.message });
-    return null;
   }
+  return null;
 }
 
 /**
@@ -1534,5 +1645,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, parseNvidiaReleaseNotes, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
 };
