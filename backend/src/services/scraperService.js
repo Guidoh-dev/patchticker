@@ -30,6 +30,7 @@
 
 const axios   = require('axios');
 const cheerio = require('cheerio');
+const { URL } = require('node:url');
 const logger  = require('../utils/logger');
 const { PLATFORM_KEYS } = require('../config/platformRegistry');
 
@@ -88,6 +89,34 @@ async function fetchTextResponse(url) {
     headers: { 'User-Agent': UA, 'Accept': 'text/plain,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
   });
   return { data: String(res.data || ''), headers: res.headers || {} };
+}
+
+async function fetchOfficialPdfText(url, allowedHosts) {
+  const parsedUrl = new URL(url);
+  if (parsedUrl.protocol !== 'https:' || !allowedHosts.includes(parsedUrl.hostname)) {
+    throw new Error(`Untrusted release-notes PDF host: ${parsedUrl.hostname}`);
+  }
+  const res = await axios.get(parsedUrl.toString(), {
+    timeout: TIMEOUT,
+    responseType: 'arraybuffer',
+    maxContentLength: 8 * 1024 * 1024,
+    maxBodyLength: 8 * 1024 * 1024,
+    headers: { 'User-Agent': UA, 'Accept': 'application/pdf', 'Accept-Language': 'en-US,en;q=0.9' },
+  });
+  const contentType = String(res.headers?.['content-type'] || '').toLowerCase();
+  const data = Buffer.from(res.data || []);
+  if ((!contentType.includes('application/pdf') && !data.subarray(0, 4).equals(Buffer.from('%PDF'))) || data.length > 8 * 1024 * 1024) {
+    throw new Error('Official release-notes response was not a supported PDF');
+  }
+
+  const { PDFParse } = require('pdf-parse');
+  const parser = new PDFParse({ data });
+  try {
+    const result = await parser.getText();
+    return String(result.text || '');
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function fetchXml(url) {
@@ -174,6 +203,175 @@ function sourceEvidence(source, url, text, meta = {}) {
     checkedAt: new Date().toISOString(),
     ...meta,
   }];
+}
+
+function cleanDriverText(value, max = 360) {
+  return cleanText(value, max)
+    .replace(/[®™]/g, '')
+    .replace(/\*/g, '')
+    .replace(/\s+([,.;:])/g, '$1')
+    .trim();
+}
+
+function strongSection($, label) {
+  const heading = $('strong').filter((_, element) => cleanText($(element).text(), 100).toLowerCase().includes(label.toLowerCase())).first();
+  if (!heading.length) return { intro: '', bullets: [] };
+
+  const intro = [];
+  let list = null;
+  let node = heading.get(0)?.next || null;
+  while (node) {
+    if (node.type === 'tag' && node.name === 'strong') break;
+    if (node.type === 'tag' && node.name === 'ul') {
+      list = node;
+      break;
+    }
+    const text = node.type === 'text' ? node.data : $(node).text();
+    if (text) intro.push(text);
+    node = node.next;
+  }
+
+  const bullets = list
+    ? $(list).find('li').map((_, li) => cleanDriverText($(li).text())).get().filter(Boolean)
+    : [];
+  return { intro: cleanDriverText(intro.join(' '), 620), bullets: unique(bullets, 360) };
+}
+
+function pdfSection(text, startPattern, endPattern) {
+  const source = String(text || '');
+  const starts = [...source.matchAll(new RegExp(startPattern.source, `${startPattern.flags.replace('g', '')}g`))];
+  const start = starts.at(-1);
+  if (!start) return '';
+  const tail = source.slice(start.index + start[0].length);
+  const end = tail.search(endPattern);
+  return end >= 0 ? tail.slice(0, end) : tail;
+}
+
+function markedPdfBullets(section) {
+  const entries = [];
+  let heading = '';
+  let current = null;
+  const flush = () => {
+    if (current?.text) entries.push({ heading, text: cleanDriverText(current.text, 520) });
+    current = null;
+  };
+
+  for (const rawLine of String(section || '').replace(/\r/g, '').split('\n')) {
+    const line = rawLine.trim();
+    if (!line || /^--\s*\d+\s+of\s+\d+\s*--$/i.test(line) || /Intel Corporation|Other names and brands/i.test(line)) continue;
+    if (/^We continuously strive to improve/i.test(line)) {
+      flush();
+      continue;
+    }
+    if (!/^[▪>]\s*/.test(line) && /:$/.test(line) && line.length < 130) {
+      flush();
+      heading = cleanDriverText(line.replace(/:$/, ''), 140);
+      continue;
+    }
+    if (/^[▪>]\s*/.test(line)) {
+      flush();
+      current = { text: line.replace(/^[▪>]\s*/, '') };
+      continue;
+    }
+    if (current) current.text += ` ${line}`;
+  }
+  flush();
+  return entries.filter(entry => entry.text);
+}
+
+function compactIntelFamily(heading) {
+  const value = cleanDriverText(heading, 160);
+  if (/Core Ultra Series 3/i.test(value)) return 'Core Ultra Series 3';
+  if (/Core Ultra Series 2/i.test(value)) return 'Core Ultra Series 2';
+  if (/Core Ultra Series 1/i.test(value)) return 'Core Ultra Series 1';
+  if (/Arc B-Series/i.test(value)) return 'Arc B-Series';
+  if (/Arc A-Series/i.test(value)) return 'Arc A-Series';
+  if (/Graphics Software/i.test(value)) return 'Intel Graphics Software';
+  return value;
+}
+
+function dedupeIntelIssues(entries) {
+  const byIssue = new Map();
+  for (const entry of entries) {
+    const text = cleanDriverText(entry.text, 520);
+    const key = text.toLowerCase();
+    if (!key) continue;
+    if (!byIssue.has(key)) byIssue.set(key, { text, families: new Set() });
+    const family = compactIntelFamily(entry.heading);
+    if (family) byIssue.get(key).families.add(family);
+  }
+  return [...byIssue.values()].map(({ text, families }) => {
+    const labels = [...families];
+    const allArcAndUltra = ['Arc A-Series', 'Arc B-Series', 'Core Ultra Series 1', 'Core Ultra Series 2', 'Core Ultra Series 3']
+      .every(label => labels.includes(label));
+    const scope = allArcAndUltra ? 'Arc A/B + Core Ultra Series 1–3' : labels.join(', ');
+    return scope ? `${text} (${scope})` : text;
+  });
+}
+
+function parseNvidiaReleaseNotes(encodedNotes, encodedOtherNotes = '', pdfText = '') {
+  const notesHtml = safeDecode(encodedNotes);
+  const otherHtml = safeDecode(encodedOtherNotes);
+  const $ = cheerio.load(`<div id="nvidia-notes">${notesHtml}</div>`);
+  const gameReady = strongSection($, 'Game Ready for');
+  const gamingFixes = strongSection($, 'Fixed Gaming Bugs').bullets;
+  const generalFixes = strongSection($, 'Fixed General Bugs').bullets;
+  const includedGames = gameReady.intro.match(/including\s+(.+?)(?:\.|$)/i)?.[1] || '';
+  const gameTitles = unique(includedGames
+    .replace(/,\s+and\s+/i, ', ')
+    .split(/\s*,\s*/)
+    .map(title => cleanDriverText(title, 100)), 100);
+  const other$ = cheerio.load(otherHtml);
+  const releaseNotesUrl = other$('a[href$=".pdf"]').filter((_, link) => /release notes/i.test(other$(link).text())).first().attr('href')
+    || otherHtml.match(/https:\/\/[^"'\s]+release-notes\.pdf/i)?.[0]
+    || null;
+  const openSection = pdfSection(pdfText, /3\.2\s+Open Issues in Version[^\n]*/i, /3\.3\s+Issues Not Caused/i);
+  const knownIssues = unique(markedPdfBullets(openSection).map(entry => entry.text), 520);
+  const changelog = unique([
+    gameTitles.length ? `Game support — ${gameTitles.join('; ')}.` : gameReady.intro,
+    ...gamingFixes.map(item => `Game fix — ${item}`),
+    ...generalFixes.map(item => `General fix — ${item}`),
+  ], 520);
+
+  return {
+    changelog,
+    knownIssues,
+    releaseNotesUrl,
+    gameTitles,
+    gameSupportCount: gameTitles.length,
+    gameFixCount: gamingFixes.length,
+    generalFixCount: generalFixes.length,
+    knownIssueCount: knownIssues.length,
+  };
+}
+
+function parseIntelReleaseNotes(pdfText) {
+  const source = String(pdfText || '');
+  const versionLine = source.match(/Driver Version:\s*([\d.]+)\s*(Non-WHQL|WHQL)?/i);
+  const highlights = pdfSection(source, /^\s*Highlights:\s*$/im, /^\s*Fixed Issues:\s*$/im);
+  const fixed = pdfSection(source, /^\s*Fixed Issues:\s*$/im, /^\s*Known Issues:\s*$/im);
+  const known = pdfSection(source, /^\s*Known Issues:\s*$/im, /^\s*Intel[^\n]*Graphics Software Known Issues:\s*$/im);
+  const softwareKnown = pdfSection(source, /^\s*Intel[^\n]*Graphics Software Known Issues:\s*$/im, /^\s*Intel[^\n]*Graphics Software Performance Tuning/im);
+  const gameTitles = unique(markedPdfBullets(highlights).map(entry => entry.text), 140);
+  const fixedIssues = dedupeIntelIssues(markedPdfBullets(fixed));
+  const gameKnownIssues = dedupeIntelIssues(markedPdfBullets(known));
+  const softwareKnownIssues = dedupeIntelIssues(markedPdfBullets(softwareKnown));
+  const knownIssueCount = gameKnownIssues.length + softwareKnownIssues.length;
+
+  return {
+    version: versionLine?.[1] || null,
+    whql: versionLine?.[2]?.toLowerCase() === 'whql',
+    releasedAt: toIsoDate(source.match(/Date:\s*([^\n]+)/i)?.[1]),
+    gameTitles,
+    changelog: unique([
+      gameTitles.length ? `Game support — ${gameTitles.join('; ')}.` : '',
+      ...fixedIssues.map(item => `Fixed — ${item}`),
+    ], 520),
+    knownIssues: [...gameKnownIssues, ...softwareKnownIssues].slice(0, 14),
+    gameSupportCount: gameTitles.length,
+    gameFixCount: fixedIssues.length,
+    knownIssueCount,
+  };
 }
 
 function absoluteUrl(url, base) {
@@ -682,17 +880,42 @@ async function detectNvidia() {
     const driver = data?.IDS?.[0]?.downloadInfo;
     if (!driver) return null;
     const sourceUrl = driver.DetailsURL || absoluteUrl(driver.DownloadURL || '', 'https://www.nvidia.com/en-us/geforce/drivers/');
-    const decodedNotes = cleanText(safeDecode(driver.ReleaseNotes), 1200);
-    const usefulStart = decodedNotes.search(/Game Ready for|Fixed Gaming Bugs|Release Highlights/i);
-    const releaseNotes = cleanText(usefulStart >= 0 ? decodedNotes.slice(usefulStart) : decodedNotes, 520);
+    const initial = parseNvidiaReleaseNotes(driver.ReleaseNotes, driver.OtherNotes);
+    let releasePdfText = '';
+    if (initial.releaseNotesUrl) {
+      try {
+        releasePdfText = await fetchOfficialPdfText(initial.releaseNotesUrl, ['us.download.nvidia.com']);
+      } catch (pdfErr) {
+        logger.warn('[scraper] NVIDIA release-notes PDF parse failed', { error: pdfErr.message, url: initial.releaseNotesUrl });
+      }
+    }
+    const parsed = parseNvidiaReleaseNotes(driver.ReleaseNotes, driver.OtherNotes, releasePdfText);
+    const impactMeta = {
+      gameSupportCount: parsed.gameSupportCount,
+      gameFixCount: parsed.gameFixCount,
+      generalFixCount: parsed.generalFixCount,
+      knownIssueCount: parsed.knownIssueCount,
+      whql: true,
+    };
 
     return {
       platform:   'NVIDIA',
       name:       `NVIDIA Game Ready Driver ${driver.Version}`,
       version:    driver.Version,
       releasedAt: toIsoDate(driver.ReleaseDateTime),
-      changelog:  releaseNotes ? [releaseNotes] : [],
-      evidence:   sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}`, { dateBasis: 'released', releaseType: 'official-release' }),
+      affects:    'NVIDIA GeForce RTX GPUs / Game Ready driver / DLSS / G-SYNC / NVIDIA App overlays / notebook OEM graphics stacks',
+      changelog:  parsed.changelog,
+      knownIssues: parsed.knownIssues,
+      knownIssuesAuthoritative: Boolean(releasePdfText),
+      riskFactors: [{ level: 'low', text: 'NVIDIA recommends notebook owners check their manufacturer’s certified driver before replacing an OEM-tuned graphics package.' }],
+      verdict: parsed.knownIssueCount
+        ? 'Install if the listed game support or fixes apply; otherwise wait if your current driver is stable, especially on notebooks or systems using Prefer Maximum Performance.'
+        : 'Install if the listed game support or fixes apply; otherwise wait if your current driver is stable.',
+      reasoning: `NVIDIA’s official notes document ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} gaming fix${parsed.gameFixCount === 1 ? '' : 'es'}, and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} for this WHQL release.`,
+      evidence: [
+        ...sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}; ${parsed.gameSupportCount} supported games and ${parsed.gameFixCount} gaming fixes documented.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta }),
+        ...(parsed.releaseNotesUrl ? sourceEvidence('NVIDIA Release Notes', parsed.releaseNotesUrl, `Official WHQL release-notes PDF for driver ${driver.Version}; ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }) : []),
+      ],
       sourceUrl,
     };
   } catch (err) {
@@ -1130,18 +1353,52 @@ async function detectIntel() {
     const date = metaContent($, 'lastModifieddate')
       || body.match(/Date\s+([A-Z][a-z]+\s+\d{1,2},\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1];
     const intro = description || body.match(/Introduction\s+(.{40,420}?)(?:Available Downloads|Detailed Description|$)/i)?.[1];
+    const releaseNotesUrl = $('a[href]').filter((_, link) => /release notes/i.test($(link).text()) && /\.pdf(?:$|\?)/i.test($(link).attr('href') || '')).first().attr('href');
+    const officialReleaseNotesUrl = releaseNotesUrl ? absoluteUrl(releaseNotesUrl, url) : null;
+    let releasePdfText = '';
+    if (officialReleaseNotesUrl) {
+      try {
+        releasePdfText = await fetchOfficialPdfText(officialReleaseNotesUrl, ['downloadmirror.intel.com']);
+      } catch (pdfErr) {
+        logger.warn('[scraper] Intel release-notes PDF parse failed', { error: pdfErr.message, url: officialReleaseNotesUrl });
+      }
+    }
+    const parsed = parseIntelReleaseNotes(releasePdfText);
+    const pageHighlights = sectionBullets($, ['Highlights'], 5).map(item => cleanDriverText(item));
+    const changelog = parsed.changelog.length
+      ? parsed.changelog
+      : unique([...pageHighlights.map(item => `Game support — ${item}`), cleanText(intro, 260)], 520);
+    const parsedVersion = parsed.version || version;
+    const isWhql = releasePdfText ? parsed.whql : !/Non-WHQL/i.test(body);
+    const impactMeta = {
+      gameSupportCount: parsed.gameSupportCount || pageHighlights.length,
+      gameFixCount: parsed.gameFixCount,
+      knownIssueCount: parsed.knownIssueCount,
+      whql: isWhql,
+    };
     return {
       platform: 'Intel',
-      name: `${title} ${version}`.slice(0, 120),
-      version,
-      releasedAt: toIsoDate(date),
+      name: `Intel Arc Graphics Driver ${parsedVersion}${isWhql ? ' WHQL' : ' Non-WHQL'}`.slice(0, 120),
+      version: parsedVersion,
+      releasedAt: parsed.releasedAt || toIsoDate(date),
       affects: 'Intel Arc GPUs / Core Ultra Arc graphics / Windows graphics driver / game compatibility',
-      changelog: [cleanText(intro, 260) || `Intel Graphics Driver ${version} detected for Intel Arc graphics on Windows.`],
-      knownIssues: [],
-      riskFactors: [{ level: 'medium', text: 'Graphics driver updates can affect game performance, display output, sleep/wake behavior, and compatibility with capture or overlay tools.' }],
-      verdict: 'Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies to your setup.',
-      reasoning: 'Intel graphics drivers often bundle game optimizations, device support, and display fixes. PatchTicker tracks Intel’s official Download Center page and extracts the latest version/date directly from that listing.',
-      evidence: sourceEvidence('Intel Download Center', url, `${title} version ${version}. ${intro || ''}`, { dateBasis: 'released', releaseType: 'official-release' }),
+      changelog,
+      knownIssues: parsed.knownIssues,
+      knownIssuesAuthoritative: Boolean(releasePdfText),
+      riskFactors: [
+        ...(!isWhql ? [{ level: 'medium', text: 'This is a Non-WHQL driver; it has not completed Microsoft’s WHQL certification path.' }] : []),
+        { level: 'low', text: 'Intel warns that its generic package overwrites OEM-customized graphics drivers; laptops and prebuilt systems should check the manufacturer’s validated build first.' },
+      ],
+      verdict: !isWhql
+        ? 'Install only if the Game On support or listed fixes apply; otherwise wait for a WHQL or OEM-qualified build.'
+        : 'Install if the listed game support or fixes apply; otherwise stay on your current stable OEM-qualified driver.',
+      reasoning: releasePdfText
+        ? `Intel’s official release notes document ${impactMeta.gameSupportCount} Game On title${impactMeta.gameSupportCount === 1 ? '' : 's'}, ${impactMeta.gameFixCount} distinct fixed issue${impactMeta.gameFixCount === 1 ? '' : 's'}, and ${impactMeta.knownIssueCount} distinct known issue${impactMeta.knownIssueCount === 1 ? '' : 's'} across supported Arc and Core Ultra families.`
+        : 'Intel’s download page confirms the current package and Game On support, but the detailed release-notes PDF could not be parsed during this check.',
+      evidence: [
+        ...sourceEvidence('Intel Download Center', url, `${title} version ${parsedVersion}; official download metadata and OEM overwrite guidance.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta }),
+        ...(officialReleaseNotesUrl ? sourceEvidence('Intel Release Notes', officialReleaseNotesUrl, `Official ${isWhql ? 'WHQL' : 'Non-WHQL'} release-notes PDF for driver ${parsedVersion}; ${impactMeta.gameFixCount} fixed and ${impactMeta.knownIssueCount} known issues documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }) : []),
+      ],
       sourceUrl: url,
     };
   } catch (err) {
@@ -1277,5 +1534,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, parseNvidiaReleaseNotes, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
 };

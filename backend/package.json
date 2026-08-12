@@ -4,7 +4,7 @@
   "private": true,
   "main": "src/server.js",
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=22.3.0",
     "npm": ">=10.0.0"
   },
   "scripts": {
@@ -37,6 +37,7 @@
     "morgan": "1.11.0",
     "node-cron": "4.6.0",
     "nodemailer": "9.0.3",
+    "pdf-parse": "^2.4.5",
     "pg": "8.13.3",
     "stripe": "17.7.0",
     "uuid": "11.1.1",

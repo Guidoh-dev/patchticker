@@ -1462,6 +1462,24 @@ function securitySignalMeta(update) {
   };
 }
 
+function driverImpactMeta(update) {
+  if (!['NVIDIA', 'AMD', 'Intel'].includes(update?.platform)) return null;
+  const evidence = Array.isArray(update?.evidence) ? update.evidence : [];
+  const metric = (key) => evidence.reduce((highest, item) => {
+    const value = Number(item?.[key]);
+    return Number.isFinite(value) ? Math.max(highest, value) : highest;
+  }, 0);
+  const gameSupportCount = metric('gameSupportCount');
+  const gameFixCount = metric('gameFixCount');
+  const knownIssueCount = Math.max(metric('knownIssueCount'), (update.knownIssues || []).length);
+  const parts = [];
+  if (gameSupportCount) parts.push(`${gameSupportCount} supported game${gameSupportCount === 1 ? '' : 's'}`);
+  if (gameFixCount) parts.push(`${gameFixCount} fix${gameFixCount === 1 ? '' : 'es'}`);
+  if (knownIssueCount) parts.push(`${knownIssueCount} known issue${knownIssueCount === 1 ? '' : 's'}`);
+  if (!parts.length) return null;
+  return { label: parts.join(' · '), knownIssueCount };
+}
+
 function updateReturnBrief(updates = []) {
   const brief = document.getElementById('dash-return-brief');
   const label = document.getElementById('dash-return-label');
@@ -1611,6 +1629,7 @@ function renderUpdateCard(u) {
   const age = timeAgo(u.releasedAt);
   const freshness = freshnessMeta(u);
   const securitySignal = securitySignalMeta(u);
+  const driverImpact = driverImpactMeta(u);
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const methodLabel = analysisMethodLabel(u);
   const ratingLabel = rating.votes
@@ -1634,6 +1653,7 @@ function renderUpdateCard(u) {
             <div class="decision-card-trust" aria-label="Source freshness and security context">
               <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
               ${securitySignal ? `<span class="security-signal security-signal--${H(securitySignal.tone)}"><i aria-hidden="true">◆</i>${H(securitySignal.label)}</span>` : ''}
+              ${driverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(driverImpact.label)}</span>` : ''}
               <span>${H(freshness.detail)}</span>
               <span>${H(sourceLabel)}</span>
               <span>${H(methodLabel)}</span>
@@ -2818,6 +2838,7 @@ async function renderUpdateDetail(id) {
     `<span class="detail-cve-tag">${H(c)}</span>`
   ).join('');
   const detailSecuritySignal = securitySignalMeta(u);
+  const detailDriverImpact = driverImpactMeta(u);
   const decisionSecurityValue = secCveTotal
     ? `${secCveTotal} CVE${secCveTotal === 1 ? '' : 's'}`
     : (sec.level && sec.level !== 'none' ? sec.level : 'No data');
@@ -2933,6 +2954,7 @@ async function renderUpdateDetail(id) {
             <div class="detail-source-health" aria-label="Source health">
               <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
               ${detailSecuritySignal ? `<span class="security-signal security-signal--${H(detailSecuritySignal.tone)}"><i aria-hidden="true">◆</i>${H(detailSecuritySignal.label)}</span>` : ''}
+              ${detailDriverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(detailDriverImpact.label)}</span>` : ''}
               <strong>${H(freshness.detail)}</strong>
               <span>${H(detailSourceLabel)}</span>
               <span>${H(detailMethodLabel)}</span>

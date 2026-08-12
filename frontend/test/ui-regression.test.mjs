@@ -171,6 +171,15 @@ test('security releases expose bounded CVE context without flooding the detail p
   assert.match(cssSource, /\.detail-cve-more\s*\{[^}]*font-family:\s*var\(--font-mono\)/s);
 });
 
+test('hardware driver cards expose compact game support, fix, and issue counts', () => {
+  assert.match(mainSource, /function driverImpactMeta\(update\)/);
+  assert.match(mainSource, /gameSupportCount/);
+  assert.match(mainSource, /gameFixCount/);
+  assert.match(mainSource, /knownIssueCount/);
+  assert.match(mainSource, /driver-impact-signal platform--\$\{H\(pSuffix\)\}/);
+  assert.match(cssSource, /\.driver-impact-signal\s*\{[^}]*display:\s*inline-flex;[^}]*border-radius:\s*999px/s);
+});
+
 test('offline update feeds remain honest instead of reviving demo records', () => {
   assert.match(mainSource, /function renderOfflineRails[\s\S]*?_allUpdates = \[\][\s\S]*?renderTapeAndLatest\(\[\], message\)/);
   assert.match(mainSource, /Verified patch data will return when the connection recovers/);

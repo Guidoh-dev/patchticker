@@ -298,6 +298,73 @@ describe('scraper accuracy guards', () => {
     expect(__test.safeDecode('Game+Ready+for+Halo%3A+Campaign+Evolved')).toBe('Game Ready for Halo: Campaign Evolved');
   });
 
+  test('NVIDIA parser separates supported games, fixed bugs, and open PDF issues', () => {
+    const parsed = __test.parseNvidiaReleaseNotes(`
+      <strong>Game Ready for Halo & Gears</strong><br>
+      Best experience for games including Halo: Campaign Evolved, Gears of War: E-Day Beta, and Mistfall Hunter.<br>
+      <strong>Fixed Gaming Bugs</strong><br><ul>
+        <li>Halo: Resolved crashes on RTX 50 Series.</li>
+        <li>Path of Exile 2: Fixed long pauses in DX12.</li>
+      </ul>
+      <strong>Fixed General Bugs</strong><br><ul><li>Paint.NET may crash with Surround enabled.</li></ul>
+    `, `
+      Release Notes: <a href="https://us.download.nvidia.com/Windows/610.88/610.88-win11-win10-release-notes.pdf">Game Ready Driver Release Notes</a>
+    `, `
+      3.2 Open Issues in Version 610.88 WHQL
+      > Prefer Maximum Performance mode may not be applied correctly [6007998]
+      3.3 Issues Not Caused by NVIDIA Drivers
+    `);
+
+    expect(parsed).toMatchObject({
+      gameSupportCount: 3,
+      gameFixCount: 2,
+      generalFixCount: 1,
+      knownIssueCount: 1,
+      releaseNotesUrl: 'https://us.download.nvidia.com/Windows/610.88/610.88-win11-win10-release-notes.pdf',
+    });
+    expect(parsed.changelog[0]).toContain('Halo: Campaign Evolved');
+    expect(parsed.knownIssues).toEqual(['Prefer Maximum Performance mode may not be applied correctly [6007998]']);
+  });
+
+  test('Intel parser deduplicates model-specific fixes and preserves Non-WHQL risk context', () => {
+    const parsed = __test.parseIntelReleaseNotes(`
+      Date: July 20, 2026
+      Driver Version: 32.0.101.8864 Non-WHQL
+      Highlights:
+      ▪ Beast of Reincarnation*
+      ▪ Gears of War: E-Day Open BETA*
+      Fixed Issues:
+      Intel® Arc™ B-Series Graphics Products:
+      ▪ Assassin's Creed Shadows* may crash after a driver upgrade.
+      Intel® Arc™ A-Series Graphics Products:
+      ▪ Assassin's Creed Shadows* may crash after a driver upgrade.
+      Known Issues:
+      Intel® Arc™ B-Series Graphics Products:
+      ▪ Borderlands 4* may experience an intermittent application crash.
+      Intel® Arc™ A-Series Graphics Products:
+      ▪ Borderlands 4* may experience an intermittent application crash.
+      Intel® Graphics Software Known Issues:
+      ▪ Performance graphs may not hide when requested.
+      Intel® Graphics Software Performance Tuning (BETA):
+    `);
+
+    expect(parsed).toMatchObject({
+      version: '32.0.101.8864',
+      releasedAt: '2026-07-20',
+      whql: false,
+      gameSupportCount: 2,
+      gameFixCount: 1,
+      knownIssueCount: 2,
+    });
+    expect(parsed.changelog).toEqual(expect.arrayContaining([
+      expect.stringContaining("Assassin's Creed Shadows"),
+    ]));
+    expect(parsed.knownIssues).toEqual(expect.arrayContaining([
+      expect.stringMatching(/Borderlands 4.*Arc B-Series, Arc A-Series/),
+      'Performance graphs may not hide when requested.',
+    ]));
+  });
+
   test('detectors fail closed without a source date or official HTTPS source', () => {
     const base = { name: 'Vendor Update 1.2.3', version: '1.2.3', sourceUrl: 'https://vendor.example/release' };
     expect(() => __test.validateDetectedUpdate('Vendor', base)).toThrow('no trustworthy release/source date');

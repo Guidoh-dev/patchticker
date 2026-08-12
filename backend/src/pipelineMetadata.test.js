@@ -73,4 +73,23 @@ describe('pipeline source metadata preservation', () => {
     expect(params[8]).toBe('[]');
     expect(params[14]).toBe(true);
   });
+
+  test('a supported beta game does not misclassify the graphics driver as a beta release', () => {
+    const detected = {
+      name: 'Intel Arc Graphics Driver 32.0.101.8864 Non-WHQL',
+      version: '32.0.101.8864',
+    };
+    const context = {
+      changelog: ['Game support — Gears of War: E-Day Open BETA.'],
+      knownIssues: Array.from({ length: 12 }, (_, index) => `Hardware-scoped issue ${index + 1}`),
+      riskFactors: [
+        { level: 'medium', text: 'This is a Non-WHQL driver.' },
+        { level: 'low', text: 'Check the OEM-customized package first.' },
+      ],
+    };
+
+    const score = __test.deriveInitialScore('Intel', detected, context);
+    expect(score).toBe(5);
+    expect(__test.deriveInitialStatus(score)).toBe('caution');
+  });
 });

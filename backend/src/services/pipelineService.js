@@ -254,20 +254,27 @@ function deriveInitialStatus(score) {
 function deriveInitialScore(platform, detected, context) {
   let score = 7.2;
   const text = `${detected.name || ''} ${detected.version || ''} ${(context.changelog || []).join(' ')} ${(context.knownIssues || []).join(' ')} ${(context.riskFactors || []).map(r => `${r.level || ''} ${r.label || ''} ${r.text || ''}`).join(' ')}`.toLowerCase();
+  const releaseRiskText = `${detected.name || ''} ${detected.version || ''} ${(context.riskFactors || []).map(r => `${r.level || ''} ${r.label || ''} ${r.text || ''}`).join(' ')}`.toLowerCase();
 
-  if (/preview|beta|insider|canary|experimental/.test(text)) score -= 1.4;
+  // Do not mistake a supported game's name (for example, "E-Day Open Beta")
+  // for a beta driver. Release-channel penalties must come from the release
+  // identity or explicit risk metadata, not arbitrary changelog text.
+  if (/preview|beta|insider|canary|experimental/.test(releaseRiskText)) score -= 1.4;
   if (/out-of-band|oob|hotfix|security|cve|vulnerab|zero-day|actively exploited/.test(text)) score += 0.8;
   if (/not currently aware of any issues|no known issues|stability improvements|bug fixes|quality improvements/.test(text)) score += 0.4;
 
   const knownIssueCount = context.knownIssues?.length || 0;
-  score -= Math.min(2.4, knownIssueCount * 0.45);
+  const hardwareScopedIssues = ['NVIDIA', 'AMD', 'Intel'].includes(platform);
+  score -= hardwareScopedIssues
+    ? Math.min(1.2, knownIssueCount * 0.2)
+    : Math.min(2.4, knownIssueCount * 0.45);
 
   for (const risk of context.riskFactors || []) {
     const level = String(risk.level || '').toLowerCase();
     if (level === 'critical') score -= 2.4;
     else if (level === 'high') score -= 1.6;
     else if (level === 'medium') score -= 0.8;
-    else if (level === 'low') score -= 0.3;
+    else if (level === 'low') score -= 0.15;
   }
 
   const platformBaselines = {
@@ -473,5 +480,5 @@ async function runAll() {
 module.exports = {
   processPlatform,
   runAll,
-  __test: { platformContext, updateExistingMetadata },
+  __test: { platformContext, updateExistingMetadata, deriveInitialScore, deriveInitialStatus },
 };

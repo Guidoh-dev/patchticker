@@ -6611,6 +6611,22 @@ body { overflow-x: hidden; }
 .security-signal--high { color: var(--red); }
 .security-signal--medium { color: var(--yellow); }
 .security-signal--low { color: var(--green-primary); }
+.driver-impact-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.driver-impact-signal i {
+  font-size: 9px;
+  font-style: normal;
+  filter: drop-shadow(0 0 7px currentColor);
+}
 .mini-update-freshness {
   margin-top: 9px;
   font-family: var(--font-mono);
