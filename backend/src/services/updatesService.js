@@ -813,7 +813,11 @@ async function getUpdateById(id) {
   if (db.isAvailable()) {
     try {
       const row = await db.query(
-        `SELECT * FROM software_updates WHERE id = $1 LIMIT 1`,
+        `SELECT *
+         FROM software_updates
+         WHERE id = $1
+           AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+         LIMIT 1`,
         [id]
       );
       dbReadSucceeded = true;

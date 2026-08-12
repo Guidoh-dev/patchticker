@@ -75,9 +75,13 @@ test('theme and tracked-game preferences use persistent local storage keys', () 
 
 test('sticky update filters retreat on downward scroll and return toward the top', () => {
   assert.match(mainSource, /function attachQuickbarScrollBehavior\(\)/);
-  assert.match(mainSource, /currentY > 240 && delta >= 0[\s\S]*?setHidden\(true\)/);
-  assert.match(mainSource, /delta < -12[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(true\)/);
+  assert.match(mainSource, /direction === 'down'[\s\S]*?currentY > 240[\s\S]*?setHidden\(true\)/);
+  assert.match(mainSource, /direction === 'up'[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(true\)/);
   assert.match(mainSource, /currentY <= 140[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(false\)/);
+  assert.match(mainSource, /window\.addEventListener\('wheel', onWheel/);
+  assert.match(mainSource, /window\.addEventListener\('touchmove', onTouchMove/);
+  assert.match(mainSource, /function settleScrollState|const settleScrollState/);
+  assert.match(mainSource, /lastDirection !== 'up'[\s\S]*?setHidden\(true\)/);
   assert.match(mainSource, /aria-controls="dash-quickbar-details"/);
   assert.match(mainSource, /attachQuickbarScrollBehavior\(\)/);
   assert.match(mainSource, /_quickbarScrollController\?\.abort\(\)/);
@@ -87,6 +91,12 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(cssSource, /\.dash-quickbar\.is-scroll-hidden\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*transform:\s*translateY\(calc\(-100% - 16px\)\)/s);
   assert.match(cssSource, /\.dash-quickbar-toggle\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /@media \(max-width: 760px\)[\s\S]*?html, body, #app\s*\{[^}]*overflow-x:\s*clip/s);
+});
+
+test('the client applies the same 240-day update display ceiling as the API', () => {
+  assert.match(mainSource, /const MAX_UPDATE_AGE_DAYS = 240/);
+  assert.match(mainSource, /function isUpdateWithinDisplayWindow\(update/);
+  assert.match(mainSource, /normaliseUpdatesResponse\(await fetchUpdates\(\{\}\)\)[\s\S]*?\.filter\(update => isUpdateWithinDisplayWindow\(update\)\)/);
 });
 
 test('mobile ticker viewport clips its moving track without widening the page', () => {

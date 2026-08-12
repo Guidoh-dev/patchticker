@@ -42,6 +42,18 @@ test('expired direct update permalinks no longer return update content', async (
   });
 });
 
+test('database detail queries reject expired rows before hydration', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+
+  await updatesService.getUpdateById('expired-update');
+
+  expect(mockQuery).toHaveBeenCalledWith(
+    expect.stringContaining("released_at >= NOW() - INTERVAL '240 days'"),
+    ['expired-update']
+  );
+});
+
 test('database update and history queries enforce the same 240-day window', async () => {
   mockIsAvailable.mockReturnValue(true);
   mockQuery.mockResolvedValue({ rows: [] });

@@ -151,7 +151,14 @@ function unloadAds() {
 
 const app = document.getElementById('app');
 const THEME_STORAGE_KEY = 'patchticker.theme';
+const MAX_UPDATE_AGE_DAYS = 240;
+const UPDATE_DISPLAY_WINDOW_MS = MAX_UPDATE_AGE_DAYS * 24 * 60 * 60 * 1000;
 let _quickbarScrollController = null;
+
+function isUpdateWithinDisplayWindow(update, now = Date.now()) {
+  const releasedAt = Date.parse(update?.releasedAt);
+  return Number.isFinite(releasedAt) && releasedAt >= now - UPDATE_DISPLAY_WINDOW_MS;
+}
 
 function preferredTheme() {
   const saved = localStorage.getItem(THEME_STORAGE_KEY);
@@ -288,6 +295,15 @@ function attachQuickbarScrollBehavior() {
   let lastY = window.scrollY;
   let framePending = false;
   let manualOpenUntil = 0;
+  let lastDirection = lastY > 240 ? 'down' : 'idle';
+  let directionLockedUntil = 0;
+  let settleTimer = null;
+  let touchY = null;
+
+  const lockDirection = (direction) => {
+    lastDirection = direction;
+    directionLockedUntil = Date.now() + 420;
+  };
 
   const setCollapsed = (collapsed) => {
     quickbar.classList.toggle('is-collapsed', collapsed);
@@ -308,29 +324,75 @@ function attachQuickbarScrollBehavior() {
     framePending = false;
     const currentY = window.scrollY;
     const delta = currentY - lastY;
+    const direction = Date.now() < directionLockedUntil
+      ? lastDirection
+      : (delta < -4 ? 'up' : delta > 4 ? 'down' : lastDirection);
 
     if (currentY <= 140) {
+      lastDirection = 'idle';
       setHidden(false);
       setCollapsed(false);
     } else if (Date.now() < manualOpenUntil) {
       setHidden(false);
-    } else if (delta < -12) {
+    } else if (direction === 'up') {
+      lastDirection = 'up';
       setHidden(false);
       setCollapsed(true);
-    } else if (currentY > 240 && delta >= 0) {
+    } else if (direction === 'down') {
+      lastDirection = 'down';
       if (document.activeElement === search) search.blur();
       setCollapsed(true);
-      setHidden(true);
-    } else if (delta > 8) {
-      setCollapsed(true);
+      if (currentY > 240) setHidden(true);
     }
     lastY = currentY;
   };
 
+  const settleScrollState = () => {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+      const currentY = window.scrollY;
+      if (currentY <= 140) {
+        setHidden(false);
+        setCollapsed(false);
+        return;
+      }
+      // Trackpads and browser-driven jumps can coalesce several scroll events
+      // into one frame. Ensure the final resting state still retreats below the
+      // header unless the user was deliberately moving back toward the top.
+      if (Date.now() >= manualOpenUntil && currentY > 240 && lastDirection !== 'up') {
+        if (document.activeElement === search) search.blur();
+        setCollapsed(true);
+        setHidden(true);
+      }
+    }, 90);
+  };
+
   const onScroll = () => {
-    if (framePending) return;
-    framePending = true;
-    requestAnimationFrame(updateForScroll);
+    if (!framePending) {
+      framePending = true;
+      requestAnimationFrame(updateForScroll);
+    }
+    settleScrollState();
+  };
+
+  const onWheel = (event) => {
+    if (Math.abs(event.deltaY) > 4) lockDirection(event.deltaY > 0 ? 'down' : 'up');
+  };
+
+  const onKeyDown = (event) => {
+    if (['ArrowDown', 'PageDown', 'End', ' '].includes(event.key)) lockDirection('down');
+    if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) lockDirection('up');
+  };
+
+  const onTouchStart = (event) => {
+    touchY = event.touches?.[0]?.clientY ?? null;
+  };
+
+  const onTouchMove = (event) => {
+    const nextY = event.touches?.[0]?.clientY;
+    if (!Number.isFinite(nextY) || !Number.isFinite(touchY)) return;
+    if (Math.abs(nextY - touchY) > 4) lockDirection(nextY < touchY ? 'down' : 'up');
+    touchY = nextY;
   };
 
   toggle.addEventListener('click', () => {
@@ -340,7 +402,12 @@ function attachQuickbarScrollBehavior() {
     setCollapsed(willCollapse);
   }, { signal });
   search?.addEventListener('focus', () => setHidden(false), { signal });
+  window.addEventListener('wheel', onWheel, { passive: true, signal });
+  window.addEventListener('keydown', onKeyDown, { signal });
+  window.addEventListener('touchstart', onTouchStart, { passive: true, signal });
+  window.addEventListener('touchmove', onTouchMove, { passive: true, signal });
   window.addEventListener('scroll', onScroll, { passive: true, signal });
+  signal.addEventListener('abort', () => clearTimeout(settleTimer), { once: true });
 
   setCollapsed(lastY > 140);
   setHidden(lastY > 240);
@@ -2141,7 +2208,8 @@ async function renderDashboard({ focusId = null } = {}) {
   // ── Initial data load ─────────────────────────────────────────────────────
   async function loadUpdates() {
     try {
-      _allUpdates = normaliseUpdatesResponse(await fetchUpdates({}));
+      _allUpdates = normaliseUpdatesResponse(await fetchUpdates({}))
+        .filter(update => isUpdateWithinDisplayWindow(update));
       renderTapeAndLatest(_allUpdates);
       renderVerifiedFeedFallback();
       applyFilters();
