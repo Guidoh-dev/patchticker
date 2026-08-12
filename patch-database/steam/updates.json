@@ -57,7 +57,7 @@
           "url": "https://store.steampowered.com/news/app/1675200/view/667247155276153538",
           "text": "SteamOS 3.8.25 Beta. This update is for the SteamOS Beta and Preview channels, and includes new features that are still being tested. You can opt into this in Settings > System > System Update Channel. Known Issues - Beta There is a known issue with degraded p",
           "source": "Steam News",
-          "checkedAt": "2026-08-12T02:47:41.567Z",
+          "checkedAt": "2026-08-12T03:12:58.149Z",
           "dateBasis": "published",
           "releaseType": "official-release"
         }
@@ -111,12 +111,10 @@
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 6.8,
-        "label": "mixed/caution",
-        "recommendation": "review before installing",
-        "notes": [
-          "Beta/preview channel language detected."
-        ]
+        "score": 8,
+        "label": "positive",
+        "recommendation": "install candidate",
+        "notes": []
       }
     }
   ]

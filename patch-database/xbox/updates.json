@@ -64,12 +64,11 @@
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 7.2,
+        "score": 8.5,
         "label": "positive",
         "recommendation": "install candidate",
         "notes": [
           "Official/vendor source attached.",
-          "Beta/preview channel language detected.",
           "1 risk factor(s) attached.",
           "Useful changelog with no known issues captured."
         ]

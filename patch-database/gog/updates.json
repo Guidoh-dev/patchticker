@@ -19,7 +19,7 @@
       "version": "2.1.8.30",
       "releasedAt": "2026-08-06",
       "status": "caution",
-      "storedScore": 6.9,
+      "storedScore": 7.1,
       "impactScore": null,
       "bugCount": 0,
       "affects": "GOG GALAXY desktop client / Windows and macOS / library sync / cloud saves / game installation",
@@ -41,7 +41,7 @@
           "url": "https://remote-config.gog.com/components/webinstaller?component_version=2.0.0",
           "text": "Official installer manifest serves Windows 2.1.8.30; macOS 2.1.8.32; Windows artifact last modified 2026-08-06.",
           "source": "GOG GALAXY Installer Manifest",
-          "checkedAt": "2026-08-12T02:47:46.504Z",
+          "checkedAt": "2026-08-12T03:13:05.086Z",
           "dateBasis": "source-updated",
           "publishedAt": "2026-08-06",
           "releaseType": "official-version"
@@ -54,7 +54,7 @@
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 8,
+        "score": 8.1,
         "label": "positive",
         "recommendation": "install candidate",
         "notes": [

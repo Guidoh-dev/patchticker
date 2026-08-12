@@ -84,6 +84,8 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(false\)/);
   assert.match(mainSource, /window\.addEventListener\('wheel', onWheel/);
   assert.match(mainSource, /window\.addEventListener\('touchmove', onTouchMove/);
+  assert.match(mainSource, /lockDirection\('down', 1200\)/);
+  assert.match(mainSource, /lockDirection\('up', 1200\)/);
   assert.match(mainSource, /function settleScrollState|const settleScrollState/);
   assert.match(mainSource, /lastDirection !== 'up'[\s\S]*?setHidden\(true\)/);
   assert.match(mainSource, /aria-controls="dash-quickbar-details"/);

@@ -10,24 +10,24 @@ This is a local file-based research database generated from current PatchTicker 
 | Platform | Lane | Updates | Avg local rating | Folder |
 |---|---|---:|---:|---|
 | Windows | security | 2 | 8.3 | [./windows/](./windows/) |
-| Apple iOS | security | 1 | 9 | [./apple/](./apple/) |
-| macOS | security | 2 | 8.7 | [./macos/](./macos/) |
-| NVIDIA | drivers | 1 | 7.2 | [./nvidia/](./nvidia/) |
-| AMD | drivers | 1 | 2.7 | [./amd/](./amd/) |
-| Intel | drivers | 1 | 7.4 | [./intel/](./intel/) |
-| Steam | gaming | 2 | 5.6 | [./steam/](./steam/) |
+| Apple iOS | security | 1 | 9.1 | [./apple/](./apple/) |
+| macOS | security | 2 | 8.8 | [./macos/](./macos/) |
+| NVIDIA | drivers | 1 | 8 | [./nvidia/](./nvidia/) |
+| AMD | drivers | 1 | 4.4 | [./amd/](./amd/) |
+| Intel | drivers | 1 | 6 | [./intel/](./intel/) |
+| Steam | gaming | 2 | 6.2 | [./steam/](./steam/) |
 | Switch | console | 1 | 8.7 | [./switch/](./switch/) |
-| Xbox | console | 1 | 7.2 | [./xbox/](./xbox/) |
-| PS5 | console | 1 | 8.4 | [./ps5/](./ps5/) |
-| Discord | services | 1 | 8 | [./discord/](./discord/) |
-| Battle.net | services | 1 | 7.4 | [./battlenet/](./battlenet/) |
-| GOG Galaxy | services | 1 | 8 | [./gog/](./gog/) |
+| Xbox | console | 1 | 8.5 | [./xbox/](./xbox/) |
+| PS5 | console | 1 | 8.5 | [./ps5/](./ps5/) |
+| Discord | services | 1 | 8.1 | [./discord/](./discord/) |
+| Battle.net | services | 1 | 7.5 | [./battlenet/](./battlenet/) |
+| GOG Galaxy | services | 1 | 8.1 | [./gog/](./gog/) |
 
 ## Rating Test Method
 
 - Starts from a neutral-positive installability baseline.
 - Adds weight for official/vendor evidence and security urgency.
-- Penalizes beta/preview labels, concrete known issues, medium/high/critical risk factors, missing evidence, generic `Latest` versions, high bug counts, and scraper gaps.
+- Penalizes beta/preview release-channel labels, concrete known issues, medium/high/critical risk factors, missing evidence, generic `Latest` versions, high bug counts, and scraper gaps.
 - Labels: `positive` >= 7.2, `mixed/caution` 5.0–7.1, `negative` < 5.0.
 
 ## Interpretation Notes

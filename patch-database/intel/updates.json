@@ -15,34 +15,72 @@
     {
       "id": "intel-32-0-101-8864",
       "platform": "Intel",
-      "name": "Intel® Arc™ Graphics - Windows* 32.0.101.8864",
+      "name": "Intel Arc Graphics Driver 32.0.101.8864 Non-WHQL",
       "version": "32.0.101.8864",
       "releasedAt": "2026-07-20",
       "status": "caution",
-      "storedScore": 6.3,
+      "storedScore": 5,
       "impactScore": null,
       "bugCount": 0,
       "affects": "Intel Arc GPUs / Core Ultra Arc graphics / Windows graphics driver / game compatibility",
-      "verdict": "Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies to your setup.",
-      "reasoning": "Intel graphics drivers often bundle game optimizations, device support, and display fixes. PatchTicker tracks Intel’s official Download Center page and extracts the latest version/date directly from that listing.",
+      "verdict": "Install only if the Game On support or listed fixes apply; otherwise wait for a WHQL or OEM-qualified build.",
+      "reasoning": "Intel’s official release notes document 2 Game On titles, 5 distinct fixed issues, and 16 distinct known issues across supported Arc and Core Ultra families.",
       "changelog": [
-        "This download installs Intel® Graphics Driver 32.0.101.8864 for Intel® Arc™ B-Series Graphics, Intel® Arc™ A-Series Graphics, and Intel® Core™ Ultra Processors with Intel® Arc™ Graphics."
+        "Game support — Beast of Reincarnation; Gears of War: E-Day Open BETA.",
+        "Fixed — Assassin's Creed Black Flag Resynced (DX12) may experience a crash when upgrading driver if the shaders have been compiled with the previous driver. (Arc A/B + Core Ultra Series 1–3)",
+        "Fixed — Assassin's Creed Shadows (DX12) may experience a crash when upgrading driver if the shaders have been compiled with the previous driver. (Arc A/B + Core Ultra Series 1–3)",
+        "Fixed — Tom Clancy's Rainbow Six Siege (DX12) may experience a crash when upgrading driver if the shaders have been compiled with the previous driver. (Core Ultra Series 3, Arc B-Series, Arc A-Series, Core Ultra Series 1)",
+        "Fixed — LEGO Batman: Legacy of the Dark Knight (DX12) may exhibit corruption during cutscenes. (Arc A-Series, Core Ultra Series 1, Core Ultra Series 2)",
+        "Fixed — Tom Clancy's Rainbow Six Siege (DX12) may experience a crash when upgrading driver if the shaders have been compiled with the previous driver. Mitigation is to clear all cached shader files. (Core Ultra Series 2)"
       ],
-      "knownIssues": [],
+      "knownIssues": [
+        "Mafia: The Old Country (DX12) may experience an application crash during gameplay. (Core Ultra Series 3)",
+        "Marathon (DX12) may exhibit intermittent corruption on certain objects during gameplay when using Anisotropic Filtering. (Arc A/B + Core Ultra Series 1–3)",
+        "Borderlands 4 (DX12) may experience an intermittent application crash during gameplay. (Arc A/B + Core Ultra Series 1–3)",
+        "Hogwarts Legacy (DX12) may experience corruption when raytracing is turned on in certain scenes during gameplay. (Core Ultra Series 3)",
+        "Forza Horizon 6 (DX12) may not exhibit expected visual quality with reflections. (Core Ultra Series 3, Arc B-Series, Arc A-Series)",
+        "007 First Light (DX12) may exhibit corruption across the screen in certain scenes during gameplay. (Core Ultra Series 3, Arc B-Series)",
+        "Echoes of Aincrad (DX12) may exhibit purple corruption during gameplay in the tutorial. (Arc B-Series, Arc A-Series)",
+        "PugetBench for Adobe Premiere Pro may experience an intermittent application crash while running the benchmark in the extended preset. (Arc B-Series)",
+        "PugetBench for Davinci Resolve Studio may experience an intermittent application crash while running the benchmark. Recommendation is to change the timeout slider to 1500 seconds or higher, to wait for each test to complete, in PugetBench benchmark settings. (Arc B-Series, Arc A-Series)",
+        "NBA 2K26 (DX12) may experience an application crash on first launch of the game. (Core Ultra Series 1)",
+        "007 First Light (DX12) may experience an intermittent application crash on first launch of the game. (Core Ultra Series 1)",
+        "When using the settings, preferences, reset all settings option in Windows 10 the application may experience an intermittent crash. Settings can be reset from individual pages without issue."
+      ],
       "riskFactors": [
         {
-          "text": "Graphics driver updates can affect game performance, display output, sleep/wake behavior, and compatibility with capture or overlay tools.",
+          "text": "This is a Non-WHQL driver; it has not completed Microsoft’s WHQL certification path.",
           "level": "medium"
+        },
+        {
+          "text": "Intel warns that its generic package overwrites OEM-customized graphics drivers; laptops and prebuilt systems should check the manufacturer’s validated build first.",
+          "level": "low"
         }
       ],
       "evidence": [
         {
           "url": "https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html",
-          "text": "Intel® Arc™ Graphics - Windows* version 32.0.101.8864. This download installs Intel® Graphics Driver 32.0.101.8864 for Intel® Arc™ B-Series Graphics, Intel® Arc™ A-Series Graphics, and Intel® Core™ Ultra Processors with Intel® Arc™ Graphics.",
+          "text": "Intel® Arc™ Graphics - Windows* version 32.0.101.8864; official download metadata and OEM overwrite guidance.",
+          "whql": false,
           "source": "Intel Download Center",
-          "checkedAt": "2026-08-12T02:47:42.770Z",
+          "checkedAt": "2026-08-12T03:13:02.449Z",
           "dateBasis": "released",
-          "releaseType": "official-release"
+          "releaseType": "official-release",
+          "gameFixCount": 5,
+          "knownIssueCount": 16,
+          "gameSupportCount": 2
+        },
+        {
+          "url": "https://downloadmirror.intel.com/923907/ReleaseNotes__101.8864_Non-WHQL.pdf",
+          "text": "Official Non-WHQL release-notes PDF for driver 32.0.101.8864; 5 fixed and 16 known issues documented.",
+          "whql": false,
+          "source": "Intel Release Notes",
+          "checkedAt": "2026-08-12T03:13:02.449Z",
+          "dateBasis": "released",
+          "releaseType": "official-release-notes",
+          "gameFixCount": 5,
+          "knownIssueCount": 16,
+          "gameSupportCount": 2
         }
       ],
       "securityCriticality": {
@@ -52,12 +90,13 @@
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 7.4,
-        "label": "positive",
-        "recommendation": "install candidate",
+        "score": 6,
+        "label": "mixed/caution",
+        "recommendation": "review before installing",
         "notes": [
           "Official/vendor source attached.",
-          "1 risk factor(s) attached."
+          "2 risk factor(s) attached.",
+          "12 known issue(s) attached."
         ]
       }
     }

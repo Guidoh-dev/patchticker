@@ -305,9 +305,9 @@ function attachQuickbarScrollBehavior() {
   let settleTimer = null;
   let touchY = null;
 
-  const lockDirection = (direction) => {
+  const lockDirection = (direction, durationMs = 420) => {
     lastDirection = direction;
-    directionLockedUntil = Date.now() + 420;
+    directionLockedUntil = Date.now() + durationMs;
   };
 
   const setCollapsed = (collapsed) => {
@@ -387,8 +387,11 @@ function attachQuickbarScrollBehavior() {
   };
 
   const onKeyDown = (event) => {
-    if (['ArrowDown', 'PageDown', 'End', ' '].includes(event.key)) lockDirection('down');
-    if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) lockDirection('up');
+    // Page navigation scrolls smoothly in some browsers. Hold the intended
+    // direction long enough that collapsing the filter details cannot trigger
+    // scroll anchoring and falsely read as a reversal.
+    if (['ArrowDown', 'PageDown', 'End', ' '].includes(event.key)) lockDirection('down', 1200);
+    if (['ArrowUp', 'PageUp', 'Home'].includes(event.key)) lockDirection('up', 1200);
   };
 
   const onTouchStart = (event) => {

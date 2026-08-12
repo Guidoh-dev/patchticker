@@ -19,7 +19,7 @@
       "version": "26.6",
       "releasedAt": "2026-07-27",
       "status": "stable",
-      "storedScore": 8.1,
+      "storedScore": 8.3,
       "impactScore": null,
       "bugCount": 0,
       "affects": "iPhone / iPad / WebKit / system security / app compatibility",
@@ -52,7 +52,7 @@
           "text": "iOS 26.6 and iPadOS 26.6: 86 CVEs across 77 documented security components.",
           "source": "Apple Security Advisory",
           "cveCount": 86,
-          "checkedAt": "2026-08-12T02:49:24.534Z",
+          "checkedAt": "2026-08-12T03:12:51.547Z",
           "dateBasis": "released",
           "publishedAt": "2026-07-27",
           "releaseType": "official-security-advisory"
@@ -118,7 +118,7 @@
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 9,
+        "score": 9.1,
         "label": "positive",
         "recommendation": "install candidate",
         "notes": [

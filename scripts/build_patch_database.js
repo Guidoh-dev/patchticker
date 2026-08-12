@@ -1,10 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config({ path: path.join(process.cwd(), 'backend/.env') });
-const db = require(path.join(process.cwd(), 'backend/src/config/db'));
-const { PLATFORMS } = require(path.join(process.cwd(), 'backend/src/config/platformRegistry'));
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+require('dotenv').config({ path: path.join(PROJECT_ROOT, 'backend/.env') });
+const db = require(path.join(PROJECT_ROOT, 'backend/src/config/db'));
+const { PLATFORMS } = require(path.join(PROJECT_ROOT, 'backend/src/config/platformRegistry'));
 
-const OUT = path.join(process.cwd(), 'patch-database');
+const OUT = path.join(PROJECT_ROOT, 'patch-database');
 const generatedAt = new Date();
 const windowEnd = generatedAt.toISOString().slice(0, 10);
 const cutoff = new Date(generatedAt);
@@ -90,12 +91,16 @@ function ratingTest(u) {
   const known = u.knownIssues || [];
   const evidence = u.evidence || [];
   const text = `${u.name} ${u.version} ${(u.changelog||[]).join(' ')} ${(u.reasoning||'')}`.toLowerCase();
+  const releaseRiskText = `${u.name} ${u.version} ${risks.map(r => `${r.level || ''} ${r.label || ''} ${r.text || r}`).join(' ')}`.toLowerCase();
 
   if (!evidence.length) { score -= 1.2; notes.push('No evidence source attached.'); }
   else if (evidence.some(e => /official|support|download|status|release/i.test(`${e.source} ${e.url}`))) { score += 0.4; notes.push('Official/vendor source attached.'); }
 
   if (String(u.version).toLowerCase() === 'latest') { score -= 1.1; notes.push('Version parser returned “Latest” instead of a concrete build.'); }
-  if (/beta|preview|insider|canary/.test(text)) { score -= 1.2; notes.push('Beta/preview channel language detected.'); }
+  // A changelog can mention a supported beta game without making the driver
+  // itself a beta. Only the release identity and explicit risk metadata are
+  // reliable release-channel signals.
+  if (/beta|preview|insider|canary|experimental/.test(releaseRiskText)) { score -= 1.2; notes.push('Beta/preview channel language detected.'); }
   if (/security|cve|critical vulnerability|actively exploited/.test(text)) { score += 0.6; notes.push('Security urgency detected.'); }
 
   for (const r of risks) {
@@ -103,11 +108,17 @@ function ratingTest(u) {
     if (lvl === 'critical') score -= 2.8;
     else if (lvl === 'high') score -= 1.9;
     else if (lvl === 'medium') score -= 1.0;
-    else if (lvl === 'low') score -= 0.35;
+    else if (lvl === 'low') score -= 0.2;
   }
   if (risks.length) notes.push(`${risks.length} risk factor(s) attached.`);
 
-  if (known.length) { score -= Math.min(3.0, known.length * 0.55); notes.push(`${known.length} known issue(s) attached.`); }
+  if (known.length) {
+    const hardwareScopedIssues = ['NVIDIA', 'AMD', 'Intel'].includes(u.platform);
+    score -= hardwareScopedIssues
+      ? Math.min(1.2, known.length * 0.2)
+      : Math.min(3.0, known.length * 0.55);
+    notes.push(`${known.length} known issue(s) attached.`);
+  }
   if (u.bugCount >= 100) { score -= 2.0; notes.push('High bug report count.'); }
   else if (u.bugCount >= 25) { score -= 1.0; notes.push('Moderate bug report count.'); }
   else if (u.bugCount > 0) { score -= 0.25; notes.push('Low bug report count.'); }
@@ -201,7 +212,7 @@ function updateMd(u) {
   return lines.join('\n');
 }
 
-(async()=>{
+async function buildPatchDatabase() {
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
   const rows = await loadRecentUpdates();
@@ -236,7 +247,7 @@ function updateMd(u) {
     '## Rating Test Method', '',
     '- Starts from a neutral-positive installability baseline.',
     '- Adds weight for official/vendor evidence and security urgency.',
-    '- Penalizes beta/preview labels, concrete known issues, medium/high/critical risk factors, missing evidence, generic `Latest` versions, high bug counts, and scraper gaps.',
+    '- Penalizes beta/preview release-channel labels, concrete known issues, medium/high/critical risk factors, missing evidence, generic `Latest` versions, high bug counts, and scraper gaps.',
     '- Labels: `positive` >= 7.2, `mixed/caution` 5.0–7.1, `negative` < 5.0.',
     '',
     '## Interpretation Notes', '',
@@ -248,4 +259,14 @@ function updateMd(u) {
   await db.shutdown();
   console.log(`Wrote ${OUT}`);
   console.table(indexRows);
-})();
+}
+
+if (require.main === module) {
+  buildPatchDatabase().catch(async error => {
+    console.error(error);
+    await db.shutdown();
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { ratingTest, buildPatchDatabase };
