@@ -13,7 +13,7 @@ This is a local file-based research database generated from current PatchTicker 
 | Apple iOS | security | 1 | 9.1 | [./apple/](./apple/) |
 | macOS | security | 2 | 8.8 | [./macos/](./macos/) |
 | NVIDIA | drivers | 1 | 8 | [./nvidia/](./nvidia/) |
-| AMD | drivers | 1 | 4.4 | [./amd/](./amd/) |
+| AMD | drivers | 2 | 5.9 | [./amd/](./amd/) |
 | Intel | drivers | 1 | 6 | [./intel/](./intel/) |
 | Steam | gaming | 2 | 6.2 | [./steam/](./steam/) |
 | Switch | console | 1 | 8.7 | [./switch/](./switch/) |
