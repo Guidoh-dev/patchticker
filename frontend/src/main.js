@@ -974,16 +974,18 @@ function renderLanding() {
     <main class="landing-page">
       <section class="landing-hero">
         <div class="landing-copy">
-          <p class="landing-kicker">Update safety research</p>
-          <h1 class="landing-title">Know before you update.</h1>
-          <p class="landing-subtitle">PatchTicker helps you decide whether the latest driver, OS patch, firmware release, or launcher update is worth installing today — before your setup becomes the test environment.</p>
-          <div class="landing-actions">
-            ${user
-              ? '<a class="btn btn--primary" href="#/updates">Open update feed</a><a class="btn btn--outline" href="#/account">Manage watchlist</a>'
-              : '<a class="btn btn--primary" href="#/register">Create free account</a><a class="btn btn--outline" href="#/updates">Browse live updates</a>'}
+          <div class="landing-intro">
+            <p class="landing-kicker">Update safety research</p>
+            <h1 class="landing-title">Know before you update.</h1>
+            <p class="landing-subtitle">PatchTicker helps you decide whether the latest driver, OS patch, firmware release, or launcher update is worth installing today — before your setup becomes the test environment.</p>
+            <div class="landing-actions">
+              ${user
+                ? '<a class="btn btn--primary" href="#/updates">Open update feed</a><a class="btn btn--outline" href="#/account">Manage watchlist</a>'
+                : '<a class="btn btn--primary" href="#/register">Create free account</a><a class="btn btn--outline" href="#/updates">Browse live updates</a>'}
+            </div>
           </div>
           <div class="landing-proof">
-            <span>14 tracked platforms</span>
+            <span id="landing-live-coverage">Checking live coverage</span>
             <span>Release-note research</span>
             <span>Live community voting</span>
             <span>More platforms coming soon</span>
@@ -998,23 +1000,25 @@ function renderLanding() {
 
         <div class="landing-panel">
           <div class="landing-card-head">
-            <span>Latest user signal</span>
-            <span class="landing-live">LIVE</span>
+            <span>Latest verified patch</span>
+            <span class="landing-live" id="landing-live-state">CONNECTING</span>
           </div>
           <div class="landing-score-row">
-            <strong>8.7</strong>
+            <div class="landing-score-value">
+              <strong id="landing-live-score">—</strong>
+              <small>PatchTicker score /10</small>
+            </div>
             <div>
-              <span class="status-badge stable">STABLE</span>
-              <p>NVIDIA Game Ready Driver</p>
+              <span class="status-badge caution" id="landing-live-status">CHECKING</span>
+              <p id="landing-live-name">Loading the newest official release…</p>
             </div>
           </div>
-          <div class="landing-meter"><span></span></div>
-          <p class="landing-verdict">Minor regressions reported, broad install confidence remains high.</p>
-          <div class="landing-votes">
-            <span>Install 72%</span>
-            <span>Wait 21%</span>
-            <span>Avoid 7%</span>
+          <div class="landing-meter landing-meter--0" id="landing-live-meter"><span></span></div>
+          <p class="landing-verdict" id="landing-live-verdict">Connecting to PatchTicker’s verified source desk.</p>
+          <div class="landing-votes" id="landing-live-meta">
+            <span>Source check pending</span>
           </div>
+          <a class="landing-signal-link hidden" id="landing-live-link" href="#/updates">Open patch notes →</a>
         </div>
       </section>
 
@@ -1047,6 +1051,73 @@ function renderLanding() {
     ${renderFooter()}
   `);
   attachNavHandlers(user);
+  hydrateLandingSignals();
+}
+
+async function hydrateLandingSignals() {
+  const coverage = document.getElementById('landing-live-coverage');
+  try {
+    const [updatesResponse, summaryResponse] = await Promise.all([fetchUpdates({ sort: 'date_desc' }), fetchSummary()]);
+    const updates = normaliseUpdatesResponse(updatesResponse)
+      .filter(update => isUpdateWithinDisplayWindow(update))
+      .sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt));
+    const latest = updates[0];
+    const summary = summaryResponse?.data || summaryResponse;
+
+    if (coverage && summary) {
+      coverage.textContent = `${summary.platformsTracked ?? 0} live source lane${summary.platformsTracked === 1 ? '' : 's'}`;
+    }
+    if (!latest) throw new Error('No verified updates available');
+
+    const score = Math.max(0, Math.min(10, Number(latest.score) || 0));
+    const scoreBucket = Math.round(score);
+    const status = ['stable', 'caution', 'avoid'].includes(latest.status) ? latest.status : 'caution';
+    const state = document.getElementById('landing-live-state');
+    const scoreEl = document.getElementById('landing-live-score');
+    const statusEl = document.getElementById('landing-live-status');
+    const name = document.getElementById('landing-live-name');
+    const meter = document.getElementById('landing-live-meter');
+    const verdict = document.getElementById('landing-live-verdict');
+    const meta = document.getElementById('landing-live-meta');
+    const link = document.getElementById('landing-live-link');
+
+    if (state) state.textContent = 'LIVE';
+    if (scoreEl) {
+      scoreEl.textContent = score.toFixed(1);
+      scoreEl.setAttribute('aria-label', `${score.toFixed(1)} out of 10 PatchTicker score`);
+    }
+    if (statusEl) {
+      statusEl.className = `status-badge ${status}`;
+      statusEl.textContent = status.toUpperCase();
+    }
+    if (name) {
+      const updateName = String(latest.name || platformLabel(latest.platform));
+      const version = String(latest.version || '');
+      name.textContent = version && !updateName.toLowerCase().includes(version.toLowerCase())
+        ? `${updateName} · ${version}`
+        : updateName;
+    }
+    if (meter) meter.className = `landing-meter landing-meter--${scoreBucket}`;
+    if (verdict) verdict.textContent = latest.verdict || latest.reasoning || 'Open the verified release notes for the current install read.';
+    if (meta) {
+      const liveVotes = Number(latest.userRating?.totalVotes || 0);
+      meta.innerHTML = liveVotes > 0
+        ? `<span>${H(String(liveVotes))} verified vote${liveVotes === 1 ? '' : 's'}</span><span>Install ${H(String(latest.userRating.breakdown?.install ?? 0))}%</span><span>Wait ${H(String(latest.userRating.breakdown?.wait ?? 0))}%</span><span>Avoid ${H(String(latest.userRating.breakdown?.avoid ?? 0))}%</span>`
+        : `<span>${H(platformLabel(latest.platform))}</span><span>Released ${H(timeAgo(latest.releasedAt))}</span><span>Source checked ${H(timeAgo(latest.lastCheckedAt))}</span>`;
+    }
+    if (link) {
+      link.href = `#/updates/${encodeURIComponent(latest.id)}`;
+      link.classList.remove('hidden');
+    }
+  } catch {
+    if (coverage) coverage.textContent = 'Verified sources reconnecting';
+    const state = document.getElementById('landing-live-state');
+    const name = document.getElementById('landing-live-name');
+    const verdict = document.getElementById('landing-live-verdict');
+    if (state) state.textContent = 'RECONNECTING';
+    if (name) name.textContent = 'Live patch desk temporarily unavailable';
+    if (verdict) verdict.textContent = 'No sample score is shown while verified source data is unavailable.';
+  }
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────

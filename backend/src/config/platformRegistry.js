@@ -16,7 +16,7 @@ const PLATFORMS = Object.freeze([
   { key: 'Xbox',      label: 'Xbox',         lane: 'console',  sourceType: 'json',     priority: 3, official: true },
   { key: 'PS5',       label: 'PS5',          lane: 'console',  sourceType: 'html',     priority: 3, official: true },
   { key: 'Discord',   label: 'Discord',      lane: 'services', sourceType: 'rss',      priority: 4, official: true },
-  { key: 'BattleNet', label: 'Battle.net',   lane: 'services', sourceType: 'html',     priority: 4, official: true },
+  { key: 'BattleNet', label: 'Battle.net',   lane: 'services', sourceType: 'manifest', priority: 4, official: true },
   { key: 'GOG',       label: 'GOG Galaxy',   lane: 'services', sourceType: 'json',     priority: 4, official: true },
 ]);
 

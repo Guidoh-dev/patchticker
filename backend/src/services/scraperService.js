@@ -19,6 +19,8 @@
 //   Xbox      — Xbox Support structured content API
 //   PS5       — PlayStation Support system software page
 //   Intel     — Intel download center JSON API
+//   Discord   — Discord status history RSS
+//   Battle.net— Blizzard regional version manifests + HTTPS CDN build config
 //   GOG       — GOG GALAXY installer manifest + artifact timestamp
 //
 // All detectors fail silently — a scrape failure never crashes the cron job.
@@ -76,6 +78,16 @@ async function fetchHead(url) {
     headers: { 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
   });
   return res.headers || {};
+}
+
+async function fetchTextResponse(url) {
+  const res = await axios.get(url, {
+    timeout: TIMEOUT,
+    responseType: 'text',
+    transformResponse: [data => data],
+    headers: { 'User-Agent': UA, 'Accept': 'text/plain,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+  });
+  return { data: String(res.data || ''), headers: res.headers || {} };
 }
 
 async function fetchXml(url) {
@@ -195,6 +207,35 @@ function parseGogRemoteConfig(config, installerLastModified) {
     windowsDownloadUrl: windows.downloadLink,
     macVersion: macos?.version ? String(macos.version) : null,
   };
+}
+
+function parseBattleNetVersionManifest(text, region = 'us') {
+  const rows = String(text || '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#') && !line.startsWith('Region!'));
+  const columns = rows
+    .map(line => line.split('|'))
+    .find(parts => parts[0]?.toLowerCase() === region.toLowerCase());
+  if (!columns || columns.length < 7) return null;
+
+  const [manifestRegion, buildConfig, cdnConfig, , buildId, version, productConfig] = columns;
+  if (!/^[a-f0-9]{32}$/i.test(buildConfig || '')) return null;
+  if (!/^[a-f0-9]{32}$/i.test(cdnConfig || '')) return null;
+  if (!/^\d{1,4}(?:\.\d{1,5}){3}$/.test(version || '')) return null;
+  if (!/^\d+$/.test(buildId || '') || !version.endsWith(`.${buildId}`)) return null;
+
+  return { region: manifestRegion, buildConfig, cdnConfig, buildId, version, productConfig };
+}
+
+function parseBattleNetBuildConfig(text) {
+  const value = key => String(text || '').match(new RegExp(`^\\s*${key}\\s*=\\s*(.+)$`, 'mi'))?.[1]?.trim() || null;
+  const buildId = value('build-num');
+  const buildName = value('build-name');
+  const branch = value('build-branch');
+  const releaseVersion = (branch || buildName || '').match(/release_(\d+(?:\.\d+){2})/i)?.[1] || null;
+  if (!/^\d+$/.test(buildId || '') || !releaseVersion) return null;
+  return { buildId, buildName, branch, version: `${releaseVersion}.${buildId}` };
 }
 
 function parseSteamReleaseNotes(html) {
@@ -695,33 +736,66 @@ async function detectDiscord() {
 }
 
 /**
- * Battle.net — official launcher/support release pages only.
- * Generic support shells intentionally return null instead of a dated placeholder.
+ * Battle.net — Blizzard patch-service manifests, cross-validated against the
+ * content-addressed HTTPS CDN build configuration. Blizzard's version service
+ * is served on its legacy patch port; the public build is accepted only when
+ * at least two independent regions agree and the referenced HTTPS config
+ * matches exactly.
  */
 async function detectBattleNet() {
-  const statusUrl = process.env.BATTLENET_STATUS_URL || 'https://battle.net/support/article/000127080';
+  const manifestUrls = [
+    process.env.BATTLENET_VERSION_URL || 'http://us.patch.battle.net:1119/bna/versions',
+    process.env.BATTLENET_VERSION_URL_SECONDARY || 'http://eu.patch.battle.net:1119/bna/versions',
+    process.env.BATTLENET_VERSION_URL_TERTIARY || 'http://kr.patch.battle.net:1119/bna/versions',
+  ];
   try {
-    const html = await fetchHtml(statusUrl);
-    const $ = cheerio.load(html);
-    const pageTitle = cleanText($('h1').first().text() || $('title').text(), 120);
-    const body = cleanText($('body').text(), 6000);
-    const version = body.match(/(?:Battle\.net Desktop App|Version|Build)[:\s-]+(\d+(?:\.\d+){1,4})/i)?.[1];
-    const date = body.match(/(?:Released|Updated|Published)[:\s-]+([A-Z][a-z]+\s+\d{1,2},\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
-      || $('time[datetime]').first().attr('datetime');
-    if (!version || !toIsoDate(date)) return null;
+    const regionalResponses = await Promise.allSettled(manifestUrls.map(url => fetchTextResponse(url)));
+    const manifests = regionalResponses
+      .filter(response => response.status === 'fulfilled')
+      .map(response => parseBattleNetVersionManifest(response.value.data, 'us'))
+      .filter(Boolean);
+    if (manifests.length < 2) throw new Error('Fewer than two official Battle.net regional manifests were available');
+
+    const manifest = manifests[0];
+    if (manifests.some(candidate =>
+      candidate.version !== manifest.version || candidate.buildConfig !== manifest.buildConfig
+    )) {
+      throw new Error('Official Battle.net regional manifests disagree');
+    }
+
+    const hash = manifest.buildConfig;
+    const configUrl = `https://level3.ssl.blizzard.com/tpr/bnt002/config/${hash.slice(0, 2)}/${hash.slice(2, 4)}/${hash}`;
+    const configResponse = await fetchTextResponse(configUrl);
+    const buildConfig = parseBattleNetBuildConfig(configResponse.data);
+    const releasedAt = toIsoDate(configResponse.headers['last-modified']);
+    if (!buildConfig || buildConfig.version !== manifest.version || buildConfig.buildId !== manifest.buildId || !releasedAt) {
+      throw new Error('Battle.net HTTPS build config did not validate the manifest');
+    }
+
+    const regionsVerified = manifests.length;
     return {
       platform:   'BattleNet',
-      name:       `Battle.net Desktop App ${version}`,
-      version,
-      releasedAt: toIsoDate(date),
+      name:       `Battle.net Desktop App ${manifest.version}`,
+      version:    manifest.version,
+      releasedAt,
       affects:    'Battle.net launcher / Blizzard game updates / login, repair, download, and patch installation flow',
-      changelog:  [pageTitle || `Battle.net Desktop App ${version} release information.`],
+      changelog:  [
+        `Blizzard's official patch service currently publishes Battle.net Desktop App build ${manifest.version}.`,
+        `${regionsVerified} official regional manifest${regionsVerified === 1 ? '' : 's'} validated the same public build and content-addressed build configuration.`,
+        `The HTTPS build configuration identifies ${buildConfig.buildName || buildConfig.branch || `build ${manifest.buildId}`}.`,
+      ],
       knownIssues: [],
-      riskFactors: [{ level: 'medium', text: 'Launcher or service issues can block game patching, downloads, login, or repair loops even when the game update itself is healthy.' }],
-      verdict: 'Check before large Blizzard game updates; install normally if launcher login/download services are healthy.',
-      reasoning: 'PatchTicker only publishes a Battle.net launcher entry when Blizzard’s official support surface exposes both an identifiable version and publication date.',
-      evidence: sourceEvidence('Battle.net Support', statusUrl, `${pageTitle}. Version ${version}.`, { dateBasis: 'published', releaseType: 'official-release' }),
-      sourceUrl:  statusUrl,
+      riskFactors: [
+        { level: 'medium', text: 'Launcher or service issues can block game patching, downloads, login, or repair loops even when the game update itself is healthy.' },
+        { level: 'low', text: 'Blizzard does not publish a complete public changelog for every desktop-app build; version and source date are verified, but feature-level changes may be unavailable.' },
+      ],
+      verdict: 'This is the current public launcher build confirmed by Blizzard’s official regional manifests and HTTPS build config. Let the built-in updater install it normally; avoid forced reinstalls unless the launcher is failing.',
+      reasoning: 'PatchTicker cross-checks Blizzard’s official regional version manifests against the referenced HTTPS, content-addressed build configuration and uses that artifact’s update timestamp as the source date.',
+      evidence: [
+        ...sourceEvidence('Battle.net CDN Build Manifest', configUrl, `Official HTTPS build config validates Battle.net ${manifest.version}; last modified ${releasedAt}.`, { dateBasis: 'source-updated', releaseType: 'official-version', publishedAt: releasedAt }),
+        ...sourceEvidence('Battle.net Download', 'https://download.battle.net/en-us/desktop', 'Official Battle.net desktop app distribution page for Windows and macOS.', { dateBasis: 'checked', releaseType: 'official-download' }),
+      ],
+      sourceUrl:  configUrl,
     };
   } catch (err) {
     logger.warn('[scraper] Battle.net detection failed', { error: err.message });
@@ -1002,5 +1076,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseSteamReleaseNotes, parseXboxContentApi, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseSteamReleaseNotes, parseXboxContentApi, safeDecode, validateDetectedUpdate },
 };

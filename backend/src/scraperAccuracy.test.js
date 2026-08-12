@@ -69,6 +69,45 @@ describe('scraper accuracy guards', () => {
     }, null)).toBeNull();
   });
 
+  test('Battle.net parser validates the public build from the official version manifest', () => {
+    const parsed = __test.parseBattleNetVersionManifest(`
+      Region!STRING:0|BuildConfig!HEX:16|CDNConfig!HEX:16|KeyRing!HEX:16|BuildId!DEC:4|VersionsName!String:0|ProductConfig!HEX:16
+      ## seqn = 3924930
+      us|83e89bb98a1199169f122cd72478cd6b|551bcec947d3c1bce0f791e7d3e0e694||17651|2.52.8.17651|c9dc6de3a629d80327fc6e96256dd19e
+      beta|6578af32081bac804e0cf83a96559919|551bcec947d3c1bce0f791e7d3e0e694||17652|2.52.8.17652|c9dc6de3a629d80327fc6e96256dd19e
+    `);
+
+    expect(parsed).toEqual({
+      region: 'us',
+      buildConfig: '83e89bb98a1199169f122cd72478cd6b',
+      cdnConfig: '551bcec947d3c1bce0f791e7d3e0e694',
+      buildId: '17651',
+      version: '2.52.8.17651',
+      productConfig: 'c9dc6de3a629d80327fc6e96256dd19e',
+    });
+  });
+
+  test('Battle.net HTTPS config independently reconstructs the manifest version', () => {
+    expect(__test.parseBattleNetBuildConfig(`
+      # Build Configuration
+      build-num = 17651
+      build-name = 17651_release_2.52.8
+      build-branch = release_2.52.8
+      build-attributes = public
+    `)).toEqual({
+      buildId: '17651',
+      buildName: '17651_release_2.52.8',
+      branch: 'release_2.52.8',
+      version: '2.52.8.17651',
+    });
+  });
+
+  test('Battle.net manifest parser rejects a version/build mismatch', () => {
+    expect(__test.parseBattleNetVersionManifest(
+      'us|83e89bb98a1199169f122cd72478cd6b|551bcec947d3c1bce0f791e7d3e0e694||17651|2.52.8.99999|c9dc6de3a629d80327fc6e96256dd19e'
+    )).toBeNull();
+  });
+
   test('Steam parser separates known issues from release changes', () => {
     const parsed = __test.parseSteamReleaseNotes(`
       <p>This update is for the SteamOS Beta and Preview channels.</p>

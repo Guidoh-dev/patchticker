@@ -50,7 +50,7 @@ test('triad dashboard resets legacy nested grid and uses horizontal metadata row
   assert.match(cssSource, /\.dash-wrap--triad \.dash-main\s*\{[^}]*display:\s*block/s);
   assert.match(cssSource, /\.decision-card-link\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
   assert.match(cssSource, /\.decision-card-metrics\s*\{[^}]*display:\s*flex/s);
-  assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
+  assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-meta-grid\s*\{\s*grid-template-columns:\s*1fr;/);
 });
 
@@ -58,6 +58,9 @@ test('update detail columns cannot force horizontal page overflow', () => {
   assert.match(cssSource, /\.detail-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(280px, 380px\)/s);
   assert.match(cssSource, /\.detail-col-main,\s*\.detail-col-side\s*\{[^}]*min-width:\s*0/s);
   assert.match(cssSource, /\.detail-reasoning,[\s\S]*?\.detail-requirement-grid strong\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
+  assert.match(cssSource, /\.detail-meta-grid > div:last-child\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
+  assert.match(cssSource, /\.detail-meta-grid > div:nth-child\(2\) strong\s*\{[^}]*white-space:\s*nowrap;/s);
 });
 
 test('non-default filters and sorting use the globally ordered result list', () => {
@@ -159,4 +162,17 @@ test('offline update feeds remain honest instead of reviving demo records', () =
   assert.match(mainSource, /function renderOfflineRails[\s\S]*?_allUpdates = \[\][\s\S]*?renderTapeAndLatest\(\[\], message\)/);
   assert.match(mainSource, /Verified patch data will return when the connection recovers/);
   assert.doesNotMatch(mainSource, /typeof getStaticUpdates === 'function'/);
+});
+
+test('landing page hydrates from verified updates instead of fabricated ratings', () => {
+  assert.match(mainSource, /function hydrateLandingSignals\(\)/);
+  assert.match(mainSource, /Promise\.all\(\[fetchUpdates\(\{ sort: 'date_desc' \}\), fetchSummary\(\)\]\)/);
+  assert.match(mainSource, /latest\.userRating\?\.totalVotes/);
+  assert.match(mainSource, /out of 10 PatchTicker score/);
+  assert.match(mainSource, /No sample score is shown while verified source data is unavailable/);
+  assert.doesNotMatch(mainSource, /Latest user signal/);
+  assert.doesNotMatch(mainSource, /<strong>8\.7<\/strong>/);
+  assert.doesNotMatch(mainSource, /Install 72%/);
+  assert.match(cssSource, /\.landing-meter--10 span\s*\{\s*width:\s*100%/);
+  assert.match(cssSource, /@media \(max-width: 980px\)[\s\S]*?\.landing-copy\s*\{\s*display:\s*contents;[\s\S]*?\.landing-panel\s*\{\s*order:\s*1;[\s\S]*?\.landing-proof\s*\{\s*order:\s*2;/);
 });
