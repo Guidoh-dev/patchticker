@@ -3,8 +3,8 @@
     "platform": "Windows",
     "label": "Windows",
     "lane": "security",
-    "updates": 1,
-    "averageRating": 9,
+    "updates": 2,
+    "averageRating": 8.3,
     "folder": "./windows/"
   },
   {
@@ -12,14 +12,14 @@
     "label": "Apple iOS",
     "lane": "security",
     "updates": 1,
-    "averageRating": 8.7,
+    "averageRating": 9,
     "folder": "./apple/"
   },
   {
     "platform": "macOS",
     "label": "macOS",
     "lane": "security",
-    "updates": 1,
+    "updates": 2,
     "averageRating": 8.7,
     "folder": "./macos/"
   },
@@ -28,7 +28,7 @@
     "label": "NVIDIA",
     "lane": "drivers",
     "updates": 1,
-    "averageRating": 8.4,
+    "averageRating": 7.2,
     "folder": "./nvidia/"
   },
   {
@@ -43,7 +43,7 @@
     "platform": "Intel",
     "label": "Intel",
     "lane": "drivers",
-    "updates": 2,
+    "updates": 1,
     "averageRating": 7.4,
     "folder": "./intel/"
   },
@@ -51,8 +51,8 @@
     "platform": "Steam",
     "label": "Steam",
     "lane": "gaming",
-    "updates": 1,
-    "averageRating": 6.8,
+    "updates": 2,
+    "averageRating": 5.6,
     "folder": "./steam/"
   },
   {
@@ -60,7 +60,7 @@
     "label": "Switch",
     "lane": "console",
     "updates": 1,
-    "averageRating": 8.4,
+    "averageRating": 8.7,
     "folder": "./switch/"
   },
   {
@@ -68,7 +68,7 @@
     "label": "Xbox",
     "lane": "console",
     "updates": 1,
-    "averageRating": 7,
+    "averageRating": 7.2,
     "folder": "./xbox/"
   },
   {
@@ -76,7 +76,7 @@
     "label": "PS5",
     "lane": "console",
     "updates": 1,
-    "averageRating": 7.6,
+    "averageRating": 8.4,
     "folder": "./ps5/"
   },
   {
@@ -84,7 +84,7 @@
     "label": "Discord",
     "lane": "services",
     "updates": 1,
-    "averageRating": 8.4,
+    "averageRating": 8,
     "folder": "./discord/"
   },
   {
@@ -92,7 +92,7 @@
     "label": "Battle.net",
     "lane": "services",
     "updates": 1,
-    "averageRating": 8.4,
+    "averageRating": 7.4,
     "folder": "./battlenet/"
   },
   {

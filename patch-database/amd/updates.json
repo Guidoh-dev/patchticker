@@ -8,8 +8,8 @@
     "official": true
   },
   "window": {
-    "from": "2026-05-22",
-    "to": "2026-07-21"
+    "from": "2026-06-13",
+    "to": "2026-08-12"
   },
   "updates": [
     {
@@ -18,8 +18,8 @@
       "name": "AMD Software: Adrenalin Edition 26.6.4 Driver Release Notes",
       "version": "26.6.4",
       "releasedAt": "2026-06-29",
-      "status": "caution",
-      "storedScore": 5,
+      "status": "avoid",
+      "storedScore": 2.4,
       "impactScore": null,
       "bugCount": 0,
       "affects": "AMD Radeon GPUs / Adrenalin driver / Windows gaming performance / game compatibility",
@@ -54,12 +54,15 @@
         {
           "url": "https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-6-4.html",
           "text": "AMD Software: Adrenalin Edition 26.6.4 Driver Release Notes. Intermittent install issue seen when installing AMD Software: Adrenalin Edition 26.6.2 on Windows® 10 systems for Radeon™ RX 7000 series and above graphics products.",
-          "source": "AMD Release Notes"
+          "source": "AMD Release Notes",
+          "checkedAt": "2026-08-12T02:47:42.266Z",
+          "dateBasis": "released",
+          "releaseType": "official-release"
         }
       ],
       "securityCriticality": {
-        "level": "low",
-        "label": "No Security Patches",
+        "level": "none",
+        "label": "Security context not classified",
         "cves": []
       },
       "scraperGap": false,

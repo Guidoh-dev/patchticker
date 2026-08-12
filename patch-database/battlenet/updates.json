@@ -3,52 +3,77 @@
     "key": "BattleNet",
     "label": "Battle.net",
     "lane": "services",
-    "sourceType": "html",
+    "sourceType": "manifest",
     "priority": 4,
     "official": true
   },
   "window": {
-    "from": "2026-05-22",
-    "to": "2026-07-21"
+    "from": "2026-06-13",
+    "to": "2026-08-12"
   },
   "updates": [
     {
-      "id": "battlenet-2026-07",
+      "id": "battlenet-2-52-8-17651",
       "platform": "BattleNet",
-      "name": "Can't log in or not a Battle.net customer?",
-      "version": "2026-07",
-      "releasedAt": "2026-07-17",
+      "name": "Battle.net Desktop App 2.52.8.17651",
+      "version": "2.52.8.17651",
+      "releasedAt": "2026-08-03",
       "status": "caution",
-      "storedScore": 5,
+      "storedScore": 6,
       "impactScore": null,
       "bugCount": 0,
-      "affects": "Battle.net desktop app / Blizzard games / login / patch downloads / launcher services",
-      "verdict": "Watch login and patch-download reports before major game sessions; launcher issues can block play even when games are stable.",
-      "reasoning": "Battle.net changes can affect authentication, patch delivery, game launch, social features, and service availability for Blizzard titles.",
+      "affects": "Battle.net launcher / Blizzard game updates / login, repair, download, and patch installation flow",
+      "verdict": "This is the current public launcher build confirmed by Blizzard’s official regional manifests and HTTPS build config. Let the built-in updater install it normally; avoid forced reinstalls unless the launcher is failing.",
+      "reasoning": "PatchTicker cross-checks Blizzard’s official regional version manifests against the referenced HTTPS, content-addressed build configuration and uses that artifact’s update timestamp as the source date.",
       "changelog": [
-        "Battle.net support and launcher status checked for client-impacting changes"
+        "Blizzard's official patch service currently publishes Battle.net Desktop App build 2.52.8.17651.",
+        "3 official regional manifests validated the same public build and content-addressed build configuration.",
+        "The HTTPS build configuration identifies 17651_release_2.52.8."
       ],
       "knownIssues": [],
-      "riskFactors": [],
+      "riskFactors": [
+        {
+          "text": "Launcher or service issues can block game patching, downloads, login, or repair loops even when the game update itself is healthy.",
+          "level": "medium"
+        },
+        {
+          "text": "Blizzard does not publish a complete public changelog for every desktop-app build; version and source date are verified, but feature-level changes may be unavailable.",
+          "level": "low"
+        }
+      ],
       "evidence": [
         {
-          "url": "https://us.battle.net/support/en/",
-          "text": "Current BattleNet update verified from official source",
-          "source": "BattleNet"
+          "url": "https://level3.ssl.blizzard.com/tpr/bnt002/config/83/e8/83e89bb98a1199169f122cd72478cd6b",
+          "text": "Official HTTPS build config validates Battle.net 2.52.8.17651; last modified 2026-08-03.",
+          "source": "Battle.net CDN Build Manifest",
+          "checkedAt": "2026-08-12T02:02:23.506Z",
+          "dateBasis": "source-updated",
+          "publishedAt": "2026-08-03",
+          "releaseType": "official-version"
+        },
+        {
+          "url": "https://download.battle.net/en-us/desktop",
+          "text": "Official Battle.net desktop app distribution page for Windows and macOS.",
+          "source": "Battle.net Download",
+          "checkedAt": "2026-08-12T02:02:23.506Z",
+          "dateBasis": "checked",
+          "releaseType": "official-download"
         }
       ],
       "securityCriticality": {
-        "level": "low",
-        "label": "No Security Patches",
+        "level": "none",
+        "label": "Security context not classified",
         "cves": []
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 8.4,
+        "score": 7.4,
         "label": "positive",
         "recommendation": "install candidate",
         "notes": [
-          "Official/vendor source attached."
+          "Official/vendor source attached.",
+          "2 risk factor(s) attached.",
+          "Useful changelog with no known issues captured."
         ]
       }
     }

@@ -8,25 +8,36 @@
     "official": true
   },
   "window": {
-    "from": "2026-05-22",
-    "to": "2026-07-21"
+    "from": "2026-06-13",
+    "to": "2026-08-12"
   },
   "updates": [
     {
-      "id": "apple-26-5-2",
+      "id": "apple-26-6",
       "platform": "Apple",
-      "name": "iOS 26.5.2 and iPadOS 26.5.2",
-      "version": "26.5.2",
-      "releasedAt": "2026-06-29",
-      "status": "caution",
-      "storedScore": 5,
+      "name": "iOS 26.6 and iPadOS 26.6",
+      "version": "26.6",
+      "releasedAt": "2026-07-27",
+      "status": "stable",
+      "storedScore": 8.1,
       "impactScore": null,
       "bugCount": 0,
       "affects": "iPhone / iPad / WebKit / system security / app compatibility",
-      "verdict": "Prioritize this update when it includes security fixes, especially for WebKit, kernel, or actively exploited vulnerabilities.",
-      "reasoning": "Apple security releases often include CVE fixes that are not fully discussed until patches are available. PatchTicker tracks Apple’s official security release index and links the advisory for review.",
+      "verdict": "Install promptly after confirming device compatibility; Apple documents 86 CVEs across 77 documented security components in this release.",
+      "reasoning": "PatchTicker matched Apple’s release index to the full security advisory and prioritized the highest-impact entries. The advisory documents 86 CVEs across 77 documented security components; the update brief links each displayed risk back to Apple’s published CVE record.",
       "changelog": [
-        "Apple security release listed for iOS 26.5.2 and iPadOS 26.5.2. Review CVEs and device eligibility before installing."
+        "AppleDouble: Processing a maliciously crafted file may lead to unexpected app termination or arbitrary code execution (CVE-2026-43776)",
+        "AVEVideoEncoder: An app may be able to execute arbitrary code with kernel privileges (CVE-2026-64747)",
+        "ImageIO: Processing a maliciously crafted image may lead to arbitrary code execution (CVE-2026-43818)",
+        "Kernel: A remote attacker may be able to bypass network filters (CVE-2026-64735)",
+        "Kernel: An app may be able to access sensitive user data (CVE-2026-64721)",
+        "MediaRemote: An app may be able to gain root privileges (CVE-2026-43723)",
+        "SceneKit: Processing a maliciously crafted file may lead to unexpected app termination or arbitrary code execution (CVE-2026-64766 +1 more)",
+        "SceneKit: Processing a maliciously crafted file may lead to unexpected app termination or arbitrary code execution (CVE-2026-64764)",
+        "SceneKit: Processing a maliciously crafted file may lead to unexpected app termination or arbitrary code execution (CVE-2026-64763)",
+        "Accessibility: An attacker with physical access may be able to access sensitive user data during iPhone Mirroring (CVE-2026-64732)",
+        "App Store: An app may be able to access sensitive user data (CVE-2026-43801)",
+        "CloudAttestation: A maliciously crafted app may be able to bypass code signing enforcement (CVE-2026-43813)"
       ],
       "knownIssues": [],
       "riskFactors": [
@@ -37,25 +48,84 @@
       ],
       "evidence": [
         {
-          "url": "https://support.apple.com/en-us/127594",
-          "text": "iOS 26.5.2 and iPadOS 26.5.2 listed on Apple security releases page.",
-          "source": "Apple Security Releases"
+          "url": "https://support.apple.com/en-us/128066",
+          "text": "iOS 26.6 and iPadOS 26.6: 86 CVEs across 77 documented security components.",
+          "source": "Apple Security Advisory",
+          "cveCount": 86,
+          "checkedAt": "2026-08-12T02:49:24.534Z",
+          "dateBasis": "released",
+          "publishedAt": "2026-07-27",
+          "releaseType": "official-security-advisory"
         }
       ],
       "securityCriticality": {
-        "level": "low",
-        "label": "No Security Patches",
-        "cves": []
+        "cves": [
+          "CVE-2026-64732",
+          "CVE-2026-64733",
+          "CVE-2026-43801",
+          "CVE-2026-28928",
+          "CVE-2026-43776",
+          "CVE-2026-64725",
+          "CVE-2026-43730",
+          "CVE-2026-64747",
+          "CVE-2026-64707",
+          "CVE-2026-43811",
+          "CVE-2026-43813",
+          "CVE-2026-64746",
+          "CVE-2026-64734",
+          "CVE-2026-43797",
+          "CVE-2026-43673",
+          "CVE-2026-43744",
+          "CVE-2026-43803",
+          "CVE-2026-43711",
+          "CVE-2026-3784",
+          "CVE-2026-3783",
+          "CVE-2026-43753",
+          "CVE-2026-43714",
+          "CVE-2026-64742",
+          "CVE-2026-64740",
+          "CVE-2026-43796",
+          "CVE-2026-64692",
+          "CVE-2026-43780",
+          "CVE-2026-43818",
+          "CVE-2026-64716",
+          "CVE-2026-64758",
+          "CVE-2026-64754",
+          "CVE-2026-64693",
+          "CVE-2026-43805",
+          "CVE-2026-64749",
+          "CVE-2026-43778",
+          "CVE-2026-64709",
+          "CVE-2026-64735",
+          "CVE-2026-43739",
+          "CVE-2026-43816",
+          "CVE-2026-43822",
+          "CVE-2026-64729",
+          "CVE-2026-43814",
+          "CVE-2026-64700",
+          "CVE-2026-43799",
+          "CVE-2026-28931",
+          "CVE-2026-43817",
+          "CVE-2026-43769",
+          "CVE-2026-43810",
+          "CVE-2026-64775",
+          "CVE-2026-64720"
+        ],
+        "label": "86 documented CVEs across 77 security components",
+        "level": "high",
+        "totalCves": 86,
+        "activelyExploited": false
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 8.7,
+        "score": 9,
         "label": "positive",
         "recommendation": "install candidate",
         "notes": [
           "Official/vendor source attached.",
           "Security urgency detected.",
-          "1 risk factor(s) attached."
+          "1 risk factor(s) attached.",
+          "Useful changelog with no known issues captured."
         ]
       }
     }

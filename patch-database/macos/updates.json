@@ -8,25 +8,25 @@
     "official": true
   },
   "window": {
-    "from": "2026-05-22",
-    "to": "2026-07-21"
+    "from": "2026-06-13",
+    "to": "2026-08-12"
   },
   "updates": [
     {
-      "id": "macos-26-5-2",
+      "id": "macos-26-6-1",
       "platform": "macOS",
-      "name": "macOS Tahoe 26.5.2",
-      "version": "26.5.2",
-      "releasedAt": "2026-06-29",
-      "status": "caution",
-      "storedScore": 5,
+      "name": "macOS Tahoe 26.6.1",
+      "version": "26.6.1",
+      "releasedAt": "2026-08-06",
+      "status": "stable",
+      "storedScore": 7.9,
       "impactScore": null,
       "bugCount": 0,
       "affects": "Mac / macOS / Safari-WebKit / system security / device stability",
-      "verdict": "Prioritize this update when it includes security fixes, especially for WebKit, kernel, or actively exploited vulnerabilities.",
-      "reasoning": "Apple security releases often include CVE fixes that are not fully discussed until patches are available. PatchTicker tracks Apple’s official security release index and links the advisory for review.",
+      "verdict": "Install promptly after confirming device compatibility; Apple documents 1 CVE across 1 documented security component in this release.",
+      "reasoning": "PatchTicker matched Apple’s release index to the full security advisory and prioritized the highest-impact entries. The advisory documents 1 CVE across 1 documented security component; the update brief links each displayed risk back to Apple’s published CVE record.",
       "changelog": [
-        "Apple security release listed for macOS Tahoe 26.5.2. Review CVEs and device eligibility before installing."
+        "Screen Sharing: An attacker on the network may be able to authenticate to Screen Sharing without valid credentials (CVE-2026-65400)"
       ],
       "knownIssues": [],
       "riskFactors": [
@@ -37,14 +37,70 @@
       ],
       "evidence": [
         {
-          "url": "https://support.apple.com/en-us/127595",
-          "text": "macOS Tahoe 26.5.2 listed on Apple security releases page.",
+          "url": "https://support.apple.com/en-us/148170",
+          "text": "macOS Tahoe 26.6.1: 1 CVE across 1 documented security component.",
+          "source": "Apple Security Advisory",
+          "cveCount": 1,
+          "checkedAt": "2026-08-12T02:49:21.834Z",
+          "dateBasis": "released",
+          "publishedAt": "2026-08-06",
+          "releaseType": "official-security-advisory"
+        }
+      ],
+      "securityCriticality": {
+        "cves": [
+          "CVE-2026-65400"
+        ],
+        "label": "1 documented CVE across 1 security component",
+        "level": "high",
+        "totalCves": 1,
+        "activelyExploited": false
+      },
+      "scraperGap": false,
+      "ratingTest": {
+        "score": 8.7,
+        "label": "positive",
+        "recommendation": "install candidate",
+        "notes": [
+          "Official/vendor source attached.",
+          "Security urgency detected.",
+          "1 risk factor(s) attached."
+        ]
+      }
+    },
+    {
+      "id": "macos-26-6",
+      "platform": "macOS",
+      "name": "macOS Tahoe 26.6",
+      "version": "26.6",
+      "releasedAt": "2026-07-27",
+      "status": "stable",
+      "storedScore": 7.9,
+      "impactScore": null,
+      "bugCount": 0,
+      "affects": "Mac / macOS / Safari-WebKit / system security / device stability",
+      "verdict": "Prioritize this update when it includes security fixes, especially for WebKit, kernel, or actively exploited vulnerabilities.",
+      "reasoning": "Apple security releases often include CVE fixes that are not fully discussed until patches are available. PatchTicker tracks Apple’s official security release index and links the advisory for review.",
+      "changelog": [
+        "Apple security release listed for macOS Tahoe 26.6. Review CVEs and device eligibility before installing."
+      ],
+      "knownIssues": [],
+      "riskFactors": [
+        {
+          "text": "Security updates are usually recommended quickly, but older devices and managed fleets should verify app compatibility first.",
+          "level": "low"
+        }
+      ],
+      "evidence": [
+        {
+          "url": "https://support.apple.com/en-us/128067",
+          "text": "macOS Tahoe 26.6 listed on Apple security releases page.",
           "source": "Apple Security Releases"
         }
       ],
       "securityCriticality": {
-        "level": "low",
-        "label": "No Security Patches",
+        "level": "none",
+        "label": "Security context not classified",
         "cves": []
       },
       "scraperGap": false,

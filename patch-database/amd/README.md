@@ -3,7 +3,7 @@
 - Platform key: `AMD`
 - Lane: drivers
 - Source type: html
-- Window: 2026-05-22 through 2026-07-21 (<60 days)
+- Window: 2026-06-13 through 2026-08-12 (last 60 days)
 - Updates captured: 1
 
 | Release | Version | Rating test | Overall | Recommendation | Source |
@@ -14,7 +14,7 @@
 ### AMD Software: Adrenalin Edition 26.6.4 Driver Release Notes
 - ID: `amd-26-6-4`
 - Date: 2026-06-29
-- Stored PatchTicker score/status: 5 / caution
+- Stored PatchTicker score/status: 2.4 / avoid
 - Local rating test: 2.7/10 (negative) — avoid or wait
 - Affects: AMD Radeon GPUs / Adrenalin driver / Windows gaming performance / game compatibility
 - Verdict: Check game-specific fixes and known issues before updating, especially if your current Radeon driver is stable.

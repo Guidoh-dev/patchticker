@@ -8,38 +8,105 @@
     "official": true
   },
   "window": {
-    "from": "2026-05-22",
-    "to": "2026-07-21"
+    "from": "2026-06-13",
+    "to": "2026-08-12"
   },
   "updates": [
     {
-      "id": "steam-jul-2026",
+      "id": "steam-3-8-25",
       "platform": "Steam",
-      "name": "SteamOS 3.8.16",
-      "version": "Jul 2026",
-      "releasedAt": "2026-07-17",
+      "name": "SteamOS 3.8.25 Beta",
+      "version": "3.8.25",
+      "releasedAt": "2026-08-08",
+      "status": "avoid",
+      "storedScore": 3.9,
+      "impactScore": null,
+      "bugCount": 0,
+      "affects": "Steam client / SteamOS / Steam Deck / game library / downloads / compatibility layers",
+      "verdict": "Use the stable channel unless you need these fixes for testing; this build has an acknowledged performance regression.",
+      "reasoning": "This SteamOS build is explicitly marked Beta/Preview by Valve. PatchTicker separates its acknowledged issues from the full change list so stable-channel users can avoid treating a test build as a routine update.",
+      "changelog": [
+        "This update is for the SteamOS Beta and Preview channels, and includes new features that are still being tested. You can opt into this in Settings > System > System Update Channel.",
+        "General: Added support for waking up from the Steam Controller Wireless Adapter (2015)",
+        "Steam Machine Firmware 108: Fixed an issue where the system could occasionally wake up immediately after going to sleep",
+        "Audio: Fix for HDMI audio dropouts with some game and TV combinations",
+        "Non-Valve Devices: Improve support for MSI Claw and OneXPlayer device variants",
+        "Developer: Updated the Linux kernel to 6.18.42",
+        "General: Improved battery indications when the device is charging in but using more power than the charger can provide",
+        "Steam Machine Firmware 108: Fixed a rare issue where CPU performance could be degraded until reboot after waking up from sleep",
+        "Audio: Improve reliability of HDMI hotplug detection",
+        "Non-Valve Devices: Improve support for devices with external or no Wi-Fi adapters",
+        "General: Preliminary support for the Steam Frame Wireless Adapter",
+        "Audio: Add option to prefer lower latency audio codecs for Bluetooth devices"
+      ],
+      "knownIssues": [
+        "There is a known issue with degraded performance in some cases when composition is required (such as when having FSR enabled). This issue is fixed in the latest SteamOS stable release (3.8.16). Affected users may wish to switch to the stable update channel while we work on bringing this fix to the beta channel."
+      ],
+      "riskFactors": [
+        {
+          "text": "This release is on a Beta or Preview channel and is intended for users testing changes before stable rollout.",
+          "level": "medium"
+        },
+        {
+          "text": "There is a known issue with degraded performance in some cases when composition is required (such as when having FSR enabled). This issue is fixed in the latest SteamOS stable release (3.8.16). Affected users may wish to switch to the stable update channel while we work on bringing this fix to the beta channel.",
+          "level": "medium"
+        }
+      ],
+      "evidence": [
+        {
+          "url": "https://store.steampowered.com/news/app/1675200/view/667247155276153538",
+          "text": "SteamOS 3.8.25 Beta. This update is for the SteamOS Beta and Preview channels, and includes new features that are still being tested. You can opt into this in Settings > System > System Update Channel. Known Issues - Beta There is a known issue with degraded p",
+          "source": "Steam News",
+          "checkedAt": "2026-08-12T02:47:41.567Z",
+          "dateBasis": "published",
+          "releaseType": "official-release"
+        }
+      ],
+      "securityCriticality": {
+        "level": "none",
+        "label": "Security context not classified",
+        "cves": []
+      },
+      "scraperGap": false,
+      "ratingTest": {
+        "score": 4.3,
+        "label": "negative",
+        "recommendation": "avoid or wait",
+        "notes": [
+          "Beta/preview channel language detected.",
+          "2 risk factor(s) attached.",
+          "1 known issue(s) attached."
+        ]
+      }
+    },
+    {
+      "id": "steam-aug-2026",
+      "platform": "Steam",
+      "name": "Steam Client Update: August 3rd",
+      "version": "Aug 2026",
+      "releasedAt": "2026-08-03",
       "status": "caution",
-      "storedScore": 5,
+      "storedScore": 7.3,
       "impactScore": null,
       "bugCount": 0,
       "affects": "Steam client / SteamOS / Steam Deck / game library / downloads / compatibility layers",
       "verdict": "Good candidate for Steam Deck or Steam client users unless early reports mention install, compatibility, or download regressions.",
       "reasoning": "Steam and SteamOS updates can change handheld behavior, controller input, Proton compatibility, downloads, library management, and client stability.",
       "changelog": [
-        "The Steam Client Beta has been updated with the following changes:GeneralFixed regression causing video playback to fail in some games.Improved notification settings layout in some languages"
+        "This update is for the SteamOS Beta and Preview channels, and includes new features that are still being tested. You can opt into this in Settings > System > System Update Channel.Known Issues - BetaThere is a known issue with degraded performance in some cases when composition is required (such as when having FSR enabled).This issue is fixed in the latest SteamOS stable release (3.8.16).  Affected users may wish to switch to the stable update channel while we work on bringing this fix to the be"
       ],
       "knownIssues": [],
       "riskFactors": [],
       "evidence": [
         {
-          "url": "https://store.steampowered.com/news/app/1675200/view/698770449667981856",
+          "url": "https://store.steampowered.com/news/app/1675200/view/667247155276153538",
           "text": "Current Steam update verified from official source",
           "source": "Steam"
         }
       ],
       "securityCriticality": {
-        "level": "low",
-        "label": "No Security Patches",
+        "level": "none",
+        "label": "Security context not classified",
         "cves": []
       },
       "scraperGap": false,

@@ -3,43 +3,53 @@
     "key": "GOG",
     "label": "GOG Galaxy",
     "lane": "services",
-    "sourceType": "html",
+    "sourceType": "json",
     "priority": 4,
     "official": true
   },
   "window": {
-    "from": "2026-05-22",
-    "to": "2026-07-21"
+    "from": "2026-06-13",
+    "to": "2026-08-12"
   },
   "updates": [
     {
-      "id": "gog-2026-07",
+      "id": "gog-2-1-8-30",
       "platform": "GOG",
-      "name": "GOG Galaxy",
-      "version": "2026-07",
-      "releasedAt": "2026-07-17",
+      "name": "GOG GALAXY 2.1.8.30",
+      "version": "2.1.8.30",
+      "releasedAt": "2026-08-06",
       "status": "caution",
-      "storedScore": 5,
+      "storedScore": 6.9,
       "impactScore": null,
       "bugCount": 0,
-      "affects": "GOG Galaxy / library sync / cloud saves / cross-store integrations / Windows and macOS client",
-      "verdict": "Safe for most users, but check cloud-save and library-sync behavior if you use GOG Galaxy as a launcher hub.",
-      "reasoning": "GOG Galaxy updates can affect library sync, cloud saves, installed-game detection, and integrations with other storefronts.",
+      "affects": "GOG GALAXY desktop client / Windows and macOS / library sync / cloud saves / game installation",
+      "verdict": "Install normally, but confirm cloud-save and library synchronization if GOG GALAXY is your primary launcher hub.",
+      "reasoning": "PatchTicker verifies the current GOG GALAXY build from GOG’s official remote installer manifest and dates it from the published installer artifact, avoiding stale news cards and guessed monthly versions.",
       "changelog": [
-        "GOG news monitored for Galaxy client and library-sync updates"
+        "GOG's official installer manifest currently serves Windows 2.1.8.30; macOS 2.1.8.32.",
+        "The installer artifact timestamp changed with this release; GOG does not expose a complete public per-build changelog on this endpoint."
       ],
       "knownIssues": [],
-      "riskFactors": [],
+      "riskFactors": [
+        {
+          "text": "Launcher updates can affect library sync, cloud saves, downloads, and cross-store integrations.",
+          "level": "low"
+        }
+      ],
       "evidence": [
         {
-          "url": "https://www.gog.com/news",
-          "text": "Current GOG update verified from official source",
-          "source": "GOG"
+          "url": "https://remote-config.gog.com/components/webinstaller?component_version=2.0.0",
+          "text": "Official installer manifest serves Windows 2.1.8.30; macOS 2.1.8.32; Windows artifact last modified 2026-08-06.",
+          "source": "GOG GALAXY Installer Manifest",
+          "checkedAt": "2026-08-12T02:47:46.504Z",
+          "dateBasis": "source-updated",
+          "publishedAt": "2026-08-06",
+          "releaseType": "official-version"
         }
       ],
       "securityCriticality": {
-        "level": "low",
-        "label": "No Security Patches",
+        "level": "none",
+        "label": "Security context not classified",
         "cves": []
       },
       "scraperGap": false,
@@ -47,7 +57,10 @@
         "score": 8,
         "label": "positive",
         "recommendation": "install candidate",
-        "notes": []
+        "notes": [
+          "1 risk factor(s) attached.",
+          "Useful changelog with no known issues captured."
+        ]
       }
     }
   ]

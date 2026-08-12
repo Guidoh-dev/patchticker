@@ -8,8 +8,8 @@
     "official": true
   },
   "window": {
-    "from": "2026-06-12",
-    "to": "2026-08-11"
+    "from": "2026-06-13",
+    "to": "2026-08-12"
   },
   "updates": [
     {
@@ -33,36 +33,36 @@
       "knownIssues": [],
       "riskFactors": [
         {
-          "level": "low",
-          "text": "System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior."
+          "text": "System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.",
+          "level": "low"
         }
       ],
       "evidence": [
         {
-          "source": "PlayStation System Software",
           "url": "https://www.playstation.com/en-us/support/hardware/ps5/system-software/",
           "text": "Official PS5 package 767a94ea published 2026-07-23; package build path 2026-07-17.",
+          "source": "PlayStation System Software",
+          "checkedAt": "2026-08-12T02:26:41.751Z",
           "dateBasis": "artifact-published",
-          "releaseType": "official-artifact",
           "publishedAt": "2026-07-23",
+          "releaseType": "official-artifact",
           "artifactHash": "767a94eac034d33907a6ff57af05bc30ce057258ad1cf4b5ffb75d5e21112561"
         }
       ],
       "securityCriticality": {
-        "level": "low",
-        "label": "No published CVE list",
+        "level": "none",
+        "label": "Security context not classified",
         "cves": []
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 7.1,
-        "label": "caution",
-        "recommendation": "install if the system update is offered to your console",
+        "score": 8.4,
+        "label": "positive",
+        "recommendation": "install candidate",
         "notes": [
-          "Official Sony package fingerprint validated.",
-          "Artifact Last-Modified timestamp used as release date.",
-          "CMS deployment revision deliberately ignored.",
-          "No community vote score inferred."
+          "Official/vendor source attached.",
+          "1 risk factor(s) attached.",
+          "Useful changelog with no known issues captured."
         ]
       }
     }

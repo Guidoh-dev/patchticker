@@ -2,12 +2,20 @@
 
 - Platform key: `Discord`
 - Lane: services
-- Source type: official Patch Notes HTML
-- Window: 2026-06-12 through 2026-08-11 (60 days)
-- Updates captured: 2
-- Accuracy rule: Discord service incidents are not client patches and are excluded.
+- Source type: html
+- Window: 2026-06-13 through 2026-08-12 (last 60 days)
+- Updates captured: 1
 
-| Release | Version | Source-based score | Recommendation | Source |
-|---|---:|---:|---|---|
-| Discord Patch Notes: August 4, 2026 | 2026.08.04 | 6.8/10 | review applicable client fixes | [Discord](https://discord.com/blog/discord-patch-notes-august-4-2026) |
-| Discord Patch Notes: July 7, 2026 | 2026.07.07 | 7.2/10 | review applicable client fixes | [Discord](https://discord.com/blog/discord-patch-notes-july-7-2026) |
+| Release | Version | Rating test | Overall | Recommendation | Source |
+|---|---:|---:|---|---|---|
+| Discord Patch Notes: August 4, 2026 (2026-08-04) | 2026.08.04 | 8/10 | positive | install candidate | [Discord Patch Notes](https://discord.com/blog/discord-patch-notes-august-4-2026) |
+
+## Notes
+### Discord Patch Notes: August 4, 2026
+- ID: `discord-2026-08-04`
+- Date: 2026-08-04
+- Stored PatchTicker score/status: 6.8 / caution
+- Local rating test: 8/10 (positive) — install candidate
+- Affects: Discord desktop / Windows / macOS / Linux / overlay / voice / streaming / client reliability
+- Verdict: Review the Desktop sections for overlay, voice, streaming, and crash fixes that apply to your setup; rollout timing may vary by platform.
+- Rating test notes: 1 risk factor(s) attached. Useful changelog with no known issues captured.
