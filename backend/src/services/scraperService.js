@@ -196,6 +196,13 @@ function metaContent($, name) {
   return $(`meta[name="${name}"], meta[property="${name}"]`).attr('content') || '';
 }
 
+function microsoftSecurityCriticality(title, sourceUrl = '') {
+  if (/security(?:\s+|-)update/i.test(`${title || ''} ${sourceUrl || ''}`)) {
+    return { level: 'medium', label: 'Microsoft security update; CVE details are published in the Security Update Guide', cves: [], totalCves: null };
+  }
+  return { level: 'none', label: 'No security classification published on this KB page', cves: [], totalCves: null };
+}
+
 function parseGogRemoteConfig(config, installerLastModified) {
   const windows = config?.content?.windows;
   const macos = config?.content?.osx;
@@ -627,6 +634,8 @@ async function detectWindows() {
     const previewNote = update.isPreview
       ? 'This is a Microsoft preview update; preview releases are generally optional and should be reviewed before broad installation.'
       : 'This is an official Microsoft cumulative update; review the KB page for deployment notes and known issues.';
+    const securityCriticality = microsoftSecurityCriticality(update.title, update.sourceUrl);
+    const isSecurityUpdate = securityCriticality.level !== 'none';
 
     return {
       platform:   'Windows',
@@ -636,7 +645,8 @@ async function detectWindows() {
       affects:    'Windows 11 supported releases / cumulative OS servicing / security and quality updates',
       changelog:  unique([previewNote, ...changelog]).slice(0, 6),
       knownIssues,
-      evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title, { dateBasis: 'released', releaseType: 'official-release' }),
+      securityCriticality,
+      evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title, { dateBasis: 'released', releaseType: isSecurityUpdate ? 'official-security-release' : 'official-release' }),
       sourceUrl:  update.sourceUrl,
     };
   } catch (err) {
@@ -1253,5 +1263,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, microsoftSecurityCriticality, safeDecode, validateDetectedUpdate },
 };

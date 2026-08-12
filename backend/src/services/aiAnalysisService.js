@@ -166,7 +166,7 @@ Evidence sources: ${JSON.stringify((update.evidence || []).map(e => e.text || e)
       impactScore:         Math.max(0, Math.min(10, Number(parsed.impactScore) || 5)),
       verdict:             String(parsed.verdict || '').slice(0, 500),
       reasoning:           String(parsed.reasoning || '').slice(0, 2000),
-      securityCriticality: parsed.securityCriticality || { level: 'low', label: 'No Security Patches', cves: [] },
+      securityCriticality: parsed.securityCriticality || { level: 'none', label: 'Security context not classified', cves: [] },
       changelog:           Array.isArray(parsed.changelog)   ? parsed.changelog   : (update.changelog   || []),
       knownIssues:         Array.isArray(parsed.knownIssues) ? parsed.knownIssues : (update.knownIssues || []),
       aiGenerated:         true,

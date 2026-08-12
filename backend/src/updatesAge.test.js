@@ -84,7 +84,11 @@ test('successful database reads never mix static samples into the live feed', as
 
   const updates = await updatesService.getUpdates();
   expect(updates).toHaveLength(1);
-  expect(updates[0]).toMatchObject({ id: 'vendor-real-1-2-3', updatedAt: '2026-08-11T11:00:00Z' });
+  expect(updates[0]).toMatchObject({
+    id: 'vendor-real-1-2-3',
+    updatedAt: '2026-08-11T11:00:00Z',
+    securityCriticality: { level: 'none', label: 'Security context not classified', cves: [] },
+  });
   expect(updates.some(update => update.id === 'steam-apex-legends-july-2026')).toBe(false);
 });
 

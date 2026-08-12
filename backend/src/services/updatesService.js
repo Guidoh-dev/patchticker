@@ -664,7 +664,7 @@ function rowToUpdate(row) {
     officialSourceCount:  evidence.filter(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`)).length,
     securityCriticality:  row.security_criticality
       ? (typeof row.security_criticality === 'string' ? JSON.parse(row.security_criticality) : row.security_criticality)
-      : { level: 'low', label: 'No Security Patches', cves: [] },
+      : { level: 'none', label: 'Security context not classified', cves: [] },
     subreddits,
     aiGenerated:          row.ai_generated || false,
     aiModel:              row.ai_model || null,

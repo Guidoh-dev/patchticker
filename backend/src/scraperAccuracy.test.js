@@ -30,6 +30,20 @@ describe('scraper accuracy guards', () => {
     ]);
   });
 
+  test('Microsoft KB classification distinguishes security releases from unclassified previews', () => {
+    expect(__test.microsoftSecurityCriticality(
+      'August 11, 2026—KB5121000 (OS Build 28000.2704)',
+      'https://support.microsoft.com/en-us/servicing/os/windows-11/2026/08/kb5121000-windows-11-26h1-security-update'
+    )).toMatchObject({
+      level: 'medium',
+      label: expect.stringContaining('Microsoft security update'),
+    });
+    expect(__test.microsoftSecurityCriticality('July 28, 2026—KB5101681 Preview')).toMatchObject({
+      level: 'none',
+      label: expect.stringContaining('No security classification published'),
+    });
+  });
+
   test('PS5 parser fingerprints the official system package instead of the CMS revision', () => {
     const parsed = __test.parsePs5SupportPage(`
       <input name="lastcodedeployed-releaseversion" value=" - Release Version: 2026.807" />
