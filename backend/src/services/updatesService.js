@@ -2,6 +2,7 @@
 // Aggregates update data. All third-party calls happen here — never in routes.
 
 const axios   = require('axios');
+const { URL } = require('node:url');
 const logger  = require('../utils/logger');
 const secrets = require('../config/secrets');
 
@@ -738,6 +739,7 @@ function rowToUpdate(row) {
     reasoning:            row.reasoning || null,
     changelog,
     knownIssues,
+    knownIssuesAuthoritative: evidence.some(item => item?.knownIssuesAuthoritative === true),
     riskFactors,
     evidence,
     sourceUrl:            officialEvidence?.url || evidence.find(e => e?.url)?.url || null,

@@ -79,6 +79,19 @@ describe('pipeline source metadata preservation', () => {
     expect(params[14]).toBe(true);
   });
 
+  test('known-issue authority is preserved inside source evidence for API clients', () => {
+    const context = __test.platformContext('AMD', {
+      name: 'AMD Software: Adrenalin Edition 26.7.1',
+      knownIssues: [],
+      knownIssuesAuthoritative: true,
+      evidence: [{ source: 'AMD Release Notes', url: 'https://www.amd.com/release-notes' }],
+    });
+
+    expect(context.evidence).toEqual([
+      expect.objectContaining({ knownIssuesAuthoritative: true }),
+    ]);
+  });
+
   test('a supported beta game does not misclassify the graphics driver as a beta release', () => {
     const detected = {
       name: 'Intel Arc Graphics Driver 32.0.101.8864 Non-WHQL',
@@ -107,6 +120,16 @@ describe('pipeline source metadata preservation', () => {
       { version: '2.0.0', released_at: '2026-08-12' },
       { version: '2.0.1', releasedAt: '2026-08-11' },
     )).toBe(false);
+  });
+
+  test('legacy placeholder rows cannot become the pipeline current release', () => {
+    expect(__test.isCanonicalPipelineRelease({ platform: 'PS5', version: '2026-08' })).toBe(false);
+    expect(__test.isCanonicalPipelineRelease({ platform: 'PS5', version: '2026.810' })).toBe(false);
+    expect(__test.isCanonicalPipelineRelease({ platform: 'PS5', version: 'PUP-2026.07.23-767a94ea' })).toBe(true);
+    expect(__test.isCanonicalPipelineRelease({ platform: 'BattleNet', version: '2026-08' })).toBe(false);
+    expect(__test.isCanonicalPipelineRelease({ platform: 'BattleNet', version: '2.52.8.17651' })).toBe(true);
+    expect(__test.isCanonicalPipelineRelease({ platform: 'Steam', version: 'Aug 2026' })).toBe(false);
+    expect(__test.isCanonicalPipelineRelease({ platform: 'Steam', version: '3.8.25' })).toBe(true);
   });
 
   test('a cached historical version refreshes metadata without sending a new-update alert', async () => {

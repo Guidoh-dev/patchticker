@@ -81,6 +81,37 @@ async function fetchHead(url) {
   return res.headers || {};
 }
 
+function artifactSizeBytes(headers = {}) {
+  const contentRange = String(headers['content-range'] || headers.get?.('content-range') || '');
+  const total = Number(contentRange.match(/\/(\d+)$/)?.[1]);
+  return Number.isSafeInteger(total) && total > 0 ? total : null;
+}
+
+async function fetchOfficialArtifactMetadata(url, allowedHosts) {
+  const parsedUrl = new URL(url);
+  if (parsedUrl.protocol !== 'https:' || !allowedHosts.includes(parsedUrl.hostname)) {
+    throw new Error(`Untrusted update artifact host: ${parsedUrl.hostname}`);
+  }
+  const res = await axios.get(parsedUrl.toString(), {
+    timeout: TIMEOUT,
+    responseType: 'arraybuffer',
+    maxRedirects: 5,
+    maxContentLength: 1024,
+    maxBodyLength: 1024,
+    headers: {
+      'User-Agent': UA,
+      'Accept': '*/*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Range': 'bytes=0-0',
+    },
+    validateStatus: status => status === 200 || status === 206,
+  });
+  return {
+    headers: res.headers || {},
+    sizeBytes: artifactSizeBytes(res.headers),
+  };
+}
+
 async function fetchTextResponse(url) {
   const res = await axios.get(url, {
     timeout: TIMEOUT,
@@ -744,11 +775,18 @@ function parseAmdDriverPage(html, baseUrl) {
     .map((_, link) => {
       const url = absoluteUrl($(link).attr('href'), baseUrl);
       const version = url.match(/RN-RAD-WIN-(\d+(?:-\d+)+)\.html/i)?.[1]?.replace(/-/g, '.') || null;
+      const article = $(link).closest('article');
+      const packageSize = cleanText(
+        article.find('strong').filter((__, label) => /^File Size$/i.test(cleanText($(label).text(), 40)))
+          .first().nextAll('p').first().text(),
+        48
+      );
       return version && /^https:\/\/www\.amd\.com\/en\/resources\/support-articles\/release-notes\/RN-RAD-WIN-/i.test(url)
         ? {
             url,
             version,
-            whql: /(?:\/whql\/|\bWHQL Recommended\b|whql-amd-software)/i.test($(link).closest('article').html() || ''),
+            whql: /(?:\/whql\/|\bWHQL Recommended\b|whql-amd-software)/i.test(article.html() || ''),
+            ...(packageSize ? { packageSize } : {}),
           }
         : null;
     })
@@ -758,6 +796,15 @@ function parseAmdDriverPage(html, baseUrl) {
   const latest = candidates[0];
   if (!latest) return null;
   return latest;
+}
+
+function parseIntelPackageSize(html) {
+  const $ = cheerio.load(html);
+  const value = cleanText(
+    $('li').filter((_, item) => /^Size\s*:/i.test(cleanText($(item).text(), 80))).first().text(),
+    80
+  ).replace(/^Size\s*:\s*/i, '');
+  return /^\d+(?:[.,]\d+)?\s*(?:KB|MB|GB|TB)$/i.test(value) ? value : null;
 }
 
 function parseAmdReleaseNotes(html, sourceUrl, options = {}) {
@@ -1054,6 +1101,7 @@ async function detectAmd() {
         knownIssueCount: parsed.knownIssueCount,
         productSupportCount: parsed.productSupportCount,
         whql: parsed.whql,
+        packageSize: discovered?.version === parsed.version ? discovered.packageSize : undefined,
       };
       return {
         platform: 'AMD',
@@ -1420,8 +1468,8 @@ async function detectPs5() {
     const html = await fetchHtml(url);
     const parsed = parsePs5SupportPage(html);
     if (!parsed) return null;
-    const artifactHeaders = await fetchHead(parsed.artifactUrl);
-    const releasedAt = toIsoDate(artifactHeaders['last-modified']);
+    const artifact = await fetchOfficialArtifactMetadata(parsed.artifactUrl, ['pc.ps5.update.playstation.net']);
+    const releasedAt = toIsoDate(artifact.headers['last-modified']);
     if (!releasedAt) return null;
     const artifactId = parsed.artifactHash.slice(0, 8);
     const version = `PUP-${releasedAt.replace(/-/g, '.')}-${artifactId}`;
@@ -1440,7 +1488,7 @@ async function detectPs5() {
       riskFactors: [{ level: 'low', text: 'System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.' }],
       verdict: 'Install for online play and system security unless early user reports flag a PS5-specific regression.',
       reasoning: 'PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker validates Sony’s official system package URL and Last-Modified timestamp; it does not mislabel the support page’s CMS deployment revision as console firmware.',
-      evidence: sourceEvidence('PlayStation System Software', url, `Official PS5 package ${artifactId} published ${releasedAt}; package build path ${parsed.artifactBuildDate}.`, { dateBasis: 'artifact-published', releaseType: 'official-artifact', publishedAt: releasedAt, artifactHash: parsed.artifactHash }),
+      evidence: sourceEvidence('PlayStation System Software', url, `Official PS5 package ${artifactId} published ${releasedAt}; package build path ${parsed.artifactBuildDate}.`, { dateBasis: 'artifact-published', releaseType: 'official-artifact', publishedAt: releasedAt, artifactHash: parsed.artifactHash, sizeBytes: artifact.sizeBytes || undefined }),
       sourceUrl: url,
     };
   } catch (err) {
@@ -1457,6 +1505,7 @@ async function detectIntel() {
     const url = 'https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html';
     const html = await fetchHtml(url);
     const $ = cheerio.load(html);
+    const packageSize = parseIntelPackageSize(html);
     const title = cleanText($('h1').first().text() || metaContent($, 'title') || 'Intel Arc Graphics - Windows', 100);
     const body = cleanText($('body').text(), 7000);
     const description = metaContent($, 'description') || metaContent($, 'og:description');
@@ -1491,6 +1540,7 @@ async function detectIntel() {
       gameFixCount: parsed.gameFixCount,
       knownIssueCount: parsed.knownIssueCount,
       whql: isWhql,
+      packageSize: packageSize || undefined,
     };
     return {
       platform: 'Intel',
@@ -1650,5 +1700,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
 };

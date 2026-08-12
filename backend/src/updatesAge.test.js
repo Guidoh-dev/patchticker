@@ -76,7 +76,7 @@ test('successful database reads never mix static samples into the live feed', as
       id: 'vendor-real-1-2-3', platform: 'Windows', name: 'Verified Vendor Release', version: '1.2.3',
       released_at: '2026-08-10', status: 'stable', score: '8.2', impact_score: '4.0', bug_count: 0,
       affects: 'Supported systems', verdict: 'Install', reasoning: 'Official notes loaded.', changelog: [],
-      known_issues: [], risk_factors: [], evidence: [{ source: 'Vendor', url: 'https://vendor.example/release', releaseType: 'official-release' }],
+      known_issues: [], risk_factors: [], evidence: [{ source: 'Vendor', url: 'https://vendor.example/release', releaseType: 'official-release', knownIssuesAuthoritative: true }],
       security_criticality: null, subreddits: [], ai_generated: false, ai_model: null, ai_generated_at: null,
       created_at: '2026-08-10T12:00:00Z', updated_at: '2026-08-11T11:00:00Z',
     }] };
@@ -87,6 +87,7 @@ test('successful database reads never mix static samples into the live feed', as
   expect(updates[0]).toMatchObject({
     id: 'vendor-real-1-2-3',
     updatedAt: '2026-08-11T11:00:00Z',
+    knownIssuesAuthoritative: true,
     securityCriticality: { level: 'none', label: 'Security context not classified', cves: [] },
   });
   expect(updates.some(update => update.id === 'steam-apex-legends-july-2026')).toBe(false);

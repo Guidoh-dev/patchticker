@@ -3098,7 +3098,9 @@ async function renderUpdateDetail(id) {
           <span class="detail-list-marker">!</span>${H(i)}
         </li>
       `).join('')
-    : '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">✓</span>No known issues reported</li>';
+    : u.knownIssuesAuthoritative
+      ? '<li class="detail-list-item detail-list-item--verified"><span class="detail-list-marker">✓</span>The vendor currently lists no known issues for this release.</li>'
+      : '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">?</span>No authoritative known-issue list was available in the checked release notes.</li>';
 
   const feedHTML = (u.feed || []).slice(0, 5).map(p => `
     <a class="detail-feed-item" href="${H(p.url)}" target="_blank" rel="noopener">

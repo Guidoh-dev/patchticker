@@ -187,6 +187,13 @@ test('feed distinguishes the latest release from archived platform history', () 
   assert.match(cssSource, /\.release-position--previous/);
 });
 
+test('empty issue sections distinguish a verified clean list from missing vendor data', () => {
+  assert.match(mainSource, /u\.knownIssuesAuthoritative/);
+  assert.match(mainSource, /The vendor currently lists no known issues for this release/);
+  assert.match(mainSource, /No authoritative known-issue list was available/);
+  assert.match(cssSource, /\.detail-list-item--verified\s*\{[^}]*var\(--green-primary\)/s);
+});
+
 test('security releases expose bounded CVE context without flooding the detail page', () => {
   assert.match(mainSource, /function securitySignalMeta\(update\)/);
   assert.match(mainSource, /CVE\$\{total === 1 \? '' : 's'\} documented/);

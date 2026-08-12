@@ -39,17 +39,28 @@ function makeUpdateId(platform, version) {
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
 const SOURCE_REGRESSION_TOLERANCE_MS = 36 * 60 * 60 * 1000;
+const MONTH_PLACEHOLDER_PLATFORMS = new Set(['BattleNet', 'GOG', 'Xbox']);
+
+function isCanonicalPipelineRelease(release) {
+  const platform = String(release?.platform || '');
+  const version = String(release?.version || '').trim();
+  if (!version) return false;
+  if (platform === 'PS5') return /^PUP-\d{4}\.\d{2}\.\d{2}-[a-f0-9]{8}$/i.test(version);
+  if (MONTH_PLACEHOLDER_PLATFORMS.has(platform) && /^\d{4}-\d{2}$/.test(version)) return false;
+  if (['Steam', 'Discord'].includes(platform) && /^[A-Z][a-z]{2,8}\s+\d{4}$/.test(version)) return false;
+  return true;
+}
 
 async function getLatestKnownRelease(platform) {
   if (!db.isAvailable()) return null;
-  const row = await db.query(
-    `SELECT id, version, released_at FROM software_updates
+  const result = await db.query(
+    `SELECT id, platform, version, released_at FROM software_updates
      WHERE platform = $1
      ORDER BY released_at DESC, created_at DESC
-     LIMIT 1`,
+     LIMIT 20`,
     [platform]
   );
-  return row.rows[0] || null;
+  return result.rows.find(isCanonicalPipelineRelease) || null;
 }
 
 async function getKnownReleaseByVersion(platform, version) {
@@ -212,6 +223,13 @@ function platformContext(platform, detected) {
   }[platform] || {};
   const verdict = detected.verdict || defaults.verdict || `New ${platform} update available: ${detected.name}`;
   const reasoning = detected.reasoning || defaults.reasoning || `PatchTicker detected a new ${platform} release from the vendor source and is tracking user reports, known issues, and install confidence as more evidence arrives.`;
+  const baseEvidence = detected.evidence?.length
+    ? detected.evidence
+    : (detected.sourceUrl ? [{ source: platform, url: detected.sourceUrl, text: `Current ${platform} update verified from official source` }] : []);
+  const evidence = baseEvidence.map(item => ({
+    ...item,
+    ...(detected.knownIssuesAuthoritative === true ? { knownIssuesAuthoritative: true } : {}),
+  }));
   return {
     affects: detected.affects || defaults.affects || `${platform} devices, software, and related services`,
     verdict,
@@ -220,7 +238,7 @@ function platformContext(platform, detected) {
     knownIssues: detected.knownIssues || [],
     knownIssuesAuthoritative: detected.knownIssuesAuthoritative === true,
     riskFactors: detected.riskFactors || [],
-    evidence: detected.evidence?.length ? detected.evidence : (detected.sourceUrl ? [{ source: platform, url: detected.sourceUrl, text: `Current ${platform} update verified from official source` }] : []),
+    evidence,
     securityCriticality: detected.securityCriticality || null,
   };
 }
@@ -567,6 +585,7 @@ module.exports = {
     updateExistingMetadata,
     deriveInitialScore,
     deriveInitialStatus,
+    isCanonicalPipelineRelease,
     isSourceVersionRegression,
   },
 };

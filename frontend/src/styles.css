@@ -1025,6 +1025,12 @@ select.field-input { cursor: pointer; }
   color: var(--text-2);
 }
 
+.detail-list-item--verified {
+  background: color-mix(in srgb, var(--green-primary) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green-primary) 18%, var(--border));
+  color: var(--text-2);
+}
+
 .detail-list-marker {
   font-weight: 700;
   font-size: 12px;
@@ -1035,6 +1041,7 @@ select.field-input { cursor: pointer; }
 .detail-list-item--positive .detail-list-marker { color: var(--green); }
 .detail-list-item--negative .detail-list-marker { color: var(--red); }
 .detail-list-item--none     .detail-list-marker { color: var(--text-3); }
+.detail-list-item--verified .detail-list-marker { color: var(--green-primary); }
 
 /* Risk factors */
 .detail-risk-list {

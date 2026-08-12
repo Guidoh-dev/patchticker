@@ -336,6 +336,8 @@ describe('scraper accuracy guards', () => {
     const parsed = __test.parseAmdDriverPage(`
       <article><a href="/en/resources/support-articles/release-notes/RN-RAD-WIN-26-6-4.html">Release Notes</a></article>
       <article>
+        <strong>Revision Number</strong><p>Adrenalin 26.7.1 (WHQL Recommended)</p>
+        <strong>File Size</strong><p>849 MB</p>
         <a href="/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html">Release Notes</a>
         <a href="https://drivers.amd.com/drivers/installer/26.10/whql/amd-software-adrenalin-edition-26.7.1.exe">Download</a>
       </article>
@@ -345,6 +347,7 @@ describe('scraper accuracy guards', () => {
       url: 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html',
       version: '26.7.1',
       whql: true,
+      packageSize: '849 MB',
     });
   });
 
@@ -419,6 +422,17 @@ describe('scraper accuracy guards', () => {
       expect.stringMatching(/Borderlands 4.*Arc B-Series, Arc A-Series/),
       'Performance graphs may not hide when requested.',
     ]));
+  });
+
+  test('official Intel and PlayStation artifact metadata preserves vendor package sizes', () => {
+    expect(__test.parseIntelPackageSize(`
+      <ul><li>Windows 11 Family</li><li>Size: 877.4 MB</li><li>SHA256: abc123</li></ul>
+    `)).toBe('877.4 MB');
+    expect(__test.artifactSizeBytes({
+      'content-range': 'bytes 0-0/1247471104',
+      'content-length': '1',
+    })).toBe(1247471104);
+    expect(__test.artifactSizeBytes({ 'content-length': '20' })).toBeNull();
   });
 
   test('detectors fail closed without a source date or official HTTPS source', () => {
