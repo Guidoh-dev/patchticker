@@ -43,6 +43,7 @@ afterEach(() => {
   delete process.env.DATABASE_URL;
   delete process.env.DB_SSL;
   delete process.env.DB_SSL_CA;
+  delete process.env.DB_READ_RETRIES;
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -361,5 +362,20 @@ describe('production safety guards', () => {
     delete process.env.DB_ENCRYPTION_KEY;
     const enc = require('./utils/encrypt');
     expect(() => enc.encrypt('x')).toThrow(/DB_ENCRYPTION_KEY/);
+  });
+});
+
+describe('managed-pooler resilience', () => {
+  it('recognizes transient connection failures without retrying ordinary query errors', () => {
+    const db = freshDb({ DATABASE_URL: '' });
+    expect(db.__test.isTransientConnectionError({ code: '08006' })).toBe(true);
+    expect(db.__test.isTransientConnectionError({ message: 'Connection terminated due to connection timeout' })).toBe(true);
+    expect(db.__test.isTransientConnectionError({ code: '23505', message: 'duplicate key' })).toBe(false);
+  });
+
+  it('prevents the retry helper from being used for writes', async () => {
+    const db = freshDb({ DATABASE_URL: '' });
+    await expect(db.queryRead('UPDATE users SET role = $1', ['pro']))
+      .rejects.toThrow(/only accepts SELECT/i);
   });
 });

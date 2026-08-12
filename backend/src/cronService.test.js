@@ -23,6 +23,7 @@ describe('pipeline scheduler', () => {
   const originalNodeEnv = process.env.NODE_ENV;
   const originalStartupSetting = process.env.PIPELINE_SCAN_ON_STARTUP;
   const originalStartupDelay = process.env.PIPELINE_STARTUP_SCAN_DELAY_MS;
+  const originalPipelineConcurrency = process.env.PIPELINE_CONCURRENCY;
 
   beforeEach(() => {
     jest.useFakeTimers();
@@ -33,6 +34,7 @@ describe('pipeline scheduler', () => {
     process.env.NODE_ENV = 'production';
     process.env.PIPELINE_SCAN_ON_STARTUP = 'true';
     process.env.PIPELINE_STARTUP_SCAN_DELAY_MS = '1000';
+    process.env.PIPELINE_CONCURRENCY = '2';
   });
 
   afterEach(() => {
@@ -43,6 +45,8 @@ describe('pipeline scheduler', () => {
     else process.env.PIPELINE_SCAN_ON_STARTUP = originalStartupSetting;
     if (originalStartupDelay === undefined) delete process.env.PIPELINE_STARTUP_SCAN_DELAY_MS;
     else process.env.PIPELINE_STARTUP_SCAN_DELAY_MS = originalStartupDelay;
+    if (originalPipelineConcurrency === undefined) delete process.env.PIPELINE_CONCURRENCY;
+    else process.env.PIPELINE_CONCURRENCY = originalPipelineConcurrency;
   });
 
   test('schedules security, high-velocity, full, and startup catch-up scans', async () => {
@@ -66,5 +70,23 @@ describe('pipeline scheduler', () => {
     cronService.stop();
     expect(mockScheduledJobs).toHaveLength(3);
     expect(mockScheduledJobs.every(job => job.stop.mock.calls.length === 1)).toBe(true);
+  });
+
+  test('targeted scans respect the configured concurrency ceiling', async () => {
+    let active = 0;
+    let peak = 0;
+    mockProcessPlatform.mockImplementation(async platform => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await Promise.resolve();
+      active -= 1;
+      return { platform, status: 'unchanged' };
+    });
+
+    cronService.start();
+    await mockScheduledJobs[1].handler();
+
+    expect(mockProcessPlatform).toHaveBeenCalledTimes(HIGH_VELOCITY_PLATFORM_KEYS.length);
+    expect(peak).toBe(2);
   });
 });

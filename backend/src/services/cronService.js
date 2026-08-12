@@ -41,9 +41,12 @@ async function runTargetedScan(label, platforms) {
   logger.info(`[cron] ${label} scan starting`, { platforms });
   try {
     const { processPlatform } = pipelineService;
-    const results = await Promise.allSettled(
-      platforms.map(p => processPlatform(p))
-    );
+    const concurrency = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY || 2));
+    const results = [];
+    for (let i = 0; i < platforms.length; i += concurrency) {
+      const batch = platforms.slice(i, i + concurrency);
+      results.push(...await Promise.allSettled(batch.map(p => processPlatform(p))));
+    }
     const newUpdates = results.filter(
       r => r.status === 'fulfilled' && r.value.status === 'new_update'
     ).length;

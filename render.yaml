@@ -24,6 +24,14 @@ services:
         value: "true"
       - key: DB_SSL
         value: "true"
+      - key: DB_POOL_MIN
+        value: "0"
+      - key: DB_CONN_TIMEOUT_MS
+        value: "10000"
+      - key: DB_READ_RETRIES
+        value: "1"
+      - key: PIPELINE_CONCURRENCY
+        value: "2"
       - key: ALLOWED_ORIGINS
         value: https://patchticker.app,https://www.patchticker.app
       - key: APP_URL

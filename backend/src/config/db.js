@@ -67,6 +67,7 @@
 
 const { Pool }  = require('pg');
 const fs        = require('fs');
+const { URL }   = require('url');
 const logger    = require('../utils/logger');
 // Lazily required to avoid circular dependency at module load time
 // (alerting → logger → db is not a cycle; db → alerting is fine after load)
@@ -180,9 +181,14 @@ function createPool() {
     ssl,
     // Pool sizing
     max:              parseInt(process.env.DB_POOL_MAX    || '10',   10),
-    min:              parseInt(process.env.DB_POOL_MIN    || '2',    10),
+    // Do not pin idle connections on sleeping/ephemeral hosts. Supabase's
+    // transaction pooler can close those sockets while Render is asleep; a
+    // zero minimum lets pg establish fresh connections after wake-up.
+    min:              parseInt(process.env.DB_POOL_MIN    || '0',    10),
     idleTimeoutMillis:parseInt(process.env.DB_IDLE_MS     || '30000', 10),  // 30s
-    connectionTimeoutMillis: parseInt(process.env.DB_CONN_TIMEOUT_MS || '5000', 10), // 5s
+    connectionTimeoutMillis: parseInt(process.env.DB_CONN_TIMEOUT_MS || '10000', 10), // 10s
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
     // Statement timeout — no query may run longer than this
     // Prevents runaway queries from holding connections indefinitely
     statement_timeout: parseInt(process.env.DB_STATEMENT_TIMEOUT_MS || '30000', 10), // 30s
@@ -289,6 +295,48 @@ async function query(text, params) {
       message:  err.message,
     });
     throw err;
+  }
+}
+
+const TRANSIENT_CONNECTION_CODES = new Set([
+  '08000', '08001', '08003', '08004', '08006',
+  '53300', // too_many_connections
+  '57P01', '57P02', '57P03', // admin/crash/cannot_connect_now
+  'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE',
+]);
+
+function isTransientConnectionError(err) {
+  const code = String(err?.code || '').toUpperCase();
+  if (TRANSIENT_CONNECTION_CODES.has(code)) return true;
+  return /connection (?:terminated|timeout|closed)|connect(?:ion)? timeout|socket hang up|econnreset|etimedout/i
+    .test(String(err?.message || ''));
+}
+
+/**
+ * Retry an idempotent read once when a managed-pooler connection disappears.
+ * Callers must only use this for SELECT statements; writes are deliberately
+ * never retried because their commit state can be ambiguous after disconnect.
+ */
+async function queryRead(text, params) {
+  if (!/^\s*SELECT\b/i.test(text)) {
+    throw new TypeError('queryRead() only accepts SELECT statements');
+  }
+
+  const retries = Math.max(0, Math.min(3, Number(process.env.DB_READ_RETRIES || 1)));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await query(text, params);
+    } catch (err) {
+      if (attempt >= retries || !isTransientConnectionError(err)) throw err;
+      const delayMs = Math.min(1000, 150 * (2 ** attempt));
+      logger.warn('DB: retrying transient read failure', {
+        attempt: attempt + 1,
+        delayMs,
+        code: err.code,
+        message: err.message,
+      });
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
   }
 }
 
@@ -413,10 +461,12 @@ function status() {
 
 module.exports = {
   query,
+  queryRead,
   getClient,
   healthCheck,
   shutdown,
   isAvailable,
   markUnavailable,
   status,
+  __test: { isTransientConnectionError },
 };

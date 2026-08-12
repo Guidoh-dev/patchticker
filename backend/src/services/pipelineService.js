@@ -53,7 +53,7 @@ function isCanonicalPipelineRelease(release) {
 
 async function getLatestKnownRelease(platform) {
   if (!db.isAvailable()) return null;
-  const result = await db.query(
+  const result = await (db.queryRead || db.query)(
     `SELECT id, platform, version, released_at FROM software_updates
      WHERE platform = $1
      ORDER BY released_at DESC, created_at DESC
@@ -65,7 +65,7 @@ async function getLatestKnownRelease(platform) {
 
 async function getKnownReleaseByVersion(platform, version) {
   if (!db.isAvailable()) return null;
-  const row = await db.query(
+  const row = await (db.queryRead || db.query)(
     `SELECT id, version, released_at FROM software_updates
      WHERE platform = $1 AND version = $2
      LIMIT 1`,
@@ -527,7 +527,10 @@ async function runAll() {
   const platforms = PLATFORM_KEYS.filter(platform => scraperService.DETECTORS[platform]);
   logger.info('[pipeline] Starting full run', { platforms: platforms.length });
 
-  const concurrency = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY || 4));
+  // Keep database work below the Supabase transaction-pooler ceiling while
+  // still overlapping vendor network requests. This is especially important
+  // when a sleeping Render instance performs its startup catch-up scan.
+  const concurrency = Math.max(1, Number(process.env.PIPELINE_CONCURRENCY || 2));
   const results = [];
   for (let i = 0; i < platforms.length; i += concurrency) {
     const batch = platforms.slice(i, i + concurrency);
