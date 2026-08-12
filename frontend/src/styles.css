@@ -6153,6 +6153,7 @@ body { overflow-x: hidden; }
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
+  will-change: transform, opacity;
   transition: padding .22s ease, border-radius .22s ease, box-shadow .22s ease, gap .22s ease, transform .22s ease, opacity .16s ease, visibility 0s linear 0s;
 }
 .dash-quickbar-primary {
@@ -6217,6 +6218,7 @@ body { overflow-x: hidden; }
   visibility: hidden;
   pointer-events: none;
   transform: translateY(calc(-100% - 16px));
+  box-shadow: none;
   transition-delay: 0s, 0s, 0s, 0s, 0s, 0s, .22s;
 }
 .dash-quickbar-search {

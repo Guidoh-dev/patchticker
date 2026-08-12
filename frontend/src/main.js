@@ -153,6 +153,8 @@ const app = document.getElementById('app');
 const THEME_STORAGE_KEY = 'patchticker.theme';
 const MAX_UPDATE_AGE_DAYS = 240;
 const UPDATE_DISPLAY_WINDOW_MS = MAX_UPDATE_AGE_DAYS * 24 * 60 * 60 * 1000;
+const QUICKBAR_TOP_ZONE_PX = 120;
+const QUICKBAR_SCROLL_EPSILON_PX = 3;
 const UPDATE_VISIT_STORAGE_KEY = 'patchticker.updates.lastSeenAt';
 const _updateVisitBaseline = Date.parse(localStorage.getItem(UPDATE_VISIT_STORAGE_KEY) || '');
 let _updateVisitRecorded = false;
@@ -298,7 +300,7 @@ function attachQuickbarScrollBehavior() {
   let lastY = window.scrollY;
   let framePending = false;
   let manualOpenUntil = 0;
-  let lastDirection = lastY > 240 ? 'down' : 'idle';
+  let lastDirection = lastY > QUICKBAR_TOP_ZONE_PX ? 'down' : 'idle';
   let directionLockedUntil = 0;
   let settleTimer = null;
   let touchY = null;
@@ -310,6 +312,7 @@ function attachQuickbarScrollBehavior() {
 
   const setCollapsed = (collapsed) => {
     quickbar.classList.toggle('is-collapsed', collapsed);
+    quickbar.dataset.collapsed = String(collapsed);
     toggle.setAttribute('aria-expanded', String(!collapsed));
     toggle.setAttribute('aria-label', collapsed ? 'Show update filters' : 'Hide update filters');
     toggle.querySelector('span').textContent = collapsed ? 'Show filters' : 'Hide filters';
@@ -318,6 +321,7 @@ function attachQuickbarScrollBehavior() {
 
   const setHidden = (hidden) => {
     quickbar.classList.toggle('is-scroll-hidden', hidden);
+    quickbar.dataset.scrollState = hidden ? 'hidden' : 'visible';
     quickbar.inert = hidden;
     if (hidden) quickbar.setAttribute('aria-hidden', 'true');
     else quickbar.removeAttribute('aria-hidden');
@@ -325,13 +329,13 @@ function attachQuickbarScrollBehavior() {
 
   const updateForScroll = () => {
     framePending = false;
-    const currentY = window.scrollY;
+    const currentY = Math.max(0, window.scrollY);
     const delta = currentY - lastY;
     const direction = Date.now() < directionLockedUntil
       ? lastDirection
-      : (delta < -4 ? 'up' : delta > 4 ? 'down' : lastDirection);
+      : (delta < -QUICKBAR_SCROLL_EPSILON_PX ? 'up' : delta > QUICKBAR_SCROLL_EPSILON_PX ? 'down' : lastDirection);
 
-    if (currentY <= 140) {
+    if (currentY <= QUICKBAR_TOP_ZONE_PX) {
       lastDirection = 'idle';
       setHidden(false);
       setCollapsed(false);
@@ -345,7 +349,7 @@ function attachQuickbarScrollBehavior() {
       lastDirection = 'down';
       if (document.activeElement === search) search.blur();
       setCollapsed(true);
-      if (currentY > 240) setHidden(true);
+      setHidden(true);
     }
     lastY = currentY;
   };
@@ -353,8 +357,8 @@ function attachQuickbarScrollBehavior() {
   const settleScrollState = () => {
     clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
-      const currentY = window.scrollY;
-      if (currentY <= 140) {
+      const currentY = Math.max(0, window.scrollY);
+      if (currentY <= QUICKBAR_TOP_ZONE_PX) {
         setHidden(false);
         setCollapsed(false);
         return;
@@ -362,7 +366,7 @@ function attachQuickbarScrollBehavior() {
       // Trackpads and browser-driven jumps can coalesce several scroll events
       // into one frame. Ensure the final resting state still retreats below the
       // header unless the user was deliberately moving back toward the top.
-      if (Date.now() >= manualOpenUntil && currentY > 240 && lastDirection !== 'up') {
+      if (Date.now() >= manualOpenUntil && lastDirection !== 'up') {
         if (document.activeElement === search) search.blur();
         setCollapsed(true);
         setHidden(true);
@@ -412,8 +416,8 @@ function attachQuickbarScrollBehavior() {
   window.addEventListener('scroll', onScroll, { passive: true, signal });
   signal.addEventListener('abort', () => clearTimeout(settleTimer), { once: true });
 
-  setCollapsed(lastY > 140);
-  setHidden(lastY > 240);
+  setCollapsed(lastY > QUICKBAR_TOP_ZONE_PX);
+  setHidden(lastY > QUICKBAR_TOP_ZONE_PX);
 }
 
 

@@ -78,9 +78,10 @@ test('theme and tracked-game preferences use persistent local storage keys', () 
 
 test('sticky update filters retreat on downward scroll and return toward the top', () => {
   assert.match(mainSource, /function attachQuickbarScrollBehavior\(\)/);
-  assert.match(mainSource, /direction === 'down'[\s\S]*?currentY > 240[\s\S]*?setHidden\(true\)/);
+  assert.match(mainSource, /const QUICKBAR_TOP_ZONE_PX = 120/);
+  assert.match(mainSource, /direction === 'down'[\s\S]*?setCollapsed\(true\)[\s\S]*?setHidden\(true\)/);
   assert.match(mainSource, /direction === 'up'[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(true\)/);
-  assert.match(mainSource, /currentY <= 140[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(false\)/);
+  assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(false\)/);
   assert.match(mainSource, /window\.addEventListener\('wheel', onWheel/);
   assert.match(mainSource, /window\.addEventListener\('touchmove', onTouchMove/);
   assert.match(mainSource, /function settleScrollState|const settleScrollState/);
@@ -90,6 +91,7 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(mainSource, /_quickbarScrollController\?\.abort\(\)/);
   assert.doesNotMatch(mainSource, /quickbar\.contains\(document\.activeElement\)/);
   assert.match(mainSource, /document\.activeElement === search[\s\S]*?search\.blur\(\)/);
+  assert.match(mainSource, /quickbar\.dataset\.scrollState = hidden \? 'hidden' : 'visible'/);
   assert.match(cssSource, /\.dash-quickbar\.is-collapsed \.dash-quickbar-details\s*\{[^}]*max-height:\s*0/s);
   assert.match(cssSource, /\.dash-quickbar\.is-scroll-hidden\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*transform:\s*translateY\(calc\(-100% - 16px\)\)/s);
   assert.match(cssSource, /\.dash-quickbar-toggle\s*\{[^}]*min-height:\s*44px/s);
