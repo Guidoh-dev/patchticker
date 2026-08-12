@@ -3,60 +3,66 @@
     "key": "PS5",
     "label": "PS5",
     "lane": "console",
-    "sourceType": "html",
+    "sourceType": "artifact",
     "priority": 3,
     "official": true
   },
   "window": {
-    "from": "2026-05-22",
-    "to": "2026-07-21"
+    "from": "2026-06-12",
+    "to": "2026-08-11"
   },
   "updates": [
     {
-      "id": "ps5-latest",
+      "id": "ps5-pup-2026-07-23-767a94ea",
       "platform": "PS5",
-      "name": "PS5 System Software Latest",
-      "version": "Latest",
-      "releasedAt": "2026-07-17",
+      "name": "PS5 System Software — 2026-07-23",
+      "version": "PUP-2026.07.23-767a94ea",
+      "releasedAt": "2026-07-23",
       "status": "caution",
-      "storedScore": 5,
+      "storedScore": 7.1,
       "impactScore": null,
       "bugCount": 0,
       "affects": "PlayStation 5 / system software / online services / controller and game compatibility",
       "verdict": "Install for online play and system security unless early user reports flag a PS5-specific regression.",
-      "reasoning": "PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker uses the official PlayStation support page for the current update signal.",
+      "reasoning": "PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker validates Sony’s official system package URL and Last-Modified timestamp; it does not mislabel the support page’s CMS deployment revision as console firmware.",
       "changelog": [
-        "Account & Security"
+        "Sony’s current official PS5 system software artifact was published 2026-07-23.",
+        "Artifact fingerprint 767a94ea; package build path 2026-07-17.",
+        "Sony does not expose a public console build number or per-build changelog on this support page, so PatchTicker identifies the release by the official package fingerprint instead of the page’s unrelated CMS revision."
       ],
       "knownIssues": [],
       "riskFactors": [
         {
-          "text": "System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.",
-          "level": "low"
+          "level": "low",
+          "text": "System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior."
         }
       ],
       "evidence": [
         {
+          "source": "PlayStation System Software",
           "url": "https://www.playstation.com/en-us/support/hardware/ps5/system-software/",
-          "text": "Official PS5 system software page detected version Latest.",
-          "source": "PlayStation Support"
+          "text": "Official PS5 package 767a94ea published 2026-07-23; package build path 2026-07-17.",
+          "dateBasis": "artifact-published",
+          "releaseType": "official-artifact",
+          "publishedAt": "2026-07-23",
+          "artifactHash": "767a94eac034d33907a6ff57af05bc30ce057258ad1cf4b5ffb75d5e21112561"
         }
       ],
       "securityCriticality": {
         "level": "low",
-        "label": "No Security Patches",
+        "label": "No published CVE list",
         "cves": []
       },
       "scraperGap": false,
       "ratingTest": {
-        "score": 7.6,
-        "label": "positive",
-        "recommendation": "install candidate",
+        "score": 7.1,
+        "label": "caution",
+        "recommendation": "install if the system update is offered to your console",
         "notes": [
-          "Official/vendor source attached.",
-          "Version parser returned “Latest” instead of a concrete build.",
-          "Security urgency detected.",
-          "1 risk factor(s) attached."
+          "Official Sony package fingerprint validated.",
+          "Artifact Last-Modified timestamp used as release date.",
+          "CMS deployment revision deliberately ignored.",
+          "No community vote score inferred."
         ]
       }
     }

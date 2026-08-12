@@ -38,6 +38,10 @@ function isUpdateDisplayable(update) {
       && /^https:\/\/(?:www\.)?discord\.com\/blog\/discord-patch-notes-/i.test(String(item?.url || ''))
     );
   }
+  if (update?.platform === 'PS5') {
+    return /^PUP-\d{4}\.\d{2}\.\d{2}-[a-f0-9]{8}$/i.test(String(update?.version || ''))
+      && evidence.some(item => item?.releaseType === 'official-artifact');
+  }
   const placeholderMonth = /^\d{4}-\d{2}$/.test(String(update?.version || ''));
   if (!placeholderMonth || !PLACEHOLDER_VERSION_PLATFORMS.has(update?.platform)) return true;
   return evidence.some(item =>

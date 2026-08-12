@@ -443,15 +443,20 @@ function parseSwitchReleasePage(html) {
 
 function parsePs5SupportPage(html) {
   const $ = cheerio.load(html);
-  const version = String(html || '').match(/Release Version:\s*([0-9.]+)/i)?.[1]
-    || $('input[name="lastcodedeployed-releaseversion"]').attr('value')?.match(/([0-9.]+)\s*$/)?.[1]
+  const artifactUrl = $('a[href*="pc.ps5.update.playstation.net"][href$="PS5UPDATE.PUP"]')
+    .map((_, link) => $(link).attr('href'))
+    .get()
+    .find(url => /\/sys_[a-f0-9]{64}\/PS5UPDATE\.PUP$/i.test(url || ''))
+    || String(html || '').match(/https:\/\/pc\.ps5\.update\.playstation\.net\/[^"'<>\s]+\/sys_[a-f0-9]{64}\/PS5UPDATE\.PUP/i)?.[0]
     || null;
-  const publishedTimestamp = Number($('meta[name="publish_date_timestamp"]').attr('content'));
-  const sourceUpdatedAt = Number.isFinite(publishedTimestamp) && publishedTimestamp > 0
-    ? toIsoDate(new Date(publishedTimestamp * 1000))
-    : null;
-  if (!version || !sourceUpdatedAt) return null;
-  return { version, sourceUpdatedAt };
+  const artifactHash = artifactUrl?.match(/\/sys_([a-f0-9]{64})\/PS5UPDATE\.PUP$/i)?.[1] || null;
+  const artifactBuildDate = artifactUrl?.match(/\/image\/(\d{4})_(\d{4})\//i);
+  if (!artifactUrl || !artifactHash || !artifactBuildDate) return null;
+  return {
+    artifactUrl,
+    artifactHash,
+    artifactBuildDate: `${artifactBuildDate[1]}-${artifactBuildDate[2].slice(0, 2)}-${artifactBuildDate[2].slice(2)}`,
+  };
 }
 
 // ── Parse RSS helper ──────────────────────────────────────────────────────────
@@ -961,18 +966,27 @@ async function detectPs5() {
     const html = await fetchHtml(url);
     const parsed = parsePs5SupportPage(html);
     if (!parsed) return null;
+    const artifactHeaders = await fetchHead(parsed.artifactUrl);
+    const releasedAt = toIsoDate(artifactHeaders['last-modified']);
+    if (!releasedAt) return null;
+    const artifactId = parsed.artifactHash.slice(0, 8);
+    const version = `PUP-${releasedAt.replace(/-/g, '.')}-${artifactId}`;
     return {
       platform: 'PS5',
-      name: `PS5 System Software ${parsed.version}`,
-      version: parsed.version,
-      releasedAt: parsed.sourceUpdatedAt,
+      name: `PS5 System Software — ${releasedAt}`,
+      version,
+      releasedAt,
       affects: 'PlayStation 5 / system software / online services / controller and game compatibility',
-      changelog: [`PlayStation’s official support page currently advertises PS5 system software release ${parsed.version}. A per-build changelog is not exposed on the support page.`],
+      changelog: [
+        `Sony’s current official PS5 system software artifact was published ${releasedAt}.`,
+        `Artifact fingerprint ${artifactId}; package build path ${parsed.artifactBuildDate}.`,
+        'Sony does not expose a public console build number or per-build changelog on this support page, so PatchTicker identifies the release by the official package fingerprint instead of the page’s unrelated CMS revision.',
+      ],
       knownIssues: [],
       riskFactors: [{ level: 'low', text: 'System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.' }],
       verdict: 'Install for online play and system security unless early user reports flag a PS5-specific regression.',
-      reasoning: 'PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker uses the official PlayStation support page for the current update signal.',
-      evidence: sourceEvidence('PlayStation Support', url, `Official PS5 system software page advertises release version ${parsed.version}.`, { dateBasis: 'source-updated', releaseType: 'official-version', publishedAt: parsed.sourceUpdatedAt }),
+      reasoning: 'PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker validates Sony’s official system package URL and Last-Modified timestamp; it does not mislabel the support page’s CMS deployment revision as console firmware.',
+      evidence: sourceEvidence('PlayStation System Software', url, `Official PS5 package ${artifactId} published ${releasedAt}; package build path ${parsed.artifactBuildDate}.`, { dateBasis: 'artifact-published', releaseType: 'official-artifact', publishedAt: releasedAt, artifactHash: parsed.artifactHash }),
       sourceUrl: url,
     };
   } catch (err) {

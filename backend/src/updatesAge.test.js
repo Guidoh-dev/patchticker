@@ -97,7 +97,7 @@ test('successful empty DB reads stay empty instead of reviving static samples', 
 });
 
 test('monthly placeholders require official release metadata', () => {
-  const base = { platform: 'PS5', version: '2026-08', releasedAt: '2026-08-05' };
+  const base = { platform: 'GOG', version: '2026-08', releasedAt: '2026-08-05' };
   expect(updatesService.__test.isUpdateDisplayable({ ...base, evidence: [{ source: 'Support' }] })).toBe(false);
   expect(updatesService.__test.isUpdateDisplayable({
     ...base,
@@ -114,6 +114,20 @@ test('Discord service incidents are excluded while official technical patch note
   expect(updatesService.__test.isUpdateDisplayable({
     ...base,
     evidence: [{ source: 'Discord Patch Notes', url: 'https://discord.com/blog/discord-patch-notes-august-4-2026', releaseType: 'official-release' }],
+  })).toBe(true);
+});
+
+test('PS5 CMS revisions are excluded while official package fingerprints remain visible', () => {
+  const base = { platform: 'PS5', releasedAt: '2026-07-23' };
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base,
+    version: '2026.810',
+    evidence: [{ source: 'PlayStation Support', releaseType: 'official-version' }],
+  })).toBe(false);
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base,
+    version: 'PUP-2026.07.23-767a94ea',
+    evidence: [{ source: 'PlayStation System Software', releaseType: 'official-artifact' }],
   })).toBe(true);
 });
 

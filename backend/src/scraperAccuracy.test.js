@@ -30,13 +30,18 @@ describe('scraper accuracy guards', () => {
     ]);
   });
 
-  test('PS5 parser reads the embedded official build and source update timestamp', () => {
+  test('PS5 parser fingerprints the official system package instead of the CMS revision', () => {
     const parsed = __test.parsePs5SupportPage(`
-      <meta name="publish_date_timestamp" content="1784789508" />
       <input name="lastcodedeployed-releaseversion" value=" - Release Version: 2026.807" />
+      <a href="https://pc.ps5.update.playstation.net/update/ps5/official/token/image/2026_0717/sys_767a94eac034d33907a6ff57af05bc30ce057258ad1cf4b5ffb75d5e21112561/PS5UPDATE.PUP">Reinstall</a>
     `);
 
-    expect(parsed).toEqual({ version: '2026.807', sourceUpdatedAt: '2026-07-23' });
+    expect(parsed).toEqual({
+      artifactUrl: 'https://pc.ps5.update.playstation.net/update/ps5/official/token/image/2026_0717/sys_767a94eac034d33907a6ff57af05bc30ce057258ad1cf4b5ffb75d5e21112561/PS5UPDATE.PUP',
+      artifactHash: '767a94eac034d33907a6ff57af05bc30ce057258ad1cf4b5ffb75d5e21112561',
+      artifactBuildDate: '2026-07-17',
+    });
+    expect(JSON.stringify(parsed)).not.toContain('2026.807');
   });
 
   test('GOG parser uses the official installer version and artifact timestamp', () => {
