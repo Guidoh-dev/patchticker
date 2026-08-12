@@ -1797,7 +1797,8 @@ async function renderDashboard({ focusId = null } = {}) {
               <div class="dash-coverage-pulse" id="dash-coverage-pulse" aria-live="polite">
                 <span class="freshness-signal freshness-signal--snapshot" id="coverage-mode"><i aria-hidden="true"></i>Connecting sources</span>
                 <strong id="coverage-sources">Checking source coverage…</strong>
-                <span id="coverage-fresh">Freshness pending</span>
+                <span id="coverage-fresh">Lane freshness pending</span>
+                <span id="coverage-health">Health check pending</span>
                 <span id="coverage-last">Last sweep pending</span>
               </div>
             </div>
@@ -1835,7 +1836,7 @@ async function renderDashboard({ focusId = null } = {}) {
         <aside class="dash-aside" aria-label="Live signals and service list">
           <section class="dash-panel dash-live-feed">
             <div class="dash-panel-head dash-panel-head--compact">
-              <div><p class="dash-section-kicker">User feed</p><h2>Community signal</h2></div>
+              <div><p class="dash-section-kicker">Live signals</p><h2>Recent activity</h2></div>
               <span class="feed-status"><span class="feed-dot" id="feed-dot"></span> ${isAuthed ? 'Live' : 'Recent'}</span>
             </div>
             <div class="feed-messages" id="feed-messages" aria-live="polite">
@@ -2117,11 +2118,32 @@ async function renderDashboard({ focusId = null } = {}) {
     renderTapeAndLatest([], message);
   }
 
+  function renderVerifiedFeedFallback(message = 'No community notes yet. Start with recently verified releases.') {
+    const messagesEl = document.getElementById('feed-messages');
+    if (!messagesEl || messagesEl.querySelector('.feed-msg')) return;
+    const recent = [..._allUpdates]
+      .sort((a, b) => new Date(b.releasedAt || 0) - new Date(a.releasedAt || 0))
+      .slice(0, 3);
+    messagesEl.innerHTML = `
+      <div class="feed-verified-list">
+        <p class="feed-verified-intro">${H(message)}</p>
+        ${recent.map(update => {
+          const decision = decisionForUpdate(update);
+          return `<a class="feed-verified-item" href="#/updates/${H(update.id)}">
+            ${renderPlatformLogo(update.platform, 'feed-verified-logo')}
+            <span><strong>${H(update.name)}</strong><small>${H(platformLabel(update.platform))} · ${H(timeAgo(update.releasedAt))}</small></span>
+            <em class="feed-verified-score feed-verified-score--${H(decision.cls)}">${H(String(update.score))}</em>
+          </a>`;
+        }).join('') || '<span class="feed-empty">Verified patch data is reconnecting…</span>'}
+      </div>`;
+  }
+
   // ── Initial data load ─────────────────────────────────────────────────────
   async function loadUpdates() {
     try {
       _allUpdates = normaliseUpdatesResponse(await fetchUpdates({}));
       renderTapeAndLatest(_allUpdates);
+      renderVerifiedFeedFallback();
       applyFilters();
     } catch (err) {
       renderOfflineRails(`Live patch feed is reconnecting: ${err.message}`);
@@ -2143,22 +2165,30 @@ async function renderDashboard({ focusId = null } = {}) {
     const coverageMode = document.getElementById('coverage-mode');
     const coverageSources = document.getElementById('coverage-sources');
     const coverageFresh = document.getElementById('coverage-fresh');
+    const coverageHealth = document.getElementById('coverage-health');
     const coverageLast = document.getElementById('coverage-last');
     if (stable)  stable.textContent  = d.stable  ?? '—';
     if (caution) caution.textContent = d.caution ?? '—';
     if (avoid)   avoid.textContent   = d.avoid   ?? '—';
     const unavailable = d.dataMode === 'unavailable';
+    const degraded = !unavailable && Number(d.stale96h || 0) > 0;
     if (coveragePulse) coveragePulse.classList.toggle('is-unavailable', unavailable);
+    if (coveragePulse) coveragePulse.classList.toggle('is-degraded', degraded);
     if (coverageMode) {
       coverageMode.className = `freshness-signal freshness-signal--${unavailable ? 'stale' : 'fresh'}`;
       coverageMode.innerHTML = `<i aria-hidden="true"></i>${unavailable ? 'Sources reconnecting' : 'Live source coverage'}`;
     }
     if (coverageSources) coverageSources.textContent = unavailable
       ? 'No demo records shown'
-      : `${d.sourceBacked ?? 0} source-backed update${d.sourceBacked === 1 ? '' : 's'}`;
+      : `${d.sourceBacked ?? 0} verified update${d.sourceBacked === 1 ? '' : 's'} across ${d.platformsTracked ?? 0} platform${d.platformsTracked === 1 ? '' : 's'}`;
     if (coverageFresh) coverageFresh.textContent = unavailable
       ? 'Waiting for verified data'
-      : `${d.fresh24h ?? 0} checked in 24h`;
+      : `${d.fresh24h ?? 0}/${d.platformsTracked ?? 0} lanes checked in 24h`;
+    if (coverageHealth) coverageHealth.textContent = unavailable
+      ? 'Coverage unavailable'
+      : (d.stale96h > 0
+        ? `${d.stale96h} lane${d.stale96h === 1 ? '' : 's'} overdue`
+        : 'All live lanes current');
     if (coverageLast) coverageLast.textContent = d.lastCheckedAt
       ? `Latest check ${timeAgo(d.lastCheckedAt)}`
       : 'Latest check pending';
@@ -2357,6 +2387,7 @@ async function renderDashboard({ focusId = null } = {}) {
 
     function appendMessage(post, animate = true) {
       messagesEl.querySelector('.feed-empty')?.remove();
+      messagesEl.querySelector('.feed-verified-list')?.remove();
       const userLabel = post.userLabel || post.userEmail?.split('@')[0] || 'Member';
       const isOwn    = Boolean(post.isOwn);
       const letter   = avatarLetter(userLabel);
@@ -2396,16 +2427,12 @@ async function renderDashboard({ focusId = null } = {}) {
       try {
         const posts = await fetchRecentPosts();
         if (posts.length === 0) {
-          const empty = messagesEl.querySelector('.feed-empty') || document.createElement('div');
-          empty.className = 'feed-empty';
-          empty.textContent = 'No community notes yet. Live updates will appear here.';
-          if (!empty.isConnected) messagesEl.appendChild(empty);
+          renderVerifiedFeedFallback();
         } else {
           posts.forEach(p => appendMessage(p, false));
         }
       } catch {
-        const empty = messagesEl.querySelector('.feed-empty');
-        if (empty) empty.textContent = 'Community feed is reconnecting…';
+        renderVerifiedFeedFallback('Community notes are reconnecting. These releases were recently verified.');
         /* non-fatal — SSE will deliver new posts regardless */
       }
     }

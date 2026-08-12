@@ -112,13 +112,16 @@ test('production outages never expose static demo updates as live data', async (
 test('feed metadata reports freshness and source coverage', () => {
   mockIsAvailable.mockReturnValue(true);
   const meta = updatesService.buildFeedMeta([
-    { updatedAt: '2026-08-11T10:00:00Z', officialSourceCount: 1 },
-    { updatedAt: '2026-08-06T10:00:00Z', officialSourceCount: 0 },
+    { platform: 'macOS', updatedAt: '2026-08-11T10:00:00Z', officialSourceCount: 1 },
+    { platform: 'macOS', updatedAt: '2026-08-06T10:00:00Z', officialSourceCount: 1 },
+    { platform: 'Windows', updatedAt: '2026-08-06T10:00:00Z', officialSourceCount: 1 },
+    { platform: 'NoSource', updatedAt: '2026-08-11T11:00:00Z', officialSourceCount: 0 },
   ]);
 
   expect(meta).toEqual({
     dataMode: 'live',
-    sourceBacked: 1,
+    sourceBacked: 3,
+    platformsTracked: 2,
     fresh24h: 1,
     stale96h: 1,
     lastCheckedAt: '2026-08-11T10:00:00Z',

@@ -39,6 +39,85 @@ describe('scraper accuracy guards', () => {
     expect(parsed).toEqual({ version: '2026.807', sourceUpdatedAt: '2026-07-23' });
   });
 
+  test('GOG parser uses the official installer version and artifact timestamp', () => {
+    const parsed = __test.parseGogRemoteConfig({
+      content: {
+        windows: {
+          version: '2.1.8.30',
+          downloadLink: 'https://content-system.gog.com/open/galaxy/client/setup_galaxy_2.1.8.30.exe',
+        },
+        osx: { version: '2.1.8.32' },
+      },
+    }, 'Thu, 06 Aug 2026 08:00:58 GMT');
+
+    expect(parsed).toEqual({
+      version: '2.1.8.30',
+      releasedAt: '2026-08-06',
+      windowsDownloadUrl: 'https://content-system.gog.com/open/galaxy/client/setup_galaxy_2.1.8.30.exe',
+      macVersion: '2.1.8.32',
+    });
+  });
+
+  test('GOG parser fails closed without an official artifact timestamp', () => {
+    expect(__test.parseGogRemoteConfig({
+      content: {
+        windows: {
+          version: '2.1.8.30',
+          downloadLink: 'https://content-system.gog.com/setup.exe',
+        },
+      },
+    }, null)).toBeNull();
+  });
+
+  test('Steam parser separates known issues from release changes', () => {
+    const parsed = __test.parseSteamReleaseNotes(`
+      <p>This update is for the SteamOS Beta and Preview channels.</p>
+      <p><b>Known Issues - Beta</b></p>
+      <ul><li>Performance may degrade when composition is required.</li></ul>
+      <p><b>General</b></p>
+      <ul>
+        <li>Fixed slow Wi-Fi connections.</li>
+        <li>Added controller support.</li>
+      </ul>
+    `);
+
+    expect(parsed.knownIssues).toEqual(['Performance may degrade when composition is required.']);
+    expect(parsed.changelog).toEqual([
+      'This update is for the SteamOS Beta and Preview channels.',
+      'General: Fixed slow Wi-Fi connections.',
+      'General: Added controller support.',
+    ]);
+  });
+
+  test('Xbox parser reads the newest worldwide OS release from structured support content', () => {
+    const parsed = __test.parseXboxContentApi({
+      ContentList: [{
+        ContentItem: {
+          SectionList: [{
+            Heading: 'Release date: 7/15/2026',
+            SectionItems: [{
+              Heading: 'OS version: 10.0.26100.8866 (xb_flt_2607ge.260630-2200)',
+              SectionItems: [
+                { Heading: 'Library customization', SectionItems: [{ HtmlContent: 'Added richer library artwork.' }] },
+                { Heading: 'Bug Fixes', SectionItems: [{ HtmlContent: 'Fixed a crash while installing updates.' }] },
+              ],
+            }],
+          }],
+        },
+      }],
+    });
+
+    expect(parsed).toEqual({
+      version: '10.0.26100.8866',
+      releasedAt: '2026-07-15',
+      changelog: [
+        'Bug Fixes: Fixed a crash while installing updates.',
+        'Library customization: Added richer library artwork.',
+      ],
+      knownIssues: [],
+    });
+  });
+
   test('encoded vendor notes are decoded before display', () => {
     expect(__test.safeDecode('Game+Ready+for+Halo%3A+Campaign+Evolved')).toBe('Game Ready for Halo: Campaign Evolved');
   });

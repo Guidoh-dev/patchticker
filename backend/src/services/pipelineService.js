@@ -215,8 +215,8 @@ async function updateExistingMetadata(platform, version, detected) {
        known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb THEN $9::jsonb ELSE known_issues END,
        risk_factors = CASE WHEN $10::jsonb <> '[]'::jsonb THEN $10::jsonb ELSE risk_factors END,
        evidence = CASE WHEN $11::jsonb <> '[]'::jsonb THEN $11::jsonb ELSE evidence END,
-       score = CASE WHEN ai_generated = FALSE AND (score IS NULL OR score = 5.0) THEN $12 ELSE score END,
-       status = CASE WHEN ai_generated = FALSE AND (score IS NULL OR score = 5.0) THEN $13 ELSE status END,
+       score = CASE WHEN ai_generated = FALSE THEN $12 ELSE score END,
+       status = CASE WHEN ai_generated = FALSE THEN $13 ELSE status END,
        updated_at = now()
      WHERE platform = $1 AND version = $2`,
     [

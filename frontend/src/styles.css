@@ -5637,6 +5637,10 @@ body { overflow-x: hidden; }
   border-color: color-mix(in srgb, var(--red) 30%, var(--border));
   background: color-mix(in srgb, var(--red) 6%, transparent);
 }
+.dash-coverage-pulse.is-degraded {
+  border-color: color-mix(in srgb, var(--yellow) 34%, var(--border));
+  background: color-mix(in srgb, var(--yellow) 7%, transparent);
+}
 
 .dash-command-stats {
   display: grid;
@@ -5715,6 +5719,76 @@ body { overflow-x: hidden; }
   height: auto;
   min-height: 104px;
 }
+
+.feed-verified-list {
+  display: grid;
+  gap: 8px;
+}
+.feed-verified-intro {
+  margin: 0 0 2px;
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 1.55;
+}
+.feed-verified-item {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 54px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0,0,0,.2);
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.feed-verified-item:hover {
+  border-color: color-mix(in srgb, var(--cyan) 35%, var(--border));
+  background: color-mix(in srgb, var(--cyan) 6%, transparent);
+  transform: translateX(-2px);
+}
+.feed-verified-logo {
+  width: 30px;
+  height: 30px;
+}
+.feed-verified-item > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.feed-verified-item strong {
+  overflow: hidden;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feed-verified-item small {
+  overflow: hidden;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feed-verified-score {
+  min-width: 34px;
+  padding: 6px 5px;
+  border: 1px solid currentColor;
+  border-radius: 9px;
+  font-family: var(--font-number);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  text-align: center;
+}
+.feed-verified-score--stable { color: var(--green-primary); }
+.feed-verified-score--caution { color: var(--yellow); }
+.feed-verified-score--avoid { color: var(--red); }
 
 .feed-compose {
   display: grid;

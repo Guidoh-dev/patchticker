@@ -17,6 +17,11 @@
     "audit:fix": "npm audit fix",
     "audit:report": "npm audit --json > audit-report.json && echo 'Audit report saved to audit-report.json'"
   },
+  "nodemonConfig": {
+    "watch": ["src"],
+    "ext": "js,json",
+    "ignore": ["logs/**", "audit-report.json"]
+  },
   "dependencies": {
     "argon2": "0.44.0",
     "axios": "1.18.1",

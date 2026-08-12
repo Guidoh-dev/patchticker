@@ -40,23 +40,32 @@ function isUpdateDisplayable(update) {
 
 function buildFeedMeta(updates = []) {
   const now = Date.now();
-  const sourceBacked = updates.filter(update => Number(update.officialSourceCount || 0) > 0).length;
-  const fresh24h = updates.filter(update => {
-    const checked = Date.parse(update.lastCheckedAt || update.updatedAt || '');
-    return Number.isFinite(checked) && now - checked <= 24 * 60 * 60 * 1000;
-  }).length;
-  const stale96h = updates.filter(update => {
-    const checked = Date.parse(update.lastCheckedAt || update.updatedAt || '');
-    return !Number.isFinite(checked) || now - checked > 96 * 60 * 60 * 1000;
-  }).length;
-  const lastCheckedAt = updates
-    .map(update => update.lastCheckedAt || update.updatedAt)
-    .filter(Boolean)
-    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
+  const sourceBackedUpdates = updates.filter(update => Number(update.officialSourceCount || 0) > 0);
+  const latestPlatformChecks = new Map();
+  for (const update of sourceBackedUpdates) {
+    const platform = String(update.platform || 'Unknown');
+    const checkedAt = update.lastCheckedAt || update.updatedAt || null;
+    const checkedMs = Date.parse(checkedAt || '');
+    const previous = latestPlatformChecks.get(platform);
+    if (!previous || (Number.isFinite(checkedMs) && checkedMs > previous.checkedMs)) {
+      latestPlatformChecks.set(platform, { checkedAt, checkedMs });
+    }
+  }
+  const platformChecks = [...latestPlatformChecks.values()];
+  const fresh24h = platformChecks.filter(({ checkedMs }) =>
+    Number.isFinite(checkedMs) && now - checkedMs <= 24 * 60 * 60 * 1000
+  ).length;
+  const stale96h = platformChecks.filter(({ checkedMs }) =>
+    !Number.isFinite(checkedMs) || now - checkedMs > 96 * 60 * 60 * 1000
+  ).length;
+  const lastCheckedAt = platformChecks
+    .filter(({ checkedMs }) => Number.isFinite(checkedMs))
+    .sort((a, b) => b.checkedMs - a.checkedMs)[0]?.checkedAt || null;
 
   return {
     dataMode: db.isAvailable() ? 'live' : (canUseStaticUpdates() ? 'demo' : 'unavailable'),
-    sourceBacked,
+    sourceBacked: sourceBackedUpdates.length,
+    platformsTracked: latestPlatformChecks.size,
     fresh24h,
     stale96h,
     lastCheckedAt,

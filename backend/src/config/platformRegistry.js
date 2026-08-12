@@ -13,11 +13,11 @@ const PLATFORMS = Object.freeze([
   { key: 'Intel',     label: 'Intel',        lane: 'drivers',  sourceType: 'html',     priority: 2, official: true },
   { key: 'Steam',     label: 'Steam',        lane: 'gaming',   sourceType: 'rss',      priority: 3, official: true },
   { key: 'Switch',    label: 'Switch',       lane: 'console',  sourceType: 'html',     priority: 3, official: true },
-  { key: 'Xbox',      label: 'Xbox',         lane: 'console',  sourceType: 'html',     priority: 3, official: true },
+  { key: 'Xbox',      label: 'Xbox',         lane: 'console',  sourceType: 'json',     priority: 3, official: true },
   { key: 'PS5',       label: 'PS5',          lane: 'console',  sourceType: 'html',     priority: 3, official: true },
   { key: 'Discord',   label: 'Discord',      lane: 'services', sourceType: 'rss',      priority: 4, official: true },
   { key: 'BattleNet', label: 'Battle.net',   lane: 'services', sourceType: 'html',     priority: 4, official: true },
-  { key: 'GOG',       label: 'GOG Galaxy',   lane: 'services', sourceType: 'html',     priority: 4, official: true },
+  { key: 'GOG',       label: 'GOG Galaxy',   lane: 'services', sourceType: 'json',     priority: 4, official: true },
 ]);
 
 const PLATFORM_KEYS = Object.freeze(PLATFORMS.map(p => p.key));

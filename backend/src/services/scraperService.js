@@ -16,9 +16,10 @@
 //   Apple iOS — Apple Security Updates HTML page
 //   macOS     — Apple Security Updates HTML page
 //   Steam     — Steam news RSS feed
-//   Xbox      — Xbox Support system update page (fails closed when SPA data is unavailable)
+//   Xbox      — Xbox Support structured content API
 //   PS5       — PlayStation Support system software page
 //   Intel     — Intel download center JSON API
+//   GOG       — GOG GALAXY installer manifest + artifact timestamp
 //
 // All detectors fail silently — a scrape failure never crashes the cron job.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -66,6 +67,15 @@ async function fetchJson(url, headers = {}) {
     headers: { 'User-Agent': UA, 'Accept': 'application/json,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9', ...headers },
   });
   return res.data;
+}
+
+async function fetchHead(url) {
+  const res = await axios.head(url, {
+    timeout: TIMEOUT,
+    maxRedirects: 5,
+    headers: { 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'en-US,en;q=0.9' },
+  });
+  return res.headers || {};
 }
 
 async function fetchXml(url) {
@@ -118,8 +128,8 @@ function cleanText(value, max = 500) {
     .slice(0, max);
 }
 
-function unique(values) {
-  return [...new Set(values.map(v => cleanText(v, 280)).filter(Boolean))];
+function unique(values, max = 280) {
+  return [...new Set(values.map(v => cleanText(v, max)).filter(Boolean))];
 }
 
 function firstVersion(text) {
@@ -172,6 +182,105 @@ function safeDecode(value) {
 
 function metaContent($, name) {
   return $(`meta[name="${name}"], meta[property="${name}"]`).attr('content') || '';
+}
+
+function parseGogRemoteConfig(config, installerLastModified) {
+  const windows = config?.content?.windows;
+  const macos = config?.content?.osx;
+  const releasedAt = toIsoDate(installerLastModified);
+  if (!windows?.version || !/^https:\/\//i.test(windows.downloadLink || '') || !releasedAt) return null;
+  return {
+    version: String(windows.version),
+    releasedAt,
+    windowsDownloadUrl: windows.downloadLink,
+    macVersion: macos?.version ? String(macos.version) : null,
+  };
+}
+
+function parseSteamReleaseNotes(html) {
+  const $ = cheerio.load(String(html || ''));
+  const summary = [];
+  const sections = new Map();
+  let currentSection = 'Changes';
+
+  $('body').children().each((_, node) => {
+    const tag = String(node.tagName || '').toLowerCase();
+    const element = $(node);
+    if (tag === 'p') {
+      const heading = cleanText(element.children('b,strong').first().text(), 100);
+      const fullText = cleanText(element.text(), 300);
+      if (heading && heading === fullText) {
+        currentSection = heading;
+        if (!sections.has(currentSection)) sections.set(currentSection, []);
+      } else if (fullText && currentSection === 'Changes') {
+        summary.push(fullText);
+      }
+      return;
+    }
+    if (!['ul', 'ol'].includes(tag)) return;
+    const items = [];
+    element.children('li').each((__, li) => {
+      const paragraphs = $(li).find('p').map((___, p) => cleanText($(p).text(), 260)).get().filter(Boolean);
+      items.push(cleanText(paragraphs.length ? paragraphs.join(' ') : $(li).text(), 650));
+    });
+    if (items.length) sections.set(currentSection, [...(sections.get(currentSection) || []), ...items]);
+  });
+
+  const knownIssues = [];
+  const changelog = [...summary.slice(0, 2)];
+  const changeSections = [];
+  for (const [heading, items] of sections.entries()) {
+    if (/known issues?/i.test(heading)) {
+      knownIssues.push(...items);
+      continue;
+    }
+    changeSections.push({ heading, items });
+  }
+  for (let itemIndex = 0; changelog.length < 12; itemIndex++) {
+    let added = false;
+    for (const { heading, items } of changeSections) {
+      if (!items[itemIndex] || changelog.length >= 12) continue;
+      changelog.push(`${heading}: ${items[itemIndex]}`);
+      added = true;
+    }
+    if (!added) break;
+  }
+  return {
+    changelog: unique(changelog, 520).slice(0, 12),
+    knownIssues: unique(knownIssues, 650).slice(0, 8),
+  };
+}
+
+function parseXboxContentApi(payload) {
+  const releases = [];
+  for (const entry of payload?.ContentList || []) {
+    for (const section of entry?.ContentItem?.SectionList || []) {
+      const releasedAt = toIsoDate(String(section?.Heading || '').replace(/^Release date:\s*/i, ''));
+      const osSection = (section?.SectionItems || []).find(item => /OS version:/i.test(item?.Heading || item?.['#Name'] || ''));
+      const version = String(osSection?.Heading || osSection?.['#Name'] || '').match(/OS version:\s*([\d.]+)/i)?.[1];
+      if (!releasedAt || !version) continue;
+
+      const changelog = [];
+      const knownIssues = [];
+      for (const item of osSection?.SectionItems || []) {
+        const heading = cleanText(item?.Heading || item?.['#Name'], 120);
+        const detail = (item?.SectionItems || [])
+          .map(child => cleanText(child?.HtmlContent || child?.Heading || child?.['#Name'], 360))
+          .filter(Boolean)
+          .join(' ');
+        const summary = cleanText(detail || heading, 520);
+        if (!summary) continue;
+        const line = heading && summary !== heading ? `${heading}: ${summary}` : summary;
+        if (/known issues?/i.test(heading)) knownIssues.push(line);
+        else changelog.push(line);
+      }
+      const orderedChangelog = unique(changelog, 520).sort((a, b) =>
+        Number(/bug fixes?|security|stability/i.test(b)) - Number(/bug fixes?|security|stability/i.test(a))
+      );
+      releases.push({ version, releasedAt, changelog: orderedChangelog.slice(0, 12), knownIssues: unique(knownIssues, 650).slice(0, 8) });
+    }
+  }
+  return releases.sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt))[0] || null;
 }
 
 function amdNestedBullets($, label, max = 5) {
@@ -246,10 +355,12 @@ function parseRssItems(xml, limit = 5) {
   const $ = cheerio.load(xml, { xmlMode: true });
   const items = [];
   $('item').slice(0, limit).each((_, el) => {
+    const descriptionHtml = $(el).find('description').text().trim();
     items.push({
       title:       $(el).find('title').text().trim(),
       link:        $(el).find('link').text().trim(),
-      description: $(el).find('description').text().replace(/<[^>]+>/g, '').trim().slice(0, 500),
+      description: cleanText(descriptionHtml, 1000),
+      descriptionHtml: descriptionHtml.slice(0, 20000),
       pubDate:     $(el).find('pubDate').text().trim(),
     });
   });
@@ -500,18 +611,26 @@ async function detectSteam() {
     const sourceUrl = update.link || 'https://store.steampowered.com/news/';
     const version = firstVersion(`${update.title} ${update.description}`) || versionFromDate(update.pubDate);
     const description = cleanText(update.description, 900);
-    const knownIssueIndex = description.search(/Known Issues?/i);
-    const knownIssueText = knownIssueIndex >= 0
-      ? cleanText(description.slice(knownIssueIndex).replace(/^Known Issues?\s*(?:-\s*Beta)?/i, '').split(/This issue is fixed/i)[0], 320)
-      : null;
+    const notes = parseSteamReleaseNotes(update.descriptionHtml || update.description);
+    const isPreview = /\b(?:beta|preview)\b/i.test(`${update.title} ${description}`);
+    const riskFactors = [];
+    if (isPreview) riskFactors.push({ level: 'medium', text: 'This release is on a Beta or Preview channel and is intended for users testing changes before stable rollout.' });
+    if (notes.knownIssues.length) riskFactors.push({ level: 'medium', text: notes.knownIssues[0] });
 
     return {
       platform:   'Steam',
       name:       update.title.slice(0, 100),
       version,
       releasedAt: toIsoDate(update.pubDate),
-      changelog:  [description].filter(Boolean),
-      knownIssues: knownIssueText ? [knownIssueText] : [],
+      changelog:  notes.changelog.length ? notes.changelog : [description].filter(Boolean),
+      knownIssues: notes.knownIssues,
+      riskFactors,
+      verdict: isPreview
+        ? 'Use the stable channel unless you need these fixes for testing; this build has an acknowledged performance regression.'
+        : 'Install if the listed SteamOS or Steam Deck fixes apply to your setup; otherwise wait for normal rollout confidence.',
+      reasoning: isPreview
+        ? 'This SteamOS build is explicitly marked Beta/Preview by Valve. PatchTicker separates its acknowledged issues from the full change list so stable-channel users can avoid treating a test build as a routine update.'
+        : 'PatchTicker reads Valve’s official Steam news feed and separates release changes from known issues before scoring the update.',
       evidence: sourceEvidence('Steam News', sourceUrl, `${update.title}. ${description}`, { dateBasis: 'published', releaseType: 'official-release' }),
       sourceUrl,
     };
@@ -611,28 +730,38 @@ async function detectBattleNet() {
 }
 
 /**
- * GOG Galaxy — GOG news release cards with explicit client version/date only.
+ * GOG Galaxy — official remote installer manifest plus artifact timestamp.
+ * GOG's public news surface does not consistently publish client versions;
+ * the signed installer manifest is the authoritative current-version signal.
  */
 async function detectGog() {
-  const newsUrl = 'https://www.gog.com/news';
+  const configUrl = 'https://remote-config.gog.com/components/webinstaller?component_version=2.0.0';
   try {
-    const html = await fetchHtml(newsUrl);
-    const $ = cheerio.load(html);
-    const card = $('article, a').filter((_, el) => /GOG GALAXY|Galaxy|client|update/i.test($(el).text())).first();
-    const title = cleanText(card.text(), 140);
-    const version = title.match(/(?:GOG GALAXY|Galaxy)(?:\s+Client)?(?:\s+Update)?\s+(\d+(?:\.\d+){1,4})/i)?.[1];
-    const date = card.find('time[datetime]').first().attr('datetime')
-      || cleanText(card.text(), 500).match(/([A-Z][a-z]+\s+\d{1,2},\s+\d{4})/)?.[1];
-    if (!version || !toIsoDate(date)) return null;
-    const sourceUrl = absoluteUrl(card.attr('href') || card.find('a').first().attr('href'), newsUrl);
+    const config = await fetchJson(configUrl);
+    const windows = config?.content?.windows;
+    if (!windows?.downloadLink) return null;
+    const headers = await fetchHead(windows.downloadLink);
+    const parsed = parseGogRemoteConfig(config, headers['last-modified']);
+    if (!parsed) return null;
+    const platformSummary = parsed.macVersion
+      ? `Windows ${parsed.version}; macOS ${parsed.macVersion}`
+      : `Windows ${parsed.version}`;
     return {
       platform:   'GOG',
-      name:       title,
-      version,
-      releasedAt: toIsoDate(date),
-      changelog:  [title],
-      evidence:   sourceEvidence('GOG News', sourceUrl, title, { dateBasis: 'published', releaseType: 'official-release' }),
-      sourceUrl,
+      name:       `GOG GALAXY ${parsed.version}`,
+      version:    parsed.version,
+      releasedAt: parsed.releasedAt,
+      affects:    'GOG GALAXY desktop client / Windows and macOS / library sync / cloud saves / game installation',
+      changelog:  [
+        `GOG's official installer manifest currently serves ${platformSummary}.`,
+        'The installer artifact timestamp changed with this release; GOG does not expose a complete public per-build changelog on this endpoint.',
+      ],
+      knownIssues: [],
+      riskFactors: [{ level: 'low', text: 'Launcher updates can affect library sync, cloud saves, downloads, and cross-store integrations.' }],
+      verdict: 'Install normally, but confirm cloud-save and library synchronization if GOG GALAXY is your primary launcher hub.',
+      reasoning: 'PatchTicker verifies the current GOG GALAXY build from GOG’s official remote installer manifest and dates it from the published installer artifact, avoiding stale news cards and guessed monthly versions.',
+      evidence: sourceEvidence('GOG GALAXY Installer Manifest', configUrl, `Official installer manifest serves ${platformSummary}; Windows artifact last modified ${parsed.releasedAt}.`, { dateBasis: 'source-updated', releaseType: 'official-version', publishedAt: parsed.releasedAt }),
+      sourceUrl: configUrl,
     };
   } catch (err) {
     logger.warn('[scraper] GOG detection failed', { error: err.message });
@@ -642,34 +771,34 @@ async function detectGog() {
 
 
 /**
- * Xbox — official Xbox Support system-update notes.
- * The current SPA shell does not expose release data to the server, so this
- * detector returns null rather than manufacturing a monthly version.
+ * Xbox — official Xbox Support structured content endpoint.
+ * The public page is a JavaScript shell; its public content API contains the
+ * worldwide OS version, release date, feature notes, and bug fixes.
  */
 async function detectXbox() {
   try {
-    const url = 'https://support.xbox.com/en-US/help/hardware-network/settings-updates/whats-new-xbox-one-system-updates';
-    const html = await fetchHtml(url);
-    const $ = cheerio.load(html);
-    const body = cleanText($('body').text(), 6000);
-    const os = body.match(/OS version[:\s]+([A-Z0-9_.-]+)/i)?.[1] || firstVersion(body);
-    const date = body.match(/(?:Released|Available|Mandatory)[:\s]+([A-Z][a-z]+\s+\d{1,2},\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1];
-    if (!os || !toIsoDate(date)) return null;
-    const finalVersion = os;
-    const bullets = sectionBullets($, ['New Features', 'Fixes', 'Known Issues', 'System Update Details'], 6);
+    const sourceUrl = 'https://support.xbox.com/en-US/help/hardware-network/settings-updates/whats-new-xbox-one-system-updates';
+    const apiUrl = 'https://content.support.xboxlive.com/content?path=%2FSXC%2Fhardware-network%2Fsettings-updates%2Fwhats-new-xbox-one-system-updates&market=US&language=en-US';
+    const payload = await fetchJson(apiUrl, {
+      'xa-Origin': 'support.xbox.com',
+      'xa-Origin-Version': '1',
+      'xa-Client-UIVersion': '1',
+    });
+    const parsed = parseXboxContentApi(payload);
+    if (!parsed) return null;
     return {
       platform: 'Xbox',
-      name: `Xbox System Update ${finalVersion}`.slice(0, 100),
-      version: finalVersion,
-      releasedAt: toIsoDate(date),
+      name: `Xbox System Update ${parsed.version}`.slice(0, 100),
+      version: parsed.version,
+      releasedAt: parsed.releasedAt,
       affects: 'Xbox Series X|S / Xbox One / dashboard / network services / controller and game compatibility',
-      changelog: bullets.length ? bullets : ['Official Xbox system update notes checked for dashboard, system, and stability changes.'],
-      knownIssues: sectionBullets($, ['Known Issues'], 5),
+      changelog: parsed.changelog.length ? parsed.changelog : ['Official Xbox system update notes checked for dashboard, system, and stability changes.'],
+      knownIssues: parsed.knownIssues,
       riskFactors: [{ level: 'low', text: 'Console updates are generally safe, but dashboard or network changes can temporarily affect party chat, store access, or game launch behavior.' }],
       verdict: 'Install for normal console use unless community reports show dashboard, network, or game-launch regressions.',
       reasoning: 'Xbox system updates can change dashboard behavior, networking, controller handling, and game compatibility. PatchTicker tracks the official Xbox Support update notes rather than relying on blog posts.',
-      evidence: sourceEvidence('Xbox Support', url, `Xbox update notes detected OS/version ${finalVersion}.`, { dateBasis: 'released', releaseType: 'official-release' }),
-      sourceUrl: url,
+      evidence: sourceEvidence('Xbox Support', sourceUrl, `Official Xbox update notes list OS version ${parsed.version}, released ${parsed.releasedAt}.`, { dateBasis: 'released', releaseType: 'official-release', publishedAt: parsed.releasedAt }),
+      sourceUrl,
     };
   } catch (err) {
     logger.warn('[scraper] Xbox detection failed', { error: err.message });
@@ -873,5 +1002,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseSteamReleaseNotes, parseXboxContentApi, safeDecode, validateDetectedUpdate },
 };

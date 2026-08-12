@@ -104,17 +104,20 @@ test('auth, feed, and history controls meet the touch target floor', () => {
   assert.match(cssSource, /\.feed-send\s*\{[^}]*min-height:\s*44px/s);
 });
 
-test('an unavailable or empty community feed renders a compact status state', () => {
+test('an empty community feed becomes a verified-release activity rail', () => {
   assert.match(mainSource, /Checking recent community activity/);
-  assert.match(mainSource, /No community notes yet\. Live updates will appear here\./);
-  assert.match(mainSource, /Community feed is reconnecting/);
+  assert.match(mainSource, /No community notes yet\. Start with recently verified releases\./);
+  assert.match(mainSource, /Community notes are reconnecting\. These releases were recently verified\./);
+  assert.match(mainSource, /function renderVerifiedFeedFallback/);
+  assert.match(mainSource, /feed-verified-item/);
   assert.match(cssSource, /\.dash-aside \.feed-messages:has\(> \.feed-empty:only-child\)\s*\{[^}]*min-height:\s*104px/s);
+  assert.match(cssSource, /\.feed-verified-item\s*\{[^}]*min-height:\s*54px/s);
 });
 
 test('public community reads use privacy-safe display labels', () => {
   assert.match(apiSource, /request\('\/feed\/recent', \{ skipAuth: true \}\)/);
   assert.match(mainSource, /post\.userLabel \|\| post\.userEmail\?\.split/);
-  assert.match(mainSource, /Community signal/);
+  assert.match(mainSource, /Recent activity/);
 });
 
 test('expired update permalinks explain the 240-day display window', () => {
@@ -133,9 +136,13 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /updateDateLabel\(u\)/);
   assert.match(mainSource, /id="dash-coverage-pulse"/);
   assert.match(mainSource, /No demo records shown/);
+  assert.match(mainSource, /verified update[\s\S]*?platform/);
+  assert.match(mainSource, /lanes checked in 24h/);
+  assert.match(mainSource, /All live lanes current/);
   assert.match(cssSource, /\.freshness-signal--fresh\s*\{[^}]*var\(--green-primary\)/s);
   assert.match(cssSource, /\.freshness-signal--stale\s*\{[^}]*var\(--red\)/s);
   assert.match(cssSource, /\.dash-coverage-pulse\s*\{[^}]*border-radius:\s*999px/s);
+  assert.match(cssSource, /\.dash-coverage-pulse\.is-degraded\s*\{[^}]*var\(--yellow\)/s);
 });
 
 test('offline update feeds remain honest instead of reviving demo records', () => {
