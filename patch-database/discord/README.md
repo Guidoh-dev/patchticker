@@ -2,20 +2,12 @@
 
 - Platform key: `Discord`
 - Lane: services
-- Source type: rss
-- Window: 2026-05-22 through 2026-07-21 (<60 days)
-- Updates captured: 1
+- Source type: official Patch Notes HTML
+- Window: 2026-06-12 through 2026-08-11 (60 days)
+- Updates captured: 2
+- Accuracy rule: Discord service incidents are not client patches and are excluded.
 
-| Release | Version | Rating test | Overall | Recommendation | Source |
-|---|---:|---:|---|---|---|
-| Discord Status / Client Signal — API Errors (2026-07-17) | Jul 2026 | 8.4/10 | positive | install candidate | [Discord](https://discordstatus.com/incidents/vwmnnymc48b9) |
-
-## Notes
-### Discord Status / Client Signal — API Errors
-- ID: `discord-jul-2026`
-- Date: 2026-07-17
-- Stored PatchTicker score/status: 5 / caution
-- Local rating test: 8.4/10 (positive) — install candidate
-- Affects: Discord desktop / voice chat / overlay / streaming / API and gateway services
-- Verdict: Safe for most users, but verify overlay and voice behavior if Discord is part of your gaming setup.
-- Rating test notes: Official/vendor source attached.
+| Release | Version | Source-based score | Recommendation | Source |
+|---|---:|---:|---|---|
+| Discord Patch Notes: August 4, 2026 | 2026.08.04 | 6.8/10 | review applicable client fixes | [Discord](https://discord.com/blog/discord-patch-notes-august-4-2026) |
+| Discord Patch Notes: July 7, 2026 | 2026.07.07 | 7.2/10 | review applicable client fixes | [Discord](https://discord.com/blog/discord-patch-notes-july-7-2026) |

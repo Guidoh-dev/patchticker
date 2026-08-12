@@ -153,6 +153,9 @@ const app = document.getElementById('app');
 const THEME_STORAGE_KEY = 'patchticker.theme';
 const MAX_UPDATE_AGE_DAYS = 240;
 const UPDATE_DISPLAY_WINDOW_MS = MAX_UPDATE_AGE_DAYS * 24 * 60 * 60 * 1000;
+const UPDATE_VISIT_STORAGE_KEY = 'patchticker.updates.lastSeenAt';
+const _updateVisitBaseline = Date.parse(localStorage.getItem(UPDATE_VISIT_STORAGE_KEY) || '');
+let _updateVisitRecorded = false;
 let _quickbarScrollController = null;
 
 function isUpdateWithinDisplayWindow(update, now = Date.now()) {
@@ -1437,6 +1440,40 @@ function freshnessMeta(update) {
   return { label: 'Recheck due', tone: 'stale', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
 }
 
+function updateReturnBrief(updates = []) {
+  const brief = document.getElementById('dash-return-brief');
+  const label = document.getElementById('dash-return-label');
+  const headline = document.getElementById('dash-return-headline');
+  const detail = document.getElementById('dash-return-detail');
+  const logos = document.getElementById('dash-return-platforms');
+  if (!brief || !label || !headline || !detail || !logos || !updates.length) return;
+
+  const newest = [...updates].sort((a, b) => Date.parse(b.createdAt || b.releasedAt) - Date.parse(a.createdAt || a.releasedAt));
+  const isReturning = Number.isFinite(_updateVisitBaseline);
+  const sinceLastVisit = isReturning
+    ? newest.filter(update => Date.parse(update.createdAt || update.releasedAt) > _updateVisitBaseline)
+    : [];
+  const featured = (sinceLastVisit.length ? sinceLastVisit : newest).slice(0, 4);
+  const latest = featured[0];
+
+  brief.classList.toggle('has-new', sinceLastVisit.length > 0);
+  label.textContent = isReturning ? 'Since your last visit' : 'Your live briefing';
+  headline.textContent = sinceLastVisit.length
+    ? `${sinceLastVisit.length} verified patch${sinceLastVisit.length === 1 ? '' : 'es'} arrived`
+    : (isReturning ? 'You’re caught up' : `${updates.length} current releases are ready`);
+  detail.textContent = sinceLastVisit.length
+    ? `Newest: ${latest.name}`
+    : `Latest release: ${latest.name} · ${timeAgo(latest.releasedAt)}`;
+  logos.innerHTML = featured.map(update => renderPlatformLogo(update.platform, 'dash-return-logo')).join('');
+  brief.onclick = () => navigate(`/updates/${encodeURIComponent(latest.id)}`);
+  brief.setAttribute('aria-label', `Open ${latest.name}`);
+
+  if (!_updateVisitRecorded) {
+    localStorage.setItem(UPDATE_VISIT_STORAGE_KEY, new Date().toISOString());
+    _updateVisitRecorded = true;
+  }
+}
+
 function analysisMethodLabel(update) {
   if (update?.ratingsLive && update?.userRating?.totalVotes) {
     return `${update.userRating.totalVotes.toLocaleString()} user votes`;
@@ -1932,6 +1969,15 @@ async function renderDashboard({ focusId = null } = {}) {
                   ? '<a class="btn btn--secondary" href="#/account">Manage watchlist</a>'
                   : '<a class="btn btn--outline" href="#/register">Create free account</a>'}
               </div>
+              <button class="dash-return-brief" id="dash-return-brief" type="button">
+                <span class="dash-return-copy">
+                  <small id="dash-return-label">Your live briefing</small>
+                  <strong id="dash-return-headline">Checking what changed…</strong>
+                  <em id="dash-return-detail">Comparing verified release history</em>
+                </span>
+                <span class="dash-return-platforms" id="dash-return-platforms" aria-hidden="true"></span>
+                <b aria-hidden="true">→</b>
+              </button>
               <div class="dash-coverage-pulse" id="dash-coverage-pulse" aria-live="polite">
                 <span class="freshness-signal freshness-signal--snapshot" id="coverage-mode"><i aria-hidden="true"></i>Connecting sources</span>
                 <strong id="coverage-sources">Checking source coverage…</strong>
@@ -2281,6 +2327,7 @@ async function renderDashboard({ focusId = null } = {}) {
     try {
       _allUpdates = normaliseUpdatesResponse(await fetchUpdates({}))
         .filter(update => isUpdateWithinDisplayWindow(update));
+      updateReturnBrief(_allUpdates);
       renderTapeAndLatest(_allUpdates);
       renderVerifiedFeedFallback();
       applyFilters();

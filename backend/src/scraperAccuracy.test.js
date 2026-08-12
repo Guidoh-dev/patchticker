@@ -108,6 +108,48 @@ describe('scraper accuracy guards', () => {
     )).toBeNull();
   });
 
+  test('Discord index parser selects the newest official Patch Notes article by date', () => {
+    expect(__test.parseDiscordPatchIndex(`
+      <a aria-label="Discord Patch Notes: July 7, 2026" href="/blog/discord-patch-notes-july-7-2026">July</a>
+      <a aria-label="Discord Patch Notes: August 4, 2026" href="/blog/discord-patch-notes-august-4-2026">August</a>
+      <a aria-label="Unrelated Discord news" href="/blog/product-news">News</a>
+    `)).toEqual({
+      title: 'Discord Patch Notes: August 4, 2026',
+      releasedAt: '2026-08-04',
+      url: 'https://discord.com/blog/discord-patch-notes-august-4-2026',
+    });
+  });
+
+  test('Discord article parser extracts dated client fixes instead of service incidents', () => {
+    const parsed = __test.parseDiscordPatchPage(`
+      <section class="article_content new">
+        <h1>Discord Patch Notes: August 4, 2026</h1>
+        <article class="article_rich-text-2">
+          <h2>Highlights</h2>
+          <ul><li>We upgraded our Desktop client to Electron 42 and improved CPU usage.</li></ul>
+        </article>
+        <article class="article_rich-text-2">
+          <h2>Audio/Video</h2><h3>Desktop</h3>
+          <ul>
+            <li>Fixed an issue on Desktop where users were not rejoined after updating the client.</li>
+            <li>Resolved a mobile spacing issue.</li>
+          </ul>
+        </article>
+      </section>
+    `);
+
+    expect(parsed).toMatchObject({
+      title: 'Discord Patch Notes: August 4, 2026',
+      version: '2026.08.04',
+      releasedAt: '2026-08-04',
+    });
+    expect(parsed.changelog).toEqual(expect.arrayContaining([
+      'We upgraded our Desktop client to Electron 42 and improved CPU usage.',
+      'Audio/Video: Fixed an issue on Desktop where users were not rejoined after updating the client.',
+    ]));
+    expect(parsed.changelog.join(' ')).not.toMatch(/incident|monitoring|resolved service/i);
+  });
+
   test('Steam parser separates known issues from release changes', () => {
     const parsed = __test.parseSteamReleaseNotes(`
       <p>This update is for the SteamOS Beta and Preview channels.</p>

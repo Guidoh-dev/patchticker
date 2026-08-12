@@ -105,6 +105,18 @@ test('monthly placeholders require official release metadata', () => {
   })).toBe(true);
 });
 
+test('Discord service incidents are excluded while official technical patch notes remain visible', () => {
+  const base = { platform: 'Discord', version: '2026.08.04', releasedAt: '2026-08-04' };
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base,
+    evidence: [{ source: 'Discord Status', url: 'https://discordstatus.com/incidents/example', releaseType: 'official-status' }],
+  })).toBe(false);
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base,
+    evidence: [{ source: 'Discord Patch Notes', url: 'https://discord.com/blog/discord-patch-notes-august-4-2026', releaseType: 'official-release' }],
+  })).toBe(true);
+});
+
 test('production outages never expose static demo updates as live data', async () => {
   process.env.NODE_ENV = 'production';
   mockIsAvailable.mockReturnValue(false);

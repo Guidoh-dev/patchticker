@@ -176,3 +176,13 @@ test('landing page hydrates from verified updates instead of fabricated ratings'
   assert.match(cssSource, /\.landing-meter--10 span\s*\{\s*width:\s*100%/);
   assert.match(cssSource, /@media \(max-width: 980px\)[\s\S]*?\.landing-copy\s*\{\s*display:\s*contents;[\s\S]*?\.landing-panel\s*\{\s*order:\s*1;[\s\S]*?\.landing-proof\s*\{\s*order:\s*2;/);
 });
+
+test('returning visitors receive a truthful live briefing from persisted update history', () => {
+  assert.match(mainSource, /UPDATE_VISIT_STORAGE_KEY = 'patchticker\.updates\.lastSeenAt'/);
+  assert.match(mainSource, /function updateReturnBrief\(updates = \[\]\)/);
+  assert.match(mainSource, /Date\.parse\(update\.createdAt \|\| update\.releasedAt\) > _updateVisitBaseline/);
+  assert.match(mainSource, /updateReturnBrief\(_allUpdates\)/);
+  assert.match(mainSource, /id="dash-return-headline"/);
+  assert.match(cssSource, /\.dash-return-brief\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto/s);
+  assert.match(cssSource, /\.dash-return-brief\.has-new\s*\{[^}]*var\(--green-primary\)/s);
+});

@@ -19,7 +19,7 @@
 //   Xbox      — Xbox Support structured content API
 //   PS5       — PlayStation Support system software page
 //   Intel     — Intel download center JSON API
-//   Discord   — Discord status history RSS
+//   Discord   — Discord Patch Notes index + article (official)
 //   Battle.net— Blizzard regional version manifests + HTTPS CDN build config
 //   GOG       — GOG GALAXY installer manifest + artifact timestamp
 //
@@ -236,6 +236,70 @@ function parseBattleNetBuildConfig(text) {
   const releaseVersion = (branch || buildName || '').match(/release_(\d+(?:\.\d+){2})/i)?.[1] || null;
   if (!/^\d+$/.test(buildId || '') || !releaseVersion) return null;
   return { buildId, buildName, branch, version: `${releaseVersion}.${buildId}` };
+}
+
+function parseDiscordPatchIndex(html, baseUrl = 'https://discord.com/tags/patch-notes') {
+  const $ = cheerio.load(String(html || ''));
+  const releases = [];
+
+  $('a[href*="/blog/discord-patch-notes-"]').each((_, link) => {
+    const title = cleanText($(link).attr('aria-label') || $(link).text(), 120);
+    const dateText = title.match(/^Discord Patch Notes:\s*(.+)$/i)?.[1] || null;
+    const releasedAt = toIsoDate(dateText);
+    if (!releasedAt) return;
+    releases.push({
+      title,
+      releasedAt,
+      url: absoluteUrl($(link).attr('href'), baseUrl),
+    });
+  });
+
+  return releases
+    .filter((release, index, rows) => rows.findIndex(row => row.url === release.url) === index)
+    .sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt))[0] || null;
+}
+
+function parseDiscordPatchPage(html) {
+  const $ = cheerio.load(String(html || ''));
+  const title = cleanText($('h1').first().text() || metaContent($, 'og:title'), 120);
+  const dateText = title.match(/^Discord Patch Notes:\s*(.+)$/i)?.[1] || null;
+  const releasedAt = toIsoDate(dateText);
+  if (!releasedAt) return null;
+
+  const candidates = [];
+  $('section.article_content.new article.article_rich-text-2').each((articleIndex, article) => {
+    const section = cleanText($(article).find('h2').first().text(), 70) || 'Changes';
+    $(article).find('li').each((itemIndex, item) => {
+      if ($(item).children('ul,ol').length) return;
+      const text = cleanText($(item).text(), 360);
+      if (text.length < 24) return;
+      const signalText = `${section} ${text}`.toLowerCase();
+      let score = section.toLowerCase() === 'highlights' ? 20 : 0;
+      if (/desktop/.test(signalText)) score += 8;
+      if (/crash|freeze|overlay|voice|stream|update|electron|performance|cpu|memory|security/.test(signalText)) score += 7;
+      if (/fixed|resolved|improved|upgraded|shipped/.test(signalText)) score += 3;
+      candidates.push({
+        text: section === 'Highlights' ? text : `${section}: ${text}`,
+        score,
+        order: (articleIndex * 1000) + itemIndex,
+      });
+    });
+  });
+
+  const changelog = unique(
+    candidates
+      .sort((a, b) => b.score - a.score || a.order - b.order)
+      .map(candidate => candidate.text),
+    360
+  ).slice(0, 12);
+  if (!changelog.length) return null;
+
+  return {
+    title,
+    releasedAt,
+    version: releasedAt.replace(/-/g, '.'),
+    changelog,
+  };
 }
 
 function parseSteamReleaseNotes(html) {
@@ -711,23 +775,31 @@ async function detectSwitch() {
 
 
 /**
- * Discord — Discord status history RSS
+ * Discord — official Patch Notes index and article.
+ *
+ * Discord Status incidents describe service availability, not installable
+ * client releases. They must never be promoted into the patch feed.
  */
 async function detectDiscord() {
+  const indexUrl = process.env.DISCORD_PATCH_NOTES_URL || 'https://discord.com/tags/patch-notes';
   try {
-    const xml = await fetchXml(process.env.DISCORD_STATUS_RSS_URL || 'https://discordstatus.com/history.rss');
-    const items = parseRssItems(xml, 10);
-    const update = items.find(i => /resolved|monitoring|incident|maintenance|desktop|voice|api|gateway/i.test(`${i.title} ${i.description}`)) || items[0];
-    if (!update) return null;
-    const sourceUrl = update.link || 'https://discordstatus.com/history';
+    const release = parseDiscordPatchIndex(await fetchHtml(indexUrl), indexUrl);
+    if (!release?.url) return null;
+    const parsed = parseDiscordPatchPage(await fetchHtml(release.url));
+    if (!parsed || parsed.releasedAt !== release.releasedAt) return null;
     return {
       platform:   'Discord',
-      name:       `Discord Status / Client Signal — ${update.title}`.slice(0, 100),
-      version:    versionFromDate(update.pubDate),
-      releasedAt: toIsoDate(update.pubDate),
-      changelog:  [update.description].filter(Boolean),
-      evidence:   sourceEvidence('Discord Status', sourceUrl, `${update.title}. ${update.description}`, { dateBasis: 'published', releaseType: 'official-status' }),
-      sourceUrl,
+      name:       parsed.title,
+      version:    parsed.version,
+      releasedAt: parsed.releasedAt,
+      affects:    'Discord desktop / Windows / macOS / Linux / overlay / voice / streaming / client reliability',
+      changelog:  parsed.changelog,
+      knownIssues: [],
+      riskFactors: [{ level: 'low', text: 'Discord notes that fixes may roll out gradually by client platform, so availability can differ by device.' }],
+      verdict:    'Review the Desktop sections for overlay, voice, streaming, and crash fixes that apply to your setup; rollout timing may vary by platform.',
+      reasoning:  'PatchTicker tracks Discord’s official technical Patch Notes rather than service-status incidents. The notes combine shipped reliability, performance, accessibility, and client fixes across Desktop and mobile.',
+      evidence:   sourceEvidence('Discord Patch Notes', release.url, `${parsed.title}. ${parsed.changelog.slice(0, 2).join(' ')}`, { dateBasis: 'published', releaseType: 'official-release', publishedAt: parsed.releasedAt }),
+      sourceUrl:  release.url,
     };
   } catch (err) {
     logger.warn('[scraper] Discord detection failed', { error: err.message });
@@ -1076,5 +1148,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseSteamReleaseNotes, parseXboxContentApi, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseSteamReleaseNotes, parseXboxContentApi, safeDecode, validateDetectedUpdate },
 };

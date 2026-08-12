@@ -31,9 +31,16 @@ function isUpdateWithinDisplayWindow(update) {
 
 function isUpdateDisplayable(update) {
   if (!isUpdateWithinDisplayWindow(update)) return false;
+  const evidence = jsonArray(update?.evidence);
+  if (update?.platform === 'Discord') {
+    return evidence.some(item =>
+      item?.releaseType === 'official-release'
+      && /^https:\/\/(?:www\.)?discord\.com\/blog\/discord-patch-notes-/i.test(String(item?.url || ''))
+    );
+  }
   const placeholderMonth = /^\d{4}-\d{2}$/.test(String(update?.version || ''));
   if (!placeholderMonth || !PLACEHOLDER_VERSION_PLATFORMS.has(update?.platform)) return true;
-  return jsonArray(update.evidence).some(item =>
+  return evidence.some(item =>
     ['official-release', 'official-version'].includes(item?.releaseType)
   );
 }
@@ -421,31 +428,29 @@ function getStaticUpdates() {
       userRating: { score: 6.5, totalVotes: 318, breakdown: { install: 56, wait: 35, avoid: 9 } },
     },
     {
-      id: 'discord-desktop-july-2026',
+      id: 'discord-2026-08-04',
       platform: 'Discord',
-      name: 'Discord Desktop Client Update — July 2026',
-      version: 'July 2026',
-      releasedAt: '2026-07-02',
-      status: 'stable',
-      score: 8.0,
-      bugCount: 13,
-      affects: 'Discord desktop / Windows / macOS / Linux / overlay / voice chat',
-      verdict: 'Safe for most users. Watch overlay behavior if you rely on Discord in full-screen games.',
-      reasoning: 'Discord is tracked because it is part of the modern gaming stack: overlay, voice chat, streaming, notifications, and rich presence can all affect sessions even when the game itself is stable.',
+      name: 'Discord Patch Notes: August 4, 2026',
+      version: '2026.08.04',
+      releasedAt: '2026-08-04',
+      status: 'caution',
+      score: 6.8,
+      bugCount: 0,
+      affects: 'Discord desktop / Windows / macOS / Linux / overlay / voice / streaming / client reliability',
+      verdict: 'Review the Desktop sections for overlay, voice, streaming, and crash fixes that apply to your setup; rollout timing may vary by platform.',
+      reasoning: 'This fixture mirrors Discord’s official technical Patch Notes. Service-status incidents are excluded because they are not installable client releases.',
       riskFactors: [
-        { level: 'low', text: 'Overlay hook issues can affect a narrow set of full-screen games' },
-        { level: 'low', text: 'Voice/RTC incidents should be cross-checked against Discord status' },
+        { level: 'low', text: 'Discord notes that fixes may roll out gradually by client platform.' },
       ],
       evidence: [
-        { source: 'Discord Status', url: 'https://discordstatus.com/history', text: 'Status history monitored for voice, API, and gateway incidents' },
-        { source: 'r/discordapp', url: 'https://reddit.com/r/discordapp', text: 'User reports monitored for overlay and desktop client regressions' },
+        { source: 'Discord Patch Notes', url: 'https://discord.com/blog/discord-patch-notes-august-4-2026', text: 'Official technical patch notes published August 4, 2026.', releaseType: 'official-release', dateBasis: 'published' },
       ],
-      changelog: ['Desktop client stability checks', 'Overlay behavior monitored', 'Voice and gateway status watched'],
-      knownIssues: ['Overlay may need restart after client update in some games'],
-      subreddits: ['discordapp'],
+      changelog: ['Discord upgraded its Desktop client to Electron 42 with incremental CPU usage improvements.', 'Fixed a Desktop overlay bug that could turn the client black in some games.', 'Fixed a Desktop crash when pasting a large number of emojis.'],
+      knownIssues: [],
+      subreddits: [],
       impactScore: 5.8,
-      securityCriticality: { level: 'low', label: 'No Security Patches', cves: [] },
-      userRating: { score: 8.1, totalVotes: 442, breakdown: { install: 84, wait: 13, avoid: 3 } },
+      securityCriticality: { level: 'low', label: 'No published CVE list', cves: [] },
+      userRating: null,
     },
     {
       id: 'battlenet-client-july-2026',

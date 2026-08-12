@@ -15,13 +15,16 @@ const PLATFORMS = Object.freeze([
   { key: 'Switch',    label: 'Switch',       lane: 'console',  sourceType: 'html',     priority: 3, official: true },
   { key: 'Xbox',      label: 'Xbox',         lane: 'console',  sourceType: 'json',     priority: 3, official: true },
   { key: 'PS5',       label: 'PS5',          lane: 'console',  sourceType: 'html',     priority: 3, official: true },
-  { key: 'Discord',   label: 'Discord',      lane: 'services', sourceType: 'rss',      priority: 4, official: true },
+  { key: 'Discord',   label: 'Discord',      lane: 'services', sourceType: 'html',     priority: 4, official: true },
   { key: 'BattleNet', label: 'Battle.net',   lane: 'services', sourceType: 'manifest', priority: 4, official: true },
   { key: 'GOG',       label: 'GOG Galaxy',   lane: 'services', sourceType: 'json',     priority: 4, official: true },
 ]);
 
 const PLATFORM_KEYS = Object.freeze(PLATFORMS.map(p => p.key));
 const SECURITY_PLATFORM_KEYS = Object.freeze(PLATFORMS.filter(p => p.lane === 'security').map(p => p.key));
+const HIGH_VELOCITY_PLATFORM_KEYS = Object.freeze(PLATFORMS
+  .filter(p => p.priority === 2 || ['gaming', 'services'].includes(p.lane))
+  .map(p => p.key));
 
 function isValidPlatform(platform) {
   return PLATFORM_KEYS.includes(platform);
@@ -35,6 +38,7 @@ module.exports = {
   PLATFORMS,
   PLATFORM_KEYS,
   SECURITY_PLATFORM_KEYS,
+  HIGH_VELOCITY_PLATFORM_KEYS,
   isValidPlatform,
   getPlatform,
 };
