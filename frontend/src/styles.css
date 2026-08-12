@@ -5867,7 +5867,10 @@ body { overflow-x: hidden; }
   background: rgba(10, 10, 10, .92);
   box-shadow: 0 18px 55px rgba(0, 0, 0, .34);
   backdrop-filter: blur(16px);
-  transition: padding .22s ease, border-radius .22s ease, box-shadow .22s ease, gap .22s ease;
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  transition: padding .22s ease, border-radius .22s ease, box-shadow .22s ease, gap .22s ease, transform .22s ease, opacity .16s ease, visibility 0s linear 0s;
 }
 .dash-quickbar-primary {
   display: grid;
@@ -5925,6 +5928,13 @@ body { overflow-x: hidden; }
   opacity: 0;
   pointer-events: none;
   transform: translateY(-8px);
+}
+.dash-quickbar.is-scroll-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(calc(-100% - 16px));
+  transition-delay: 0s, 0s, 0s, 0s, 0s, 0s, .22s;
 }
 .dash-quickbar-search {
   display: grid;

@@ -5,6 +5,14 @@ const axios   = require('axios');
 const logger  = require('../utils/logger');
 const secrets = require('../config/secrets');
 
+const MAX_UPDATE_AGE_DAYS = 240;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isUpdateWithinDisplayWindow(update) {
+  const releasedAt = Date.parse(update?.releasedAt);
+  return Number.isFinite(releasedAt) && releasedAt >= Date.now() - (MAX_UPDATE_AGE_DAYS * DAY_MS);
+}
+
 // ── Reddit OAuth token cache ────────────────────────────────────────────────
 let _redditToken = null;
 let _redditTokenExpiry = 0;
@@ -646,7 +654,7 @@ function mergeWithStaticPlatformFallback(dbUpdates, filters = {}) {
     `${update.platform.toLowerCase()}:${String(update.version).toLowerCase()}`
   ));
 
-  let fallbackUpdates = getStaticUpdates();
+  let fallbackUpdates = getStaticUpdates().filter(isUpdateWithinDisplayWindow);
   if (filters.platform) {
     const platformFilter = filters.platform.toLowerCase();
     fallbackUpdates = fallbackUpdates.filter(update =>
@@ -690,7 +698,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       let query = `
         SELECT *
         FROM software_updates
-        WHERE 1=1
+        WHERE released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
       `;
       const params = [];
 
@@ -722,7 +730,8 @@ async function getUpdates({ platform, status, sort, search } = {}) {
 
       const rows = await db.query(query, params);
       if (rows.rows.length > 0) {
-        let updates = mergeWithStaticPlatformFallback(rows.rows.map(rowToUpdate), { platform, status, search });
+        let updates = mergeWithStaticPlatformFallback(rows.rows.map(rowToUpdate), { platform, status, search })
+          .filter(isUpdateWithinDisplayWindow);
         // Apply sort after DISTINCT ON
         const sorters = {
           date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
@@ -739,7 +748,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
   }
 
   // Static fallback
-  let updates = getStaticUpdates();
+  let updates = getStaticUpdates().filter(isUpdateWithinDisplayWindow);
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
@@ -817,7 +826,7 @@ async function getSentimentSummary() {
     }
   }
 
-  const updates = getStaticUpdates();
+  const updates = getStaticUpdates().filter(isUpdateWithinDisplayWindow);
   return {
     stable:          updates.filter(u => u.status === 'stable').length,
     caution:         updates.filter(u => u.status === 'caution').length,
@@ -836,6 +845,7 @@ async function getUpdateHistory(platform, limit = 20) {
       `SELECT id, name, version, released_at, status, score, bug_count, ai_generated
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
+         AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
        ORDER BY released_at DESC, created_at DESC
        LIMIT $2`,
       [platform, Math.min(limit, 50)]

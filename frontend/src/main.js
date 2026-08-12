@@ -297,18 +297,32 @@ function attachQuickbarScrollBehavior() {
     toggle.querySelector('b').textContent = collapsed ? '↓' : '↑';
   };
 
+  const setHidden = (hidden) => {
+    quickbar.classList.toggle('is-scroll-hidden', hidden);
+    quickbar.inert = hidden;
+    if (hidden) quickbar.setAttribute('aria-hidden', 'true');
+    else quickbar.removeAttribute('aria-hidden');
+  };
+
   const updateForScroll = () => {
     framePending = false;
     const currentY = window.scrollY;
     const delta = currentY - lastY;
-    const searchActive = document.activeElement === search;
+    const quickbarActive = quickbar.contains(document.activeElement);
 
-    if (currentY <= 140 || searchActive) {
+    if (currentY <= 140) {
+      setHidden(false);
       setCollapsed(false);
-    } else if (Date.now() >= manualOpenUntil && delta > 8) {
+    } else if (quickbarActive || Date.now() < manualOpenUntil) {
+      setHidden(false);
+    } else if (delta < -12) {
+      setHidden(false);
       setCollapsed(true);
-    } else if (delta < -18) {
-      setCollapsed(false);
+    } else if (currentY > 240 && delta >= 0) {
+      setCollapsed(true);
+      setHidden(true);
+    } else if (delta > 8) {
+      setCollapsed(true);
     }
     lastY = currentY;
   };
@@ -322,12 +336,14 @@ function attachQuickbarScrollBehavior() {
   toggle.addEventListener('click', () => {
     const willCollapse = !quickbar.classList.contains('is-collapsed');
     if (!willCollapse) manualOpenUntil = Date.now() + 1200;
+    setHidden(false);
     setCollapsed(willCollapse);
   }, { signal });
-  search?.addEventListener('focus', () => setCollapsed(false), { signal });
+  search?.addEventListener('focus', () => setHidden(false), { signal });
   window.addEventListener('scroll', onScroll, { passive: true, signal });
 
-  setCollapsed(lastY > 180);
+  setCollapsed(lastY > 140);
+  setHidden(lastY > 240);
 }
 
 
