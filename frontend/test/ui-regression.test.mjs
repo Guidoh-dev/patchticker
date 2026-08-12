@@ -75,6 +75,8 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(mainSource, /aria-controls="dash-quickbar-details"/);
   assert.match(mainSource, /attachQuickbarScrollBehavior\(\)/);
   assert.match(mainSource, /_quickbarScrollController\?\.abort\(\)/);
+  assert.doesNotMatch(mainSource, /quickbar\.contains\(document\.activeElement\)/);
+  assert.match(mainSource, /document\.activeElement === search[\s\S]*?search\.blur\(\)/);
   assert.match(cssSource, /\.dash-quickbar\.is-collapsed \.dash-quickbar-details\s*\{[^}]*max-height:\s*0/s);
   assert.match(cssSource, /\.dash-quickbar\.is-scroll-hidden\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*transform:\s*translateY\(calc\(-100% - 16px\)\)/s);
   assert.match(cssSource, /\.dash-quickbar-toggle\s*\{[^}]*min-height:\s*44px/s);

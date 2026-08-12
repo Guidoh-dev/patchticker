@@ -308,17 +308,17 @@ function attachQuickbarScrollBehavior() {
     framePending = false;
     const currentY = window.scrollY;
     const delta = currentY - lastY;
-    const quickbarActive = quickbar.contains(document.activeElement);
 
     if (currentY <= 140) {
       setHidden(false);
       setCollapsed(false);
-    } else if (quickbarActive || Date.now() < manualOpenUntil) {
+    } else if (Date.now() < manualOpenUntil) {
       setHidden(false);
     } else if (delta < -12) {
       setHidden(false);
       setCollapsed(true);
     } else if (currentY > 240 && delta >= 0) {
+      if (document.activeElement === search) search.blur();
       setCollapsed(true);
       setHidden(true);
     } else if (delta > 8) {
