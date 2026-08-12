@@ -163,14 +163,14 @@ function buildFrontendCspDirectives() {
   return addReportDirectives({
     defaultSrc:              ["'none'"],
     // TODO: ca-pub-XXXXXXXXXXXXXXXX — replace with real publisher ID when AdSense is live
-    scriptSrc:               ["'self'", 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
+    scriptSrc:               ["'self'", 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://www.clarity.ms', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
     // No unsafe-inline. Google Fonts CSS is external — loaded from their CDN.
     styleSrc:                ["'self'", 'https://fonts.googleapis.com', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com'],
     // Actual font binary files are served from gstatic.com
     fontSrc:                 ["'self'", 'https://fonts.gstatic.com'],
     // hCaptcha verification endpoint + asset CDN
-    connectSrc:              ["'self'", 'https://hcaptcha.com', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
-    imgSrc:                  ["'self'", 'data:', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
+    connectSrc:              ["'self'", 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://us.i.posthog.com', 'https://*.clarity.ms', 'https://c.bing.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
+    imgSrc:                  ["'self'", 'data:', 'https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://*.clarity.ms', 'https://c.bing.com', 'https://pagead2.googlesyndication.com', 'https://googleads.g.doubleclick.net'],
     // hCaptcha widget and AdSense render inside sandboxed provider iframes
     frameSrc:                ['https://hcaptcha.com', 'https://*.hcaptcha.com', 'https://googleads.g.doubleclick.net', 'https://tpc.googlesyndication.com'],
     mediaSrc:                ["'none'"],

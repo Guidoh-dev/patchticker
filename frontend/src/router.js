@@ -64,9 +64,11 @@ export function start() {
     const match   = resolveRoute(path);
     if (match && _current !== path) {
       _current = path;
+      window.dispatchEvent(new CustomEvent('app:route', { detail: { path } }));
       match.handler({ ...queryParams(), ...match.params });
     } else if (!match) {
       _current = path;
+      window.dispatchEvent(new CustomEvent('app:route', { detail: { path } }));
       if (_fallback) {
         _fallback({ path });
       } else {

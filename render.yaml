@@ -54,6 +54,12 @@ services:
         sync: false
       - key: VITE_HCAPTCHA_SITE_KEY
         sync: false
+      - key: VITE_POSTHOG_KEY
+        value: phc_oHwNYF2HqTnm5qbD9Y372SvNyZFvFZZV3z48XUHdaiCX
+      - key: VITE_POSTHOG_HOST
+        value: https://us.i.posthog.com
+      - key: VITE_CLARITY_PROJECT_ID
+        sync: false
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET

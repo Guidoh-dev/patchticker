@@ -19,6 +19,10 @@ import {
 } from './api.js';
 import { restoreSession, setUser, signOut, getUser, isLoggedIn, hasRole, onAuthChange } from './auth.js';
 import { route, fallback, navigate, start, queryParams } from './router.js';
+import {
+  applyAnalyticsPrivacyMasks, captureAnalytics, initializeAnalyticsConsent,
+  openAnalyticsPreferences, syncAnalyticsIdentity,
+} from './analytics.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -191,6 +195,8 @@ function setHTML(html) {
   _quickbarScrollController?.abort();
   _quickbarScrollController = null;
   app.innerHTML = html;
+  applyAnalyticsPrivacyMasks(app);
+  document.getElementById('analytics-privacy-choices')?.addEventListener('click', openAnalyticsPreferences);
 }
 
 function showToast(msg, type = 'info') {
@@ -501,6 +507,7 @@ function renderLogin() {
       const password = document.getElementById('login-password').value;
       const data     = await apiLogin({ email, password });
       setUser(data.user);
+      captureAnalytics('login_completed', { plan: data.user?.role || 'free' });
       showToast('Welcome back!', 'success');
       navigate('/updates');
     } catch (err) {
@@ -623,6 +630,7 @@ function renderRegister() {
 
       const data = await apiRegister({ email, password, 'h-captcha-response': captchaToken });
       setUser(data.user);
+      captureAnalytics('signup_completed', { plan: data.user?.role || 'free' });
       showToast('Account created! Check your email to verify.', 'success');
       navigate('/updates');
     } catch (err) {
@@ -947,6 +955,10 @@ function renderPricing() {
       btn.textContent = 'Redirecting…';
       try {
         const { url } = await createCheckout(priceId);
+        captureAnalytics('subscription_checkout_started', {
+          plan: 'pro',
+          billing_period: btn.id === 'checkout-annual' ? 'annual' : 'monthly',
+        });
         window.location.href = url;
       } catch (err) {
         showToast(err.message, 'error');
@@ -2272,7 +2284,7 @@ async function renderDashboard({ focusId = null } = {}) {
     if (sorters[sort]) filtered = [...filtered].sort(sorters[sort]);
 
     const listEl = document.getElementById('updates-list');
-    if (!listEl) return;
+    if (!listEl) return filtered.length;
 
     if (!filtered.length) {
       const hasFilters = platform || status || search;
@@ -2289,6 +2301,7 @@ async function renderDashboard({ focusId = null } = {}) {
 
     refreshMotionEffects(listEl);
     updateFilterSummary();
+    return filtered.length;
   }
 
   function updateFilterSummary() {
@@ -2339,6 +2352,7 @@ async function renderDashboard({ focusId = null } = {}) {
       b.classList.toggle('active', b.dataset.sourcePlatform === _filterState.platform)
     );
     applyFilters();
+    captureAnalytics('platform_filter_selected', { platform: _filterState.platform || 'all' });
   }
 
   function syncWatchButtons(platform) {
@@ -2368,6 +2382,10 @@ async function renderDashboard({ focusId = null } = {}) {
       else _watchedPlatforms.delete(platform);
       saveDashboardWatchlist();
       syncWatchButtons(platform);
+      captureAnalytics(shouldWatch ? 'watchlist_item_added' : 'watchlist_item_removed', {
+        watchlist_type: 'platform',
+        item_count: _watchedPlatforms.size,
+      });
 
       if (isAuthed && (hasRole('pro') || user?.role === 'admin')) {
         try {
@@ -2642,6 +2660,7 @@ async function renderDashboard({ focusId = null } = {}) {
         b.classList.toggle('active', b.dataset.status === _filterState.status)
       );
       applyFilters();
+      captureAnalytics('status_filter_selected', { status: _filterState.status || 'all' });
     });
   });
 
@@ -2649,6 +2668,7 @@ async function renderDashboard({ focusId = null } = {}) {
   document.getElementById('dash-sort')?.addEventListener('change', (e) => {
     _filterState.sort = e.target.value;
     applyFilters();
+    captureAnalytics('sort_changed', { sort: _filterState.sort });
   });
 
   // ── Search input (debounced 250ms) ────────────────────────────────────────
@@ -2664,7 +2684,12 @@ async function renderDashboard({ focusId = null } = {}) {
     clearTimeout(_searchTimer);
     _searchTimer = setTimeout(() => {
       _filterState.search = val.trim();
-      applyFilters();
+      const resultCount = applyFilters();
+      captureAnalytics('search_completed', {
+        query_length: _filterState.search.length,
+        result_count: resultCount,
+        has_results: resultCount > 0,
+      });
     }, 250);
   });
 
@@ -2675,7 +2700,12 @@ async function renderDashboard({ focusId = null } = {}) {
     clearTimeout(_searchTimer);
     _searchTimer = setTimeout(() => {
       _filterState.search = val.trim();
-      applyFilters();
+      const resultCount = applyFilters();
+      captureAnalytics('search_completed', {
+        query_length: _filterState.search.length,
+        result_count: resultCount,
+        has_results: resultCount > 0,
+      });
     }, 250);
   });
 
@@ -2919,6 +2949,12 @@ async function renderUpdateDetail(id) {
     attachNavHandlers(user);
     return;
   }
+
+  captureAnalytics('update_opened', {
+    update_id: u.id,
+    platform: u.platform,
+    status: u.status,
+  });
 
   const pSuffix   = platformSuffix(u.platform);
   const color     = scoreColor(u.score);
@@ -3200,6 +3236,13 @@ async function renderUpdateDetail(id) {
     </div>
   `);
   attachNavHandlers(user);
+  document.querySelector('.detail-source-primary[href]')?.addEventListener('click', () => {
+    captureAnalytics('official_source_clicked', {
+      update_id: u.id,
+      platform: u.platform,
+      source_type: 'official',
+    });
+  });
 
   const installedKey = `patchticker.installed.${u.id}`;
   const installedBtn = document.getElementById('mark-installed-btn');
@@ -3267,6 +3310,11 @@ async function renderUpdateDetail(id) {
         const result = isRetract
           ? await apiRetractVote(u.id)
           : await apiCastVote(u.id, vote);
+        captureAnalytics('update_feedback_submitted', {
+          update_id: u.id,
+          platform: u.platform,
+          vote: isRetract ? 'retracted' : vote,
+        });
 
         // Update display with fresh aggregated data
         const displayEl = document.getElementById('rating-display');
@@ -3474,6 +3522,10 @@ async function renderAccount() {
           item.classList.add('watchlist-item--active');
           item.querySelector('.watchlist-status').textContent = '● Watching';
         }
+        captureAnalytics(isActive ? 'watchlist_item_removed' : 'watchlist_item_added', {
+          watchlist_type: 'platform',
+          item_count: watchlistGrid.querySelectorAll('.watchlist-item--active').length,
+        });
       } catch (err) { showToast(err.message, 'error'); }
       finally { item.style.opacity = '1'; }
     });
@@ -3503,6 +3555,9 @@ async function renderAccount() {
         slackUrl:   document.getElementById('wh-slack').value  || undefined,
         webhookUrl: document.getElementById('wh-custom').value || undefined,
         enabled:    document.getElementById('wh-enabled').checked,
+      });
+      captureAnalytics('notification_preference_changed', {
+        enabled: document.getElementById('wh-enabled').checked,
       });
       okEl.classList.remove('hidden');
     } catch (err) { errEl.textContent = err.message; errEl.classList.remove('hidden'); }
@@ -3992,6 +4047,7 @@ function renderFooter() {
           <a href="#/pricing" class="site-footer-link">Pricing</a>
           <a href="#/about" class="site-footer-link">About</a>
           <a href="#/privacy" class="site-footer-link">Privacy Policy</a>
+          <button class="site-footer-link site-footer-button" id="analytics-privacy-choices" type="button">Privacy choices</button>
           <a href="#/terms" class="site-footer-link">Terms of Service</a>
         </nav>
         <span class="site-footer-copy">© ${new Date().getFullYear()} Dorn Ventures LLC. All rights reserved.</span>
@@ -4049,7 +4105,7 @@ function renderNotFound(path) {
 // ── PRIVACY POLICY ────────────────────────────────────────────────────────────
 function renderPrivacy() {
   const user = getUser();
-  const EFFECTIVE = 'July 17, 2026';
+  const EFFECTIVE = 'August 12, 2026';
 
   setHTML(`
     ${renderNav(user)}
@@ -4065,9 +4121,10 @@ function renderPrivacy() {
         <h2>1. Information We Collect</h2>
         <p><strong>Account information.</strong> When you register, we collect your email address and a hashed version of your password. Your email is encrypted at rest using AES-256-GCM. We never store your password in plain text.</p>
         <p><strong>Usage data.</strong> We collect standard server logs including IP addresses, browser user-agent strings, pages visited, and timestamps. Logs are retained for 30 days and then deleted automatically.</p>
+        <p><strong>Optional analytics data.</strong> If you select “Allow analytics,” PostHog receives a pseudonymous internal user ID for signed-in users plus normalized page categories and limited interaction events. Microsoft Clarity receives strictly masked page interaction data for heatmaps and session reconstruction. We do not send either service your name, email address, raw search text, watchlist contents, notification tokens, webhook URLs, or URLs containing account tokens.</p>
         <p><strong>Payment information.</strong> Payments are processed by Stripe. We never see or store your full card number. We receive a Stripe customer ID and subscription status only.</p>
         <p><strong>Submitted content.</strong> Bug reports and community feed posts you submit are stored encrypted at rest and associated with your account.</p>
-        <p><strong>Cookies.</strong> We use a single HTTP-only authentication cookie to keep you signed in. No third-party tracking cookies are set. Google AdSense (shown to free-tier users only) may set its own cookies governed by Google's privacy policy.</p>
+        <p><strong>Cookies and local storage.</strong> We use an HTTP-only authentication cookie to keep you signed in and necessary local storage for preferences. PostHog and Microsoft Clarity are not loaded until you opt in to analytics. Your choice is saved in local storage and can be changed at any time using “Privacy choices” in the footer. Google AdSense (shown to free-tier users only) may use its own cookies or identifiers subject to Google’s consent requirements and privacy policy.</p>
 
         <h2>2. How We Use Your Information</h2>
         <ul>
@@ -4075,7 +4132,7 @@ function renderPrivacy() {
           <li>To process payments and manage your subscription</li>
           <li>To send transactional emails (verification, password reset, patch alerts you subscribed to)</li>
           <li>To detect and prevent fraud, abuse, and security incidents</li>
-          <li>To improve the Service through aggregated, anonymised analytics</li>
+          <li>With your consent, to improve the Service through aggregated and pseudonymous product analytics, heatmaps, and strictly masked session replay</li>
         </ul>
         <p>We do not sell your personal data to third parties. We do not use your data for advertising targeting beyond what AdSense does autonomously for free-tier ad display.</p>
 
@@ -4084,28 +4141,33 @@ function renderPrivacy() {
         <ul>
           <li><strong>Stripe</strong> — payment processing</li>
           <li><strong>Supabase</strong> — database hosting</li>
-          <li><strong>SendGrid</strong> — transactional email delivery</li>
+          <li><strong>Brevo</strong> — transactional email delivery</li>
+          <li><strong>PostHog</strong> — consented product and web analytics; PostHog session recording is disabled</li>
+          <li><strong>Microsoft Clarity</strong> — consented heatmaps and strictly masked session replay; advertising storage is denied</li>
           <li><strong>Google AdSense</strong> — advertising (free-tier users only)</li>
           <li><strong>hCaptcha</strong> — bot protection at registration</li>
         </ul>
 
         <h2>4. Data Retention</h2>
-        <p>We retain your account data for as long as your account is active. If you delete your account, your email, posts, and bug reports are deleted within 7 days. Server logs are purged after 30 days. Stripe retains payment records per their own retention policy.</p>
+        <p>We retain your account data for as long as your account is active. If you delete your account, your email, posts, and bug reports are deleted within 7 days. Server logs are purged after 30 days. PostHog analytics events are retained for up to 12 months under our current project plan. Microsoft Clarity session playback is retained for 30 days; click, heatmap, and favorited or labeled session data may be retained for up to 9 months. Stripe and Google retain records according to their own policies.</p>
 
-        <h2>5. Your Rights</h2>
+        <h2>5. Analytics Choices and Recording Safeguards</h2>
+        <p>Analytics is opt-in worldwide. Declining does not reduce core Service functionality. If you withdraw consent, we instruct the analytics services to stop collection, clear their available browser identifiers, and reload the page without their scripts. Clarity recordings use strict masking, and all form controls, search fields, account areas, email displays, webhook fields, notification fields, and free-text inputs are additionally marked for masking. Session replay is a reconstruction of page interactions, not a camera or microphone recording.</p>
+
+        <h2>6. Your Rights</h2>
         <p>Depending on your jurisdiction, you may have rights to access, correct, export, or delete your personal data. To exercise these rights, email us at <strong>privacy@patchticker.app</strong>. We will respond within 30 days.</p>
         <p>If you are in the European Economic Area, you have the right to lodge a complaint with your local data protection authority.</p>
 
-        <h2>6. Security</h2>
+        <h2>7. Security</h2>
         <p>We use industry-standard security practices: TLS in transit, AES-256-GCM encryption at rest for PII, argon2id password hashing, short-lived JWT access tokens, and rate limiting on all sensitive endpoints. No system is perfectly secure, and we cannot guarantee absolute security.</p>
 
-        <h2>7. Children</h2>
+        <h2>8. Children</h2>
         <p>The Service is not directed at children under 13. We do not knowingly collect personal data from children. If you believe a child has provided us with personal data, contact us and we will delete it promptly.</p>
 
-        <h2>8. Changes to This Policy</h2>
+        <h2>9. Changes to This Policy</h2>
         <p>We may update this policy from time to time. Material changes will be notified by email to registered users at least 14 days before taking effect. The effective date at the top of this page will always reflect the current version.</p>
 
-        <h2>9. Contact</h2>
+        <h2>10. Contact</h2>
         <p>Questions or requests regarding this policy can be sent to <strong>privacy@patchticker.app</strong> or by mail to: Dorn Ventures LLC, United States.</p>
 
       </div>
@@ -4182,15 +4244,18 @@ function renderTerms() {
 
 
 async function boot() {
+  initializeAnalyticsConsent();
   renderLoading();
 
   // Try to restore session from refresh token cookie
-  await restoreSession();
+  const restoredUser = await restoreSession();
+  syncAnalyticsIdentity(restoredUser);
   // Expose access token for SSE (EventSource cannot set custom headers)
   window.__feedToken__ = (await import('./api.js')).getAccessToken();
 
   // Auth event listeners
-  onAuthChange((event) => {
+  onAuthChange((event, user) => {
+    syncAnalyticsIdentity(user);
     if (event === 'expired') {
       showToast('Session expired. Please sign in again.', 'error');
       navigate('/login');

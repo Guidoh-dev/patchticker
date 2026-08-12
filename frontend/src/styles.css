@@ -2023,9 +2023,59 @@ select.field-input { cursor: pointer; }
   transition: color 0.15s;
 }
 .site-footer-link:hover { color: var(--text); }
+.site-footer-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
 .site-footer-copy {
   font-size: 11px;
   color: var(--text-3);
+}
+
+/* ── Explicit analytics consent ───────────────────────────────────────────── */
+.analytics-consent {
+  position: fixed;
+  z-index: 10000;
+  right: 20px;
+  bottom: 20px;
+  left: 20px;
+  max-width: 920px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 20px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 14px;
+  background: var(--bg-2);
+  color: var(--text);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .36);
+}
+.analytics-consent-copy { min-width: 0; }
+.analytics-consent-copy strong {
+  display: block;
+  margin-bottom: 5px;
+  font-family: var(--font-display);
+  font-size: 14px;
+}
+.analytics-consent-copy p {
+  margin: 0 0 5px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.analytics-consent-copy a { color: var(--text); font-size: 11px; }
+.analytics-consent-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+
+@media (max-width: 640px) {
+  .analytics-consent { align-items: stretch; flex-direction: column; gap: 14px; }
+  .analytics-consent-actions { justify-content: stretch; }
+  .analytics-consent-actions .btn { flex: 1; }
 }
 
 /* ── Marketing landing page ─────────────────────────────────────────────────── */

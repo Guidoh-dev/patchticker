@@ -25,13 +25,13 @@ const FRONTEND_CSP = [
   "default-src 'none'",
   // hCaptcha + Google AdSense scripts
   // TODO: ca-pub-XXXXXXXXXXXXXXXX — replace with real publisher ID when live
-  "script-src 'self' https://hcaptcha.com https://*.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
+  "script-src 'self' https://hcaptcha.com https://*.hcaptcha.com https://www.clarity.ms https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
   "style-src 'self' https://fonts.googleapis.com https://hcaptcha.com https://*.hcaptcha.com",
   "font-src 'self' https://fonts.gstatic.com",
   // hCaptcha + AdSense network calls
-  "connect-src 'self' https://hcaptcha.com https://*.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
+  "connect-src 'self' https://hcaptcha.com https://*.hcaptcha.com https://us.i.posthog.com https://*.clarity.ms https://c.bing.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
   // AdSense ad images served from Google CDNs
-  "img-src 'self' data: https://hcaptcha.com https://*.hcaptcha.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
+  "img-src 'self' data: https://hcaptcha.com https://*.hcaptcha.com https://*.clarity.ms https://c.bing.com https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net",
   // hCaptcha + AdSense both render iframes
   "frame-src https://hcaptcha.com https://*.hcaptcha.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
   "frame-ancestors 'none'",
