@@ -9,6 +9,10 @@ const MAX_UPDATE_AGE_DAYS = 240;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PLACEHOLDER_VERSION_PLATFORMS = new Set(['Xbox', 'PS5', 'BattleNet', 'GOG']);
 
+function canUseStaticUpdates() {
+  return process.env.NODE_ENV !== 'production' && process.env.DISABLE_STATIC_UPDATE_FALLBACK !== 'true';
+}
+
 function jsonArray(value) {
   if (Array.isArray(value)) return value;
   if (typeof value !== 'string' || !value.trim()) return [];
@@ -32,6 +36,31 @@ function isUpdateDisplayable(update) {
   return jsonArray(update.evidence).some(item =>
     ['official-release', 'official-version'].includes(item?.releaseType)
   );
+}
+
+function buildFeedMeta(updates = []) {
+  const now = Date.now();
+  const sourceBacked = updates.filter(update => Number(update.officialSourceCount || 0) > 0).length;
+  const fresh24h = updates.filter(update => {
+    const checked = Date.parse(update.lastCheckedAt || update.updatedAt || '');
+    return Number.isFinite(checked) && now - checked <= 24 * 60 * 60 * 1000;
+  }).length;
+  const stale96h = updates.filter(update => {
+    const checked = Date.parse(update.lastCheckedAt || update.updatedAt || '');
+    return !Number.isFinite(checked) || now - checked > 96 * 60 * 60 * 1000;
+  }).length;
+  const lastCheckedAt = updates
+    .map(update => update.lastCheckedAt || update.updatedAt)
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
+
+  return {
+    dataMode: db.isAvailable() ? 'live' : (canUseStaticUpdates() ? 'demo' : 'unavailable'),
+    sourceBacked,
+    fresh24h,
+    stale96h,
+    lastCheckedAt,
+  };
 }
 
 // ── Reddit OAuth token cache ────────────────────────────────────────────────
@@ -622,6 +651,7 @@ function rowToUpdate(row) {
     aiGenerated:          row.ai_generated || false,
     aiModel:              row.ai_model || null,
     aiGeneratedAt:        row.ai_generated_at || null,
+    analysisMethod:       'source-and-issue-signals',
     createdAt:            row.created_at,
     updatedAt:            row.updated_at,
   };
@@ -629,7 +659,12 @@ function rowToUpdate(row) {
 
 
 async function hydrateLiveRatings(updates) {
-  const withoutRatings = (updates || []).map(update => ({ ...update, userRating: null, ratingsLive: false }));
+  const withoutRatings = (updates || []).map(update => ({
+    ...update,
+    userRating: null,
+    ratingsLive: false,
+    analysisMethod: update.analysisMethod || (db.isAvailable() ? 'source-and-issue-signals' : 'demo-snapshot'),
+  }));
   if (!db.isAvailable() || !updates.length) return withoutRatings;
 
   const ids = updates.map(update => update.id);
@@ -667,8 +702,8 @@ async function hydrateLiveRatings(updates) {
     return updates.map(update => {
       const liveRating = ratings.get(update.id);
       return liveRating
-        ? { ...update, userRating: liveRating, ratingsLive: true }
-        : { ...update, userRating: null, ratingsLive: false };
+        ? { ...update, userRating: liveRating, ratingsLive: true, analysisMethod: 'community-votes' }
+        : { ...update, userRating: null, ratingsLive: false, analysisMethod: update.analysisMethod || 'source-and-issue-signals' };
     });
   } catch (err) {
     logger.warn('[updates] rating aggregation failed', { error: err.message });
@@ -676,7 +711,7 @@ async function hydrateLiveRatings(updates) {
   }
 }
 
-// ── getUpdates — DB-first with static fallback ────────────────────────────────
+// ── getUpdates — DB-first; fixtures are limited to development/test ──────────
 
 async function getUpdates({ platform, status, sort, search } = {}) {
   // Try DB first
@@ -726,11 +761,12 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
       return hydrateLiveRatings(updates);
     } catch (err) {
-      logger.warn('[updates] DB query failed — falling back to static', { error: err.message });
+      logger.warn('[updates] DB query failed — applying configured outage policy', { error: err.message });
     }
   }
 
-  // Static fallback
+  // Development/test fixtures only. Production returns an honest empty feed.
+  if (!canUseStaticUpdates()) return [];
   let updates = getStaticUpdates().filter(isUpdateDisplayable);
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
@@ -759,7 +795,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
   return hydrateLiveRatings(updates);
 }
 
-// ── getUpdateById — DB-first with static fallback ─────────────────────────────
+// ── getUpdateById — DB-first; fixtures are limited to development/test ────────
 
 async function getUpdateById(id) {
   let update = null;
@@ -774,12 +810,12 @@ async function getUpdateById(id) {
       dbReadSucceeded = true;
       if (row.rows[0]) update = rowToUpdate(row.rows[0]);
     } catch (err) {
-      logger.warn('[updates] DB getById failed — falling back to static', { id, error: err.message });
+      logger.warn('[updates] DB getById failed — applying configured outage policy', { id, error: err.message });
     }
   }
 
-  // Static fallback
-  if (!update && !dbReadSucceeded) {
+  // Development/test fixture fallback only.
+  if (!update && !dbReadSucceeded && canUseStaticUpdates()) {
     const staticUpdates = getStaticUpdates();
     update = staticUpdates.find(u => u.id === id) || null;
   }
@@ -791,7 +827,7 @@ async function getUpdateById(id) {
   return { ...update, feed: [] };
 }
 
-// ── getSentimentSummary — DB-first with static fallback ───────────────────────
+// ── getSentimentSummary — DB-first with honest outage metadata ────────────────
 
 async function getSentimentSummary() {
   if (db.isAvailable()) {
@@ -805,19 +841,23 @@ async function getSentimentSummary() {
         avgScore:        updates.length
           ? +(updates.reduce((sum, u) => sum + (u.score || 0), 0) / updates.length).toFixed(1)
           : null,
+        ...buildFeedMeta(updates),
       };
     } catch (err) {
-      logger.warn('[updates] DB summary failed — falling back to static', { error: err.message });
+      logger.warn('[updates] DB summary failed — applying configured outage policy', { error: err.message });
     }
   }
 
-  const updates = getStaticUpdates().filter(isUpdateDisplayable);
+  const updates = canUseStaticUpdates() ? getStaticUpdates().filter(isUpdateDisplayable) : [];
   return {
     stable:          updates.filter(u => u.status === 'stable').length,
     caution:         updates.filter(u => u.status === 'caution').length,
     avoid:           updates.filter(u => u.status === 'avoid').length,
     totalBugReports: updates.reduce((sum, u) => sum + u.bugCount, 0),
-    avgScore:        +(updates.reduce((sum, u) => sum + u.score, 0) / updates.length).toFixed(1),
+    avgScore:        updates.length
+      ? +(updates.reduce((sum, u) => sum + u.score, 0) / updates.length).toFixed(1)
+      : null,
+    ...buildFeedMeta(updates),
   };
 }
 
@@ -865,5 +905,6 @@ module.exports = {
   getUpdateById,
   getSentimentSummary,
   getUpdateHistory,
-  __test: { isUpdateDisplayable, rowToUpdate },
+  buildFeedMeta,
+  __test: { isUpdateDisplayable, rowToUpdate, canUseStaticUpdates },
 };

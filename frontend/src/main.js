@@ -1299,6 +1299,13 @@ function freshnessMeta(update) {
   return { label: 'Recheck due', tone: 'stale', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
 }
 
+function analysisMethodLabel(update) {
+  if (update?.ratingsLive && update?.userRating?.totalVotes) {
+    return `${update.userRating.totalVotes.toLocaleString()} user votes`;
+  }
+  return 'Source + issue signals';
+}
+
 
 function decisionForUpdate(u) {
   const vote = u.userRating?.breakdown || {};
@@ -1407,9 +1414,10 @@ function renderUpdateCard(u) {
   const age = timeAgo(u.releasedAt);
   const freshness = freshnessMeta(u);
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
+  const methodLabel = analysisMethodLabel(u);
   const ratingLabel = rating.votes
     ? `${rating.score !== null ? rating.score.toFixed(1) : '—'}/10 user rating`
-    : `${u.score ?? '—'}/10 recommendation`;
+    : `${u.score ?? '—'}/10 PatchTicker score`;
   const routeId = encodeURIComponent(u.id);
   return `
     <article class="decision-card decision-card--compact decision-card--${H(decision.cls)}" data-id="${H(u.id)}">
@@ -1429,6 +1437,7 @@ function renderUpdateCard(u) {
               <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
               <span>${H(freshness.detail)}</span>
               <span>${H(sourceLabel)}</span>
+              <span>${H(methodLabel)}</span>
             </div>
           </div>
         </div>
@@ -1785,6 +1794,12 @@ async function renderDashboard({ focusId = null } = {}) {
                   ? '<a class="btn btn--secondary" href="#/account">Manage watchlist</a>'
                   : '<a class="btn btn--outline" href="#/register">Create free account</a>'}
               </div>
+              <div class="dash-coverage-pulse" id="dash-coverage-pulse" aria-live="polite">
+                <span class="freshness-signal freshness-signal--snapshot" id="coverage-mode"><i aria-hidden="true"></i>Connecting sources</span>
+                <strong id="coverage-sources">Checking source coverage…</strong>
+                <span id="coverage-fresh">Freshness pending</span>
+                <span id="coverage-last">Last sweep pending</span>
+              </div>
             </div>
             <div class="dash-command-stats" id="dash-hero-stats" aria-label="Current update status totals">
               <div class="dash-command-stat"><span class="dash-stat-val" id="stat-stable">—</span><small>Stable</small></div>
@@ -2097,10 +2112,9 @@ async function renderDashboard({ focusId = null } = {}) {
     refreshMotionEffects(document.getElementById('section-tape') || document);
   }
 
-  function renderOfflineRails(message = 'Live patch feed is reconnecting. Showing recent PatchTicker coverage.') {
-    const fallback = typeof getStaticUpdates === 'function' ? getStaticUpdates() : [];
-    if (fallback.length) _allUpdates = fallback;
-    renderTapeAndLatest(fallback, message);
+  function renderOfflineRails(message = 'Live patch feed is reconnecting. Verified patch data will return when the connection recovers.') {
+    _allUpdates = [];
+    renderTapeAndLatest([], message);
   }
 
   // ── Initial data load ─────────────────────────────────────────────────────
@@ -2125,9 +2139,29 @@ async function renderDashboard({ focusId = null } = {}) {
     const stable  = document.getElementById('stat-stable');
     const caution = document.getElementById('stat-caution');
     const avoid   = document.getElementById('stat-avoid');
+    const coveragePulse = document.getElementById('dash-coverage-pulse');
+    const coverageMode = document.getElementById('coverage-mode');
+    const coverageSources = document.getElementById('coverage-sources');
+    const coverageFresh = document.getElementById('coverage-fresh');
+    const coverageLast = document.getElementById('coverage-last');
     if (stable)  stable.textContent  = d.stable  ?? '—';
     if (caution) caution.textContent = d.caution ?? '—';
     if (avoid)   avoid.textContent   = d.avoid   ?? '—';
+    const unavailable = d.dataMode === 'unavailable';
+    if (coveragePulse) coveragePulse.classList.toggle('is-unavailable', unavailable);
+    if (coverageMode) {
+      coverageMode.className = `freshness-signal freshness-signal--${unavailable ? 'stale' : 'fresh'}`;
+      coverageMode.innerHTML = `<i aria-hidden="true"></i>${unavailable ? 'Sources reconnecting' : 'Live source coverage'}`;
+    }
+    if (coverageSources) coverageSources.textContent = unavailable
+      ? 'No demo records shown'
+      : `${d.sourceBacked ?? 0} source-backed update${d.sourceBacked === 1 ? '' : 's'}`;
+    if (coverageFresh) coverageFresh.textContent = unavailable
+      ? 'Waiting for verified data'
+      : `${d.fresh24h ?? 0} checked in 24h`;
+    if (coverageLast) coverageLast.textContent = d.lastCheckedAt
+      ? `Latest check ${timeAgo(d.lastCheckedAt)}`
+      : 'Latest check pending';
   }).catch(() => {});
 
   // ── Setup lens buttons ─────────────────────────────────────────────────────
@@ -2598,6 +2632,7 @@ async function renderUpdateDetail(id) {
   const officialSourceUrl = u.sourceUrl || officialEvidence?.url || null;
   const freshness = freshnessMeta(u);
   const detailSourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
+  const detailMethodLabel = analysisMethodLabel(u);
 
   const changelogHTML = (u.changelog || []).map(c => `
     <li class="detail-list-item detail-list-item--positive">
@@ -2653,6 +2688,7 @@ async function renderUpdateDetail(id) {
               <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
               <strong>${H(freshness.detail)}</strong>
               <span>${H(detailSourceLabel)}</span>
+              <span>${H(detailMethodLabel)}</span>
             </div>
           </div>
         </div>

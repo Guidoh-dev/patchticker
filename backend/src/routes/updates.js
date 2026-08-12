@@ -21,7 +21,7 @@ const {
   GetUpdatesQuerySchema,
   GetUpdateByIdParamSchema,
 } = require('../validators/schemas');
-const { getUpdates, getUpdateById, getSentimentSummary, getUpdateHistory } = require('../services/updatesService');
+const { getUpdates, getUpdateById, getSentimentSummary, getUpdateHistory, buildFeedMeta } = require('../services/updatesService');
 const aiService        = require('../services/aiAnalysisService');
 const db               = require('../config/db');
 const logger           = require('../utils/logger');
@@ -84,7 +84,7 @@ router.get(
       const { platform, status, sort, search } = req.query;
       const updates = await getUpdates({ platform, status, sort, search });
       logger.info(`GET /updates — returned ${updates.length} items`, { platform, status });
-      res.json({ data: updates, count: updates.length });
+      res.json({ data: updates, count: updates.length, meta: buildFeedMeta(updates) });
     } catch (err) { next(err); }
   }
 );

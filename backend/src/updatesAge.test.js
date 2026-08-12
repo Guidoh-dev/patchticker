@@ -13,6 +13,7 @@ jest.mock('./config/secrets', () => ({
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
 const updatesService = require('./services/updatesService');
+const originalNodeEnv = process.env.NODE_ENV;
 
 beforeEach(() => {
   jest.useFakeTimers().setSystemTime(new Date('2026-08-11T12:00:00Z'));
@@ -22,6 +23,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.useRealTimers();
+  process.env.NODE_ENV = originalNodeEnv;
 });
 
 test('static update listings exclude releases older than 240 days', async () => {
@@ -89,4 +91,36 @@ test('monthly placeholders require official release metadata', () => {
     ...base,
     evidence: [{ source: 'Support', releaseType: 'official-version' }],
   })).toBe(true);
+});
+
+test('production outages never expose static demo updates as live data', async () => {
+  process.env.NODE_ENV = 'production';
+  mockIsAvailable.mockReturnValue(false);
+
+  await expect(updatesService.getUpdates()).resolves.toEqual([]);
+  await expect(updatesService.getUpdateById('steam-apex-legends-july-2026')).resolves.toBeNull();
+  await expect(updatesService.getSentimentSummary()).resolves.toMatchObject({
+    stable: 0,
+    caution: 0,
+    avoid: 0,
+    avgScore: null,
+    dataMode: 'unavailable',
+    sourceBacked: 0,
+  });
+});
+
+test('feed metadata reports freshness and source coverage', () => {
+  mockIsAvailable.mockReturnValue(true);
+  const meta = updatesService.buildFeedMeta([
+    { updatedAt: '2026-08-11T10:00:00Z', officialSourceCount: 1 },
+    { updatedAt: '2026-08-06T10:00:00Z', officialSourceCount: 0 },
+  ]);
+
+  expect(meta).toEqual({
+    dataMode: 'live',
+    sourceBacked: 1,
+    fresh24h: 1,
+    stale96h: 1,
+    lastCheckedAt: '2026-08-11T10:00:00Z',
+  });
 });

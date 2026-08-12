@@ -54,6 +54,12 @@ test('triad dashboard resets legacy nested grid and uses horizontal metadata row
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-meta-grid\s*\{\s*grid-template-columns:\s*1fr;/);
 });
 
+test('update detail columns cannot force horizontal page overflow', () => {
+  assert.match(cssSource, /\.detail-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(280px, 380px\)/s);
+  assert.match(cssSource, /\.detail-col-main,\s*\.detail-col-side\s*\{[^}]*min-width:\s*0/s);
+  assert.match(cssSource, /\.detail-reasoning,[\s\S]*?\.detail-requirement-grid strong\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+});
+
 test('non-default filters and sorting use the globally ordered result list', () => {
   assert.match(mainSource, /const keepsPlatformBrowse = sort === 'date_desc' && !status && !search/);
   assert.match(mainSource, /renderFilteredUpdateResults\(filtered, _filterState\)/);
@@ -122,7 +128,18 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /decision-card-trust/);
   assert.match(mainSource, /detail-source-health/);
   assert.match(mainSource, /official source/);
+  assert.match(mainSource, /Source \+ issue signals/);
+  assert.match(mainSource, /\/10 PatchTicker score/);
   assert.match(mainSource, /updateDateLabel\(u\)/);
+  assert.match(mainSource, /id="dash-coverage-pulse"/);
+  assert.match(mainSource, /No demo records shown/);
   assert.match(cssSource, /\.freshness-signal--fresh\s*\{[^}]*var\(--green-primary\)/s);
   assert.match(cssSource, /\.freshness-signal--stale\s*\{[^}]*var\(--red\)/s);
+  assert.match(cssSource, /\.dash-coverage-pulse\s*\{[^}]*border-radius:\s*999px/s);
+});
+
+test('offline update feeds remain honest instead of reviving demo records', () => {
+  assert.match(mainSource, /function renderOfflineRails[\s\S]*?_allUpdates = \[\][\s\S]*?renderTapeAndLatest\(\[\], message\)/);
+  assert.match(mainSource, /Verified patch data will return when the connection recovers/);
+  assert.doesNotMatch(mainSource, /typeof getStaticUpdates === 'function'/);
 });

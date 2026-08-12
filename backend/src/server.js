@@ -233,8 +233,8 @@ if (require.main === module) {
       // during startup. Keep a plain stderr line here so deployment failures
       // expose the actual DB/auth/network error without revealing secrets.
       console.error(`[startup] DB health check failed: ${err.message}`);
-      logger.error(canFallback ? 'DB health check failed — starting with static fallback data' : 'DB health check failed — refusing to start', { message: err.message });
-      alert(ALERT_TYPE.STARTUP_FAILURE, canFallback ? 'DB health check failed — static fallback active' : 'Server failed to start — DB health check failed', {
+      logger.error(canFallback ? 'DB health check failed — starting without public update data' : 'DB health check failed — refusing to start', { message: err.message });
+      alert(ALERT_TYPE.STARTUP_FAILURE, canFallback ? 'DB health check failed — verified update feed unavailable' : 'Server failed to start — DB health check failed', {
         error: err.message,
       });
       if (!canFallback) {
@@ -243,7 +243,7 @@ if (require.main === module) {
         return;
       }
       app.listen(cfg.PORT, cfg.BIND_HOST, () => {
-        logger.info(`PatchTicker API on ${cfg.BIND_HOST}:${cfg.PORT} [${cfg.NODE_ENV}] — DB fallback mode`);
+        logger.info(`PatchTicker API on ${cfg.BIND_HOST}:${cfg.PORT} [${cfg.NODE_ENV}] — DB unavailable mode (no demo feed)`);
         cronService.start();
       });
     });
