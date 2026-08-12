@@ -658,6 +658,7 @@ async function detectWindows() {
       affects:    'Windows 11 supported releases / cumulative OS servicing / security and quality updates',
       changelog:  unique([previewNote, ...changelog]).slice(0, 6),
       knownIssues,
+      knownIssuesAuthoritative: true,
       securityCriticality,
       evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title, { dateBasis: 'released', releaseType: isSecurityUpdate ? 'official-security-release' : 'official-release' }),
       sourceUrl:  update.sourceUrl,

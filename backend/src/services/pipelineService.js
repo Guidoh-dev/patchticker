@@ -195,6 +195,7 @@ function platformContext(platform, detected) {
     reasoning,
     changelog: detected.changelog?.length ? detected.changelog : [reasoning],
     knownIssues: detected.knownIssues || [],
+    knownIssuesAuthoritative: detected.knownIssuesAuthoritative === true,
     riskFactors: detected.riskFactors || [],
     evidence: detected.evidence?.length ? detected.evidence : (detected.sourceUrl ? [{ source: platform, url: detected.sourceUrl, text: `Current ${platform} update verified from official source` }] : []),
     securityCriticality: detected.securityCriticality || null,
@@ -213,7 +214,7 @@ async function updateExistingMetadata(platform, version, detected) {
        verdict = COALESCE($6, verdict),
        reasoning = COALESCE($7, reasoning),
        changelog = CASE WHEN $8::jsonb <> '[]'::jsonb THEN $8::jsonb ELSE changelog END,
-       known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb THEN $9::jsonb ELSE known_issues END,
+       known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb OR $15::boolean THEN $9::jsonb ELSE known_issues END,
        risk_factors = CASE WHEN $10::jsonb <> '[]'::jsonb THEN $10::jsonb ELSE risk_factors END,
        evidence = CASE WHEN $11::jsonb <> '[]'::jsonb THEN $11::jsonb ELSE evidence END,
        security_criticality = COALESCE($12::jsonb, security_criticality),
@@ -236,6 +237,7 @@ async function updateExistingMetadata(platform, version, detected) {
       context.securityCriticality ? JSON.stringify(context.securityCriticality) : null,
       fallbackScore,
       fallbackStatus,
+      context.knownIssuesAuthoritative,
     ]
   );
 }

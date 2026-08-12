@@ -52,5 +52,25 @@ describe('pipeline source metadata preservation', () => {
     expect(JSON.parse(params[11])).toEqual(securityCriticality);
     expect(params[12]).toEqual(expect.any(Number));
     expect(params[13]).toMatch(/stable|caution|avoid/);
+    expect(params[14]).toBe(false);
+  });
+
+  test('authoritative source refreshes can clear a resolved known-issue list', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+
+    await __test.updateExistingMetadata('Windows', 'KB5121000', {
+      name: 'Windows 11 KB5121000 Security Update',
+      version: 'KB5121000',
+      releasedAt: '2026-08-11',
+      changelog: ['August 2026 Security Updates'],
+      knownIssues: [],
+      knownIssuesAuthoritative: true,
+      evidence: [{ source: 'Microsoft Support', url: 'https://support.microsoft.com/kb5121000' }],
+    });
+
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain("known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb OR $15::boolean");
+    expect(params[8]).toBe('[]');
+    expect(params[14]).toBe(true);
   });
 });
