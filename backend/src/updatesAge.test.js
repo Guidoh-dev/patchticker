@@ -33,6 +33,13 @@ test('static update listings exclude releases older than 240 days', async () => 
   expect(updates.some(update => update.id === 'steam-cs2-mar-2025')).toBe(false);
 });
 
+test('expired direct update permalinks no longer return update content', async () => {
+  await expect(updatesService.getUpdateById('steam-cs2-mar-2025')).resolves.toBeNull();
+  await expect(updatesService.getUpdateById('steam-apex-legends-july-2026')).resolves.toMatchObject({
+    id: 'steam-apex-legends-july-2026',
+  });
+});
+
 test('database update and history queries enforce the same 240-day window', async () => {
   mockIsAvailable.mockReturnValue(true);
   mockQuery.mockResolvedValue({ rows: [] });

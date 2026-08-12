@@ -799,7 +799,7 @@ async function getUpdateById(id) {
     update = staticUpdates.find(u => u.id === id) || null;
   }
 
-  if (!update) return null;
+  if (!update || !isUpdateWithinDisplayWindow(update)) return null;
 
   // Keep patch detail pages focused on first-party update information.
   // Community/social enrichment is intentionally not required for page rendering.

@@ -2448,12 +2448,13 @@ async function renderUpdateDetail(id) {
   try {
     u = await fetchUpdateById(id);
   } catch (err) {
+    const expired = err.status === 404;
     setHTML(`
       ${renderNav(user)}
       <div class="detail-page">
         <div class="detail-error">
-          <div class="detail-error-code">Error</div>
-          <p>${H(err.message)}</p>
+          <div class="detail-error-code">${expired ? 'Archived' : 'Error'}</div>
+          <p>${expired ? 'This update is outside PatchTicker’s 240-day display window.' : H(err.message)}</p>
           <a class="btn btn--outline" href="#/updates">← Back to Full Ticker</a>
         </div>
       </div>

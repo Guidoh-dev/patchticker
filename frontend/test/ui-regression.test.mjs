@@ -108,3 +108,8 @@ test('public community reads use privacy-safe display labels', () => {
   assert.match(mainSource, /post\.userLabel \|\| post\.userEmail\?\.split/);
   assert.match(mainSource, /Community signal/);
 });
+
+test('expired update permalinks explain the 240-day display window', () => {
+  assert.match(mainSource, /err\.status === 404/);
+  assert.match(mainSource, /outside PatchTicker’s 240-day display window/);
+});
