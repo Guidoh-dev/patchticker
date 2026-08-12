@@ -208,6 +208,7 @@ describe('2. Argon2id password hashing', () => {
     const withNew = await verifyCredentials({ email, password: newPass });
 
     // In-memory fallback updates hash — new pass should work
+    expect(withOld).toBeNull();
     expect(withNew).not.toBeNull();
   });
 
@@ -689,6 +690,16 @@ describe('13. Email service — module loads without crashing', () => {
     expect(typeof emailService.sendSubscriptionConfirm).toBe('function');
     expect(typeof emailService.sendSubscriptionCanceled).toBe('function');
   });
+
+  test('email links use canonical hash routes and tests never contact a provider', async () => {
+    const emailService = require('./services/emailService');
+    expect(emailService._test.appTokenUrl('verify-email', 'a b'))
+      .toBe('http://localhost:3000/#/verify-email?token=a%20b');
+    expect(emailService._test.appTokenUrl('reset-password', 'token'))
+      .toBe('http://localhost:3000/#/reset-password?token=token');
+    await expect(emailService.sendVerificationEmail('nobody@patchticker.test', 'token'))
+      .resolves.toMatchObject({ provider: 'test-noop' });
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -755,6 +766,7 @@ describe('15. Auth route smoke tests (HTTP)', () => {
     expect(res.body.accessToken).toBeDefined();
     expect(res.body.user.email).toBe(email);
     expect(res.body.user.role).toBe('free');
+    expect(res.body.verificationEmailSent).toBe(true);
   });
 
   test('POST /api/auth/login returns 401 for wrong password', async () => {

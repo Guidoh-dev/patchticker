@@ -56,12 +56,17 @@ const { createLogger, format, transports } = require('winston');
 require('winston-daily-rotate-file');
 const path  = require('path');
 const https = require('https');
+const { setImmediate } = require('timers');
+const { URL } = require('url');
 const { v4: uuidv4 } = require('uuid');
 
-const logDir   = process.env.LOG_DIR   || './logs';
-const logLevel = process.env.LOG_LEVEL || 'info';
 const isProd   = process.env.NODE_ENV  === 'production';
 const isTest   = process.env.NODE_ENV  === 'test';
+const logDir   = process.env.LOG_DIR   || './logs';
+// Production defaults to `http` so the access logger is not silently filtered
+// out by Winston's default `info` threshold. Render captures stdout/stderr, so
+// the console transport below is the durable source available on Free plans.
+const logLevel = process.env.LOG_LEVEL || (isProd ? 'http' : 'info');
 
 // ── Default metadata added to every log entry ─────────────────────────────────
 
@@ -308,13 +313,13 @@ const winstonTransports = [
   combinedFileTransport,
 ];
 
-// Console: dev + test get human format; test suppresses unless LOG_LEVEL=debug
-if (!isProd) {
-  winstonTransports.push(new transports.Console({
-    format: humanFormat,
-    silent: isTest && logLevel !== 'debug',
-  }));
-}
+// Console is always active. In production this is intentionally structured
+// JSON so Render (and any container runtime) retains application/error/access
+// logs instead of leaving them only on the instance's ephemeral filesystem.
+winstonTransports.push(new transports.Console({
+  format: isProd ? jsonFormat : humanFormat,
+  silent: isTest && logLevel !== 'debug',
+}));
 
 // Logtail: production only, requires LOGTAIL_TOKEN
 const logtailToken = process.env.LOGTAIL_TOKEN;
@@ -386,7 +391,7 @@ if (!isTest) {
   const activeTransports = ['files'];
   if (logtailToken && !logtailToken.startsWith('REPLACE_WITH') && isProd) activeTransports.push('logtail');
   if (sentryDsn   && !sentryDsn.startsWith('REPLACE_WITH')   && isProd) activeTransports.push('sentry');
-  if (!isProd)               activeTransports.push('console');
+  activeTransports.push('console');
   logger.info('Logger initialised', {
     level:      logLevel,
     logDir,

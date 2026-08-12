@@ -101,15 +101,26 @@ router.post(
         captchaScore: req.captcha?.score ?? null,
       });
 
-      // Issue + send verification email (non-blocking — don't fail registration if email fails)
-      issueEmailVerificationToken(user.id)
-        .then((token) => sendVerificationEmail(user.email, token))
-        .catch((e) => logger.warn('Failed to send verification email', { userId: user.id, message: e.message }));
+      // Finish the attempt before responding so the client can give an honest
+      // next step. Account creation still succeeds during an email outage; the
+      // signed-in user can immediately use the resend action.
+      let verificationEmailSent = false;
+      try {
+        const verificationToken = await issueEmailVerificationToken(user.id);
+        await sendVerificationEmail(user.email, verificationToken);
+        verificationEmailSent = true;
+      } catch (emailError) {
+        logger.warn('Failed to send verification email', {
+          userId: user.id,
+          message: emailError.message,
+        });
+      }
 
       res.status(201).json({
         accessToken,
         expiresIn: ACCESS_TTL,
         user: { id: user.id, email: user.email, role: user.role || 'free', emailVerified: false },
+        verificationEmailSent,
       });
     } catch (err) {
       next(err);
@@ -322,9 +333,6 @@ router.post(
 
 // ── POST /api/auth/forgot-password ───────────────────────────────────────────
 // Request a password reset email. Always responds 200 to prevent email enumeration.
-const ForgotPasswordSchema = require('../validators/authSchemas').LoginBodySchema
-  .pick({ email: true });
-
 router.post(
   '/forgot-password',
   authLimiter,

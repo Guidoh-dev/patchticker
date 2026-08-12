@@ -24,8 +24,9 @@ const router      = express.Router();
 const validate    = require('../middleware/validate');
 const { HealthQuerySchema } = require('../validators/schemas');
 const db          = require('../config/db');
-const { getEventCount, getCooldownStatus, ALERT_TYPE, SPIKE_CONFIG } = require('../utils/alerting');
+const { getEventCount, getCooldownStatus, SPIKE_CONFIG } = require('../utils/alerting');
 const { timingSafeEqual } = require('../config/secrets');
+const { getRequestMetrics } = require('../middleware/httpLogger');
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -85,7 +86,7 @@ router.get(
       try {
         await db.query('SELECT 1');
         checks.database = { status: 'ok' };
-      } catch (err) {
+      } catch {
         checks.database = { status: 'error', message: 'Query failed' };
         allOk = false;
       }
@@ -135,6 +136,8 @@ router.get(
       spikeCounters: spikeCounts,
       // Alert cooldown status — which alerts have fired recently
       alertCooldowns: getCooldownStatus(),
+      // Aggregate-only totals since the latest deploy/restart.
+      requestMetrics: getRequestMetrics(),
       // Configuration summary (not secrets)
       alertConfig: {
         webhookConfigured:  Boolean(process.env.ALERT_WEBHOOK_URL && !process.env.ALERT_WEBHOOK_URL.startsWith('REPLACE_WITH')),

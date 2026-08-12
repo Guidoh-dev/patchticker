@@ -80,6 +80,8 @@ services:
         sync: false
       - key: BREVO_SMTP_USER
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
       - key: BREVO_SMTP_KEY
         sync: false
       - key: SMTP_HOST
@@ -88,3 +90,5 @@ services:
         value: "587"
       - key: SMTP_SECURE
         value: "false"
+      - key: LOG_LEVEL
+        value: http

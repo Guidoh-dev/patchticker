@@ -146,6 +146,10 @@ function appBaseUrl() {
   return (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 }
 
+function appTokenUrl(route, rawToken) {
+  return `${appBaseUrl()}/#/${route}?token=${encodeURIComponent(rawToken)}`;
+}
+
 function senderObject() {
   return {
     name:  process.env.EMAIL_FROM_NAME || 'PatchTicker',
@@ -189,7 +193,35 @@ function postJsonHttps(url, headers, payload) {
   });
 }
 
-async function sendViaBrevoApi({ to, subject, html, text }) {
+function getJsonHttps(url, headers) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json', ...headers },
+      timeout: 10000,
+    }, (res) => {
+      let raw = '';
+      res.setEncoding('utf8');
+      res.on('data', chunk => { raw += chunk; });
+      res.on('end', () => {
+        let parsed = {};
+        try { parsed = raw ? JSON.parse(raw) : {}; } catch { parsed = { raw }; }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          return resolve({ statusCode: res.statusCode, body: parsed });
+        }
+        const msg = parsed.message || parsed.error || raw || `HTTP ${res.statusCode}`;
+        const err = new Error(`Brevo API verification failed: ${msg}`);
+        err.statusCode = res.statusCode;
+        reject(err);
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('Brevo API verification timed out')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function sendViaBrevoApi({ to, subject, html, text, category }) {
   const sender = senderObject();
   const response = await postJsonHttps(
     'https://api.brevo.com/v3/smtp/email',
@@ -200,6 +232,7 @@ async function sendViaBrevoApi({ to, subject, html, text }) {
       subject,
       htmlContent: html,
       textContent: text,
+      tags: category ? [category] : undefined,
     }
   );
   return {
@@ -255,7 +288,14 @@ function getEmailConfigStatus() {
 }
 
 async function verifyEmailTransport() {
+  if (process.env.NODE_ENV === 'test') return getEmailConfigStatus();
   if (brevoApiConfigured()) {
+    // Presence is not proof that the key still authenticates. Keep this
+    // health check read-only so it can safely run from the admin panel.
+    await getJsonHttps(
+      'https://api.brevo.com/v3/account',
+      { 'api-key': brevoApiKey() }
+    );
     return getEmailConfigStatus();
   }
   const transport = await getTransport();
@@ -283,10 +323,17 @@ async function logEmailDelivery({ to, subject, category, status, messageId = nul
 }
 
 async function send({ to, subject, html, text, category = 'transactional' }) {
+  // Tests must never consume provider quota just because a developer's .env
+  // contains production credentials.
+  if (process.env.NODE_ENV === 'test') {
+    return { messageId: 'test-noop', provider: 'test-noop' };
+  }
+
+  const safeRecipientHash = recipientHash(to).slice(0, 12);
   try {
     if (brevoApiConfigured()) {
-      const info = await sendViaBrevoApi({ to, subject, html, text });
-      logger.info('[email] Sent via Brevo API', { messageId: info.messageId, to, subject });
+      const info = await sendViaBrevoApi({ to, subject, html, text, category });
+      logger.info('[email] Sent via Brevo API', { messageId: info.messageId, recipientHash: safeRecipientHash, category });
       await logEmailDelivery({ to, subject, category, status: 'sent', messageId: info.messageId || null });
       return info;
     }
@@ -303,15 +350,15 @@ async function send({ to, subject, html, text, category = 'transactional' }) {
     // Log Ethereal preview URL in dev
     const preview = nodemailer.getTestMessageUrl(info);
     if (preview) {
-      logger.info('[email] Preview URL (Ethereal)', { url: preview, to, subject });
+      logger.info('[email] Preview URL (Ethereal)', { url: preview, recipientHash: safeRecipientHash, category });
     } else {
-      logger.info('[email] Sent', { messageId: info.messageId, to, subject });
+      logger.info('[email] Sent', { messageId: info.messageId, recipientHash: safeRecipientHash, category });
     }
     await logEmailDelivery({ to, subject, category, status: 'sent', messageId: info.messageId || null });
     return info;
   } catch (err) {
     await logEmailDelivery({ to, subject, category, status: 'failed', error: err.message });
-    logger.error('[email] Send failed', { message: err.message, to, subject });
+    logger.error('[email] Send failed', { message: err.message, recipientHash: safeRecipientHash, category });
     throw err;
   }
 }
@@ -352,7 +399,7 @@ function wrapTemplate(title, bodyHtml) {
 // ── sendVerificationEmail ──────────────────────────────────────────────────────
 
 async function sendVerificationEmail(email, rawToken) {
-  const link = `${appBaseUrl()}/verify-email?token=${encodeURIComponent(rawToken)}`;
+  const link = appTokenUrl('verify-email', rawToken);
 
   const html = wrapTemplate('Verify your email — PatchTicker', `
     <p>Welcome to PatchTicker! Please verify your email address to activate your account.</p>
@@ -379,7 +426,7 @@ async function sendVerificationEmail(email, rawToken) {
 // ── sendPasswordResetEmail ────────────────────────────────────────────────────
 
 async function sendPasswordResetEmail(email, rawToken) {
-  const link = `${appBaseUrl()}/reset-password?token=${encodeURIComponent(rawToken)}`;
+  const link = appTokenUrl('reset-password', rawToken);
 
   const html = wrapTemplate('Reset your password — PatchTicker', `
     <p>We received a request to reset your PatchTicker password.</p>
@@ -562,4 +609,5 @@ module.exports = {
   sendTestEmail,
   getEmailConfigStatus,
   verifyEmailTransport,
+  _test: { appTokenUrl, recipientHash },
 };

@@ -529,7 +529,7 @@ function renderRegister() {
         <div class="auth-header">
           <div class="auth-logo"><span class="brand-pulse">Patch</span>Ticker</div>
           <h1 class="auth-title">Create your account</h1>
-          <p class="auth-subtitle">Free forever. Upgrade for real-time alerts and API access.</p>
+          <p class="auth-subtitle">Start free. Upgrade when you want real-time alerts and API access.</p>
         </div>
         <form class="auth-form" id="register-form" novalidate>
           <div class="field-group">
@@ -538,7 +538,8 @@ function renderRegister() {
           </div>
           <div class="field-group">
             <label class="field-label" for="reg-password">Password</label>
-            <input class="field-input" id="reg-password" type="password" autocomplete="new-password" placeholder="Min 8 chars" required />
+            <input class="field-input" id="reg-password" type="password" autocomplete="new-password" placeholder="12+ characters" aria-describedby="reg-password-hint" required />
+            <p class="field-hint" id="reg-password-hint">Use uppercase, lowercase, a number, and a symbol.</p>
             <div class="password-strength" id="pwd-strength"></div>
           </div>
           <!-- hCaptcha widget — rendered here, token collected on submit -->
@@ -597,8 +598,8 @@ function renderRegister() {
   pwdInput.addEventListener('input', () => {
     const v = pwdInput.value;
     let score = 0;
-    if (v.length >= 8)  score++;
     if (v.length >= 12) score++;
+    if (v.length >= 16) score++;
     if (/[A-Z]/.test(v)) score++;
     if (/[0-9]/.test(v)) score++;
     if (/[^A-Za-z0-9]/.test(v)) score++;
@@ -631,8 +632,13 @@ function renderRegister() {
       const data = await apiRegister({ email, password, 'h-captcha-response': captchaToken });
       setUser(data.user);
       captureAnalytics('signup_completed', { plan: data.user?.role || 'free' });
-      showToast('Account created! Check your email to verify.', 'success');
-      navigate('/updates');
+      if (data.verificationEmailSent === false) {
+        showToast('Account created, but the verification email could not be sent. Try Resend now.', 'warning');
+        navigate('/verify-email');
+      } else {
+        showToast('Account created! Check your email to verify.', 'success');
+        navigate('/updates');
+      }
     } catch (err) {
       errorEl.textContent = err.message;
       errorEl.classList.remove('hidden');
@@ -716,7 +722,7 @@ function renderResetPassword(params) {
         <form class="auth-form" id="reset-form" novalidate>
           <div class="field-group">
             <label class="field-label" for="reset-password">New password</label>
-            <input class="field-input" id="reset-password" type="password" autocomplete="new-password" placeholder="Min 8 chars" required />
+            <input class="field-input" id="reset-password" type="password" autocomplete="new-password" placeholder="12+ characters" required />
           </div>
           <div class="field-group">
             <label class="field-label" for="reset-confirm">Confirm new password</label>
@@ -1551,6 +1557,48 @@ function driverImpactMeta(update) {
   return { label: parts.join(' · '), knownIssueCount };
 }
 
+function decisionPanelFacts(update, freshness) {
+  const evidence = Array.isArray(update?.evidence) ? update.evidence : [];
+  const knownIssueCount = Array.isArray(update?.knownIssues) ? update.knownIssues.length : 0;
+  const issueFact = knownIssueCount
+    ? { value: String(knownIssueCount), label: `Known issue${knownIssueCount === 1 ? '' : 's'}`, tone: 'risk' }
+    : update?.knownIssuesAuthoritative
+      ? { value: 'None', label: 'Vendor-known issues', tone: 'good' }
+      : { value: 'Unknown', label: 'Issue coverage', tone: 'neutral' };
+
+  const security = update?.securityCriticality || {};
+  const securitySignal = securitySignalMeta(update);
+  const identity = `${update?.name || ''} ${update?.version || ''} ${(update?.riskFactors || []).map(item => `${item?.label || ''} ${item?.text || ''}`).join(' ')}`.toLowerCase();
+  const hasWhql = evidence.some(item => item?.whql === true);
+  const hasNonWhql = evidence.some(item => item?.whql === false) || /non-whql/.test(identity);
+  let contextFact;
+  if (securitySignal) {
+    contextFact = { value: String(securitySignal.total), label: `Documented CVE${securitySignal.total === 1 ? '' : 's'}`, tone: securitySignal.tone };
+  } else if (security.level && security.level !== 'none') {
+    contextFact = { value: 'Security', label: 'Update context', tone: security.level };
+  } else if (hasNonWhql) {
+    contextFact = { value: 'Non-WHQL', label: 'Driver channel', tone: 'warning' };
+  } else if (/preview/.test(identity)) {
+    contextFact = { value: 'Preview', label: 'Release channel', tone: 'warning' };
+  } else if (/beta/.test(identity)) {
+    contextFact = { value: 'Beta', label: 'Release channel', tone: 'warning' };
+  } else if (/insider|canary|experimental/.test(identity)) {
+    contextFact = { value: 'Test build', label: 'Release channel', tone: 'warning' };
+  } else if (hasWhql) {
+    contextFact = { value: 'WHQL', label: 'Driver certification', tone: 'good' };
+  } else {
+    contextFact = { value: 'Vendor', label: 'Release channel', tone: 'neutral' };
+  }
+
+  const sourceCount = Math.max(0, Number(freshness?.officialSources) || 0);
+  const sourceFact = {
+    value: String(sourceCount),
+    label: `Official source${sourceCount === 1 ? '' : 's'}`,
+    tone: sourceCount ? 'info' : 'warning',
+  };
+  return [issueFact, contextFact, sourceFact];
+}
+
 function updateReturnBrief(updates = []) {
   const brief = document.getElementById('dash-return-brief');
   const label = document.getElementById('dash-return-label');
@@ -2122,7 +2170,7 @@ async function renderDashboard({ focusId = null } = {}) {
             <div class="dash-command-copy">
               <p class="dash-hero-kicker">Live update status</p>
               <h1 class="dash-command-title">Decide what belongs on your machine today.</h1>
-              <p class="dash-command-sub">PatchTicker turns vendor release notes, stability signals, security context, and real user votes into a clear install / wait / avoid read.</p>
+              <p class="dash-command-sub">PatchTicker turns vendor release notes, stability signals, security context, and user votes where available into a clear install / wait / avoid read.</p>
               <div class="dash-hero-actions">
                 <a class="btn btn--primary topic-jump" href="#/updates" data-scroll-target="section-latest">Open the patch desk</a>
                 ${isAuthed
@@ -2992,17 +3040,12 @@ async function renderUpdateDetail(id) {
 
   const pSuffix   = platformSuffix(u.platform);
   const color     = scoreColor(u.score);
-  const scorePct  = Math.round((u.score / 10) * 100);
   const packageSize = packageSizeMeta(u);
 
   const riskLevelIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
 
   // ── Impact Score bar ──────────────────────────────────────────────────────
   const impactScore  = u.impactScore ?? null;
-  const impactColor  = impactScore !== null ? scoreColor(impactScore) : '#555';
-  const impactPct    = impactScore !== null ? Math.round((impactScore / 10) * 100) : 0;
-  const impactLabel  = impactScore === null ? '—'
-    : impactScore >= 8 ? 'High Impact' : impactScore >= 5 ? 'Moderate Impact' : 'Low Impact';
 
   // ── Security Criticality ──────────────────────────────────────────────────
   const sec = u.securityCriticality || { level: 'none', label: 'No Data', cves: [] };
@@ -3024,10 +3067,6 @@ async function renderUpdateDetail(id) {
   ).join('');
   const detailSecuritySignal = securitySignalMeta(u);
   const detailDriverImpact = driverImpactMeta(u);
-  const decisionSecurityValue = secCveTotal
-    ? `${secCveTotal} CVE${secCveTotal === 1 ? '' : 's'}`
-    : (sec.level && sec.level !== 'none' ? sec.level : 'No data');
-  const decisionSecurityLabel = secCveTotal ? 'Security fixes' : 'Security note';
 
   // ── User Rating (live votes only; hidden until votes exist) ──────────────────
   const ur = u.userRating || null;
@@ -3085,6 +3124,11 @@ async function renderUpdateDetail(id) {
   const freshness = freshnessMeta(u);
   const detailSourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const detailMethodLabel = analysisMethodLabel(u);
+  const decisionFactsHTML = decisionPanelFacts(u, freshness).map(fact => `
+    <div class="detail-decision-fact detail-decision-fact--${H(fact.tone)}">
+      <strong>${H(fact.value)}</strong><span>${H(fact.label)}</span>
+    </div>
+  `).join('');
 
   const changelogHTML = (u.changelog || []).map(c => `
     <li class="detail-list-item detail-list-item--positive">
@@ -3157,10 +3201,12 @@ async function renderUpdateDetail(id) {
             <em>PatchTicker score · out of 10</em>
           </div>
           <div class="detail-decision-facts">
-            <div><strong>${impactScore !== null ? H(String(impactScore)) : 'N/A'}</strong><span>${impactScore !== null ? H(impactLabel) : 'Impact pending'}</span></div>
-            <div><strong>${H(String(u.bugCount ?? 0))}</strong><span>Bug reports</span></div>
-            <div><strong>${H(decisionSecurityValue)}</strong><span>${H(decisionSecurityLabel)}</span></div>
+            ${decisionFactsHTML}
           </div>
+          <details class="detail-score-method">
+            <summary>What shaped this score</summary>
+            <p>PatchTicker weighs release channel, vendor-known issues, published risk severity, security urgency, and a platform baseline. Source count shows evidence coverage and does not raise the score.</p>
+          </details>
           ${officialSourceUrl
             ? `<a class="detail-source-primary" href="${H(officialSourceUrl)}" target="_blank" rel="noopener">Open official source ↗</a>`
             : '<span class="detail-source-primary detail-source-primary--disabled" aria-disabled="true">Official source unavailable</span>'}

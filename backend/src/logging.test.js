@@ -60,8 +60,6 @@ describe('alerting — trackEvent (spike counters)', () => {
   it('tracks different types independently', () => {
     const { trackEvent, ALERT_TYPE, SPIKE_CONFIG } = alerting;
     const t5xx  = SPIKE_CONFIG[ALERT_TYPE.SPIKE_5XX].threshold;
-    const tRL   = SPIKE_CONFIG[ALERT_TYPE.SPIKE_RATE_LIMIT].threshold;
-
     // Fill up to threshold-1 for SPIKE_5XX
     for (let i = 0; i < t5xx - 1; i++) trackEvent(ALERT_TYPE.SPIKE_5XX);
     // SPIKE_RATE_LIMIT should still be 0
@@ -478,6 +476,9 @@ describe('GET /api/health/alerts', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('spikeCounters');
     expect(res.body).toHaveProperty('alertCooldowns');
+    expect(res.body).toHaveProperty('requestMetrics');
+    expect(res.body.requestMetrics).toHaveProperty('total');
+    expect(res.body.requestMetrics).toHaveProperty('byStatusClass');
   });
 
   it('spikeCounters includes all spike types', async () => {
@@ -508,6 +509,44 @@ describe('GET /api/health/alerts', () => {
     expect(body).not.toContain('secret-token-123');
     delete process.env.ALERT_WEBHOOK_URL;
     delete process.env.LOGTAIL_TOKEN;
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION 8b — aggregate request metrics
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('accessLogAnalyser — aggregate request metrics', () => {
+  it('counts response classes and methods without retaining request identity', async () => {
+    jest.resetModules();
+    process.env.NODE_ENV = 'test';
+    const express = require('express');
+    const {
+      accessLogAnalyser,
+      getRequestMetrics,
+      _resetRequestMetrics,
+    } = require('./middleware/httpLogger');
+    _resetRequestMetrics();
+
+    const app = express();
+    app.use(accessLogAnalyser);
+    app.get('/ok', (_req, res) => res.json({ ok: true }));
+    app.post('/created', (_req, res) => res.status(201).json({ ok: true }));
+    app.get('/missing', (_req, res) => res.status(404).json({ error: 'missing' }));
+
+    const request = require('supertest')(app);
+    await request.get('/ok');
+    await request.post('/created');
+    await request.get('/missing');
+
+    const metrics = getRequestMetrics();
+    expect(metrics.total).toBe(3);
+    expect(metrics.byStatusClass['2xx']).toBe(2);
+    expect(metrics.byStatusClass['4xx']).toBe(1);
+    expect(metrics.byMethod).toEqual({ GET: 2, POST: 1 });
+    expect(metrics.lastRequestAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(JSON.stringify(metrics)).not.toContain('/ok');
+    expect(JSON.stringify(metrics)).not.toContain('127.0.0.1');
   });
 });
 

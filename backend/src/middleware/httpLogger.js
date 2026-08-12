@@ -53,6 +53,63 @@ const CLIENT_ERR_WINDOW_MS = 5 * 60 * 1000;
 // ── Per-IP 4xx tracker ────────────────────────────────────────────────────────
 const _clientErrTracker = new Map();
 
+// Low-cardinality, process-local traffic counters. These give operators a
+// truthful health snapshot even when the host plan does not expose request
+// metrics. Counters reset on deploy/restart and never retain paths, IPs, or
+// user identifiers.
+const _requestMetrics = {
+  startedAt:           new Date().toISOString(),
+  total:               0,
+  responseTimeTotalMs: 0,
+  slowResponses:       0,
+  lastRequestAt:       null,
+  last5xxAt:           null,
+  last429At:           null,
+  byStatusClass:       { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 },
+  byMethod:            {},
+};
+
+function recordRequestMetric(method, status, elapsed) {
+  _requestMetrics.total++;
+  _requestMetrics.responseTimeTotalMs += Math.max(0, Number(elapsed) || 0);
+  _requestMetrics.lastRequestAt = new Date().toISOString();
+  _requestMetrics.byMethod[method] = (_requestMetrics.byMethod[method] || 0) + 1;
+  const statusClass = `${Math.floor(status / 100)}xx`;
+  if (Object.hasOwn(_requestMetrics.byStatusClass, statusClass)) {
+    _requestMetrics.byStatusClass[statusClass]++;
+  }
+  if (status >= 500) _requestMetrics.last5xxAt = _requestMetrics.lastRequestAt;
+  if (status === 429) _requestMetrics.last429At = _requestMetrics.lastRequestAt;
+}
+
+function getRequestMetrics() {
+  return {
+    startedAt:     _requestMetrics.startedAt,
+    total:         _requestMetrics.total,
+    averageMs:     _requestMetrics.total
+      ? Number((_requestMetrics.responseTimeTotalMs / _requestMetrics.total).toFixed(2))
+      : 0,
+    slowResponses: _requestMetrics.slowResponses,
+    lastRequestAt: _requestMetrics.lastRequestAt,
+    last5xxAt:     _requestMetrics.last5xxAt,
+    last429At:     _requestMetrics.last429At,
+    byStatusClass: { ..._requestMetrics.byStatusClass },
+    byMethod:      { ..._requestMetrics.byMethod },
+  };
+}
+
+function resetRequestMetrics() {
+  _requestMetrics.startedAt = new Date().toISOString();
+  _requestMetrics.total = 0;
+  _requestMetrics.responseTimeTotalMs = 0;
+  _requestMetrics.slowResponses = 0;
+  _requestMetrics.lastRequestAt = null;
+  _requestMetrics.last5xxAt = null;
+  _requestMetrics.last429At = null;
+  _requestMetrics.byStatusClass = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 };
+  _requestMetrics.byMethod = {};
+}
+
 function trackClientError(ip) {
   const now     = Date.now();
   let   tracker = _clientErrTracker.get(ip);
@@ -108,7 +165,9 @@ morgan.token('structured', (req, res) => {
   return JSON.stringify({
     requestId:      req.requestId || undefined,
     method:         req.method,
-    url:            req.originalUrl,
+    // Query values can contain reset/verification tokens or private searches.
+    // Paths are sufficient for request diagnostics and traffic measurement.
+    url:            String(req.originalUrl || req.url || '').split('?')[0],
     statusCode:     res.statusCode,
     responseTimeMs: parseFloat(
       (() => {
@@ -155,8 +214,11 @@ function accessLogAnalyser(req, res, next) {
     const method  = req.method;
     const rid     = req.requestId;
 
+    recordRequestMetric(method, status, elapsed);
+
     // ── 1. Slow response ──────────────────────────────────────────────────
     if (elapsed > SLOW_RESPONSE_MS) {
+      _requestMetrics.slowResponses++;
       logger.warn('Slow response detected', {
         requestId:   rid,
         ip, method, path, status,
@@ -207,4 +269,9 @@ function accessLogAnalyser(req, res, next) {
   next();
 }
 
-module.exports = { httpLogger, accessLogAnalyser };
+module.exports = {
+  httpLogger,
+  accessLogAnalyser,
+  getRequestMetrics,
+  _resetRequestMetrics: resetRequestMetrics,
+};

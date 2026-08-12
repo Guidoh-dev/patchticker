@@ -136,6 +136,15 @@ test('auth, feed, and history controls meet the touch target floor', () => {
   assert.match(cssSource, /\.feed-send\s*\{[^}]*min-height:\s*44px/s);
 });
 
+test('signup copy matches the enforced password policy and handles email outages', () => {
+  assert.doesNotMatch(mainSource, /Min 8 chars/);
+  assert.match(mainSource, /placeholder="12\+ characters"/);
+  assert.match(mainSource, /Use uppercase, lowercase, a number, and a symbol/);
+  assert.match(mainSource, /data\.verificationEmailSent === false/);
+  assert.match(mainSource, /navigate\('\/verify-email'\)/);
+  assert.match(cssSource, /\.field-hint\s*\{[^}]*var\(--text-3\)/s);
+});
+
 test('an empty community feed becomes a verified-release activity rail', () => {
   assert.match(mainSource, /Checking recent community activity/);
   assert.match(mainSource, /No community notes yet\. Start with recently verified releases\./);
@@ -198,11 +207,23 @@ test('security releases expose bounded CVE context without flooding the detail p
   assert.match(mainSource, /function securitySignalMeta\(update\)/);
   assert.match(mainSource, /CVE\$\{total === 1 \? '' : 's'\} documented/);
   assert.match(mainSource, /const visibleCves = secCves\.slice\(0, 12\)/);
-  assert.match(mainSource, /decisionSecurityValue[\s\S]*?Security fixes/);
+  assert.match(mainSource, /function decisionPanelFacts\(update, freshness\)/);
+  assert.match(mainSource, /Documented CVE/);
   assert.match(mainSource, /more in the official advisory/);
   assert.match(mainSource, /security-signal--\$\{H\(securitySignal\.tone\)\}/);
   assert.match(cssSource, /\.security-signal--critical,[\s\S]*?\.security-signal--high\s*\{[^}]*var\(--red\)/s);
   assert.match(cssSource, /\.detail-cve-more\s*\{[^}]*font-family:\s*var\(--font-mono\)/s);
+});
+
+test('score panels expose evidence inputs rather than dead impact placeholders', () => {
+  assert.match(mainSource, /Known issue/);
+  assert.match(mainSource, /Vendor-known issues/);
+  assert.match(mainSource, /Issue coverage/);
+  assert.match(mainSource, /Official source/);
+  assert.match(mainSource, /What shaped this score/);
+  assert.doesNotMatch(mainSource, /Impact pending/);
+  assert.match(cssSource, /\.detail-score-method\s*\{/);
+  assert.match(cssSource, /\.detail-decision-fact--good strong\s*\{[^}]*var\(--green-score\)/s);
 });
 
 test('hardware driver cards expose compact game support, fix, and issue counts', () => {
