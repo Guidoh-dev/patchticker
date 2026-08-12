@@ -203,6 +203,17 @@ function microsoftSecurityCriticality(title, sourceUrl = '') {
   return { level: 'none', label: 'No security classification published on this KB page', cves: [], totalCves: null };
 }
 
+function normalizeWindowsDetailNotes(changelog = [], knownIssues = []) {
+  const usefulChanges = unique(changelog, 520).filter(text =>
+    !/^[A-Z][a-z]+\s+\d{1,2},\s+\d{4}—KB\d+/i.test(text)
+    && !/^This update includes new features and quality improvements that were part of the following update:?$/i.test(text)
+  );
+  const unresolvedIssues = unique(knownIssues, 650).filter(text =>
+    !/not currently aware of any issues|no known issues/i.test(text)
+  );
+  return { changelog: usefulChanges, knownIssues: unresolvedIssues };
+}
+
 function parseGogRemoteConfig(config, installerLastModified) {
   const windows = config?.content?.windows;
   const macos = config?.content?.osx;
@@ -630,6 +641,8 @@ async function detectWindows() {
     } catch (detailErr) {
       logger.warn('[scraper] Windows detail page parse failed', { error: detailErr.message, url: update.sourceUrl });
     }
+
+    ({ changelog, knownIssues } = normalizeWindowsDetailNotes(changelog, knownIssues));
 
     const previewNote = update.isPreview
       ? 'This is a Microsoft preview update; preview releases are generally optional and should be reviewed before broad installation.'
@@ -1263,5 +1276,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, microsoftSecurityCriticality, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
 };

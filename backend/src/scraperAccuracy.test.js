@@ -44,6 +44,23 @@ describe('scraper accuracy guards', () => {
     });
   });
 
+  test('Windows note cleanup removes historical preview titles and false known-issue language', () => {
+    expect(__test.normalizeWindowsDetailNotes([
+      'This update includes new features and quality improvements that were part of the following update:',
+      'July 28, 2026—KB5101681 (OS Build 28000.2608) Preview',
+      'August 2026 Security Updates',
+      '[Device] This update improves TPM maintenance reporting.',
+    ], [
+      'Microsoft is not currently aware of any issues with this update.',
+    ])).toEqual({
+      changelog: [
+        'August 2026 Security Updates',
+        '[Device] This update improves TPM maintenance reporting.',
+      ],
+      knownIssues: [],
+    });
+  });
+
   test('PS5 parser fingerprints the official system package instead of the CMS revision', () => {
     const parsed = __test.parsePs5SupportPage(`
       <input name="lastcodedeployed-releaseversion" value=" - Release Version: 2026.807" />
