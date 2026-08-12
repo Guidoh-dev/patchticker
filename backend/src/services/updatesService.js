@@ -8,6 +8,14 @@ const secrets = require('../config/secrets');
 const MAX_UPDATE_AGE_DAYS = 240;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PLACEHOLDER_VERSION_PLATFORMS = new Set(['Xbox', 'PS5', 'BattleNet', 'GOG']);
+const MONTH_NAMES = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+const ARTICLE_RELEASE_URLS = [
+  /^store\.steampowered\.com\/news\/app\/\d+\/view\/\d+$/i,
+  /^discord\.com\/blog\/discord-patch-notes-[^/]+$/i,
+  /^support\.apple\.com\/(?:[a-z]{2}-[a-z]{2}\/)?\d+$/i,
+  /^www\.amd\.com\/[^?#]*\/release-notes\/rn-[^/]+\.html$/i,
+  /^www\.nvidia\.com\/[^?#]*\/drivers\/details\/\d+$/i,
+];
 
 function canUseStaticUpdates() {
   return process.env.NODE_ENV !== 'production' && process.env.DISABLE_STATIC_UPDATE_FALLBACK !== 'true';
@@ -32,6 +40,17 @@ function isUpdateWithinDisplayWindow(update) {
 function isUpdateDisplayable(update) {
   if (!isUpdateWithinDisplayWindow(update)) return false;
   const evidence = jsonArray(update?.evidence);
+  const steamMonthPlaceholder = update?.platform === 'Steam'
+    && new RegExp(`^(?:${MONTH_NAMES})\\s+\\d{4}$`, 'i').test(String(update?.version || '').trim())
+    && evidence.some(item =>
+      /^https:\/\/store\.steampowered\.com\/news\/app\/\d+\/view\/\d+/i.test(String(item?.url || ''))
+    );
+  if (steamMonthPlaceholder) {
+    return evidence.some(item =>
+      item?.releaseType === 'official-release'
+      && /^https:\/\/store\.steampowered\.com\/news\/app\/\d+\/view\/\d+/i.test(String(item?.url || ''))
+    );
+  }
   if (update?.platform === 'Discord') {
     return evidence.some(item =>
       item?.releaseType === 'official-release'
@@ -47,6 +66,69 @@ function isUpdateDisplayable(update) {
   return evidence.some(item =>
     ['official-release', 'official-version'].includes(item?.releaseType)
   );
+}
+
+function normaliseReleaseUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    const host = url.hostname.toLowerCase().replace(/^store\.steampowered\.com$/, 'store.steampowered.com');
+    const path = url.pathname.replace(/\/+$/, '').toLowerCase();
+    return `${host}${path}`;
+  } catch {
+    return null;
+  }
+}
+
+function canonicalArticleSourceKey(update) {
+  const evidence = jsonArray(update?.evidence);
+  const urls = [update?.sourceUrl, ...evidence.map(item => item?.url)].filter(Boolean);
+  for (const value of urls) {
+    const normalised = normaliseReleaseUrl(value);
+    if (normalised && ARTICLE_RELEASE_URLS.some(pattern => pattern.test(normalised))) {
+      return `${String(update?.platform || '').toLowerCase()}|${normalised}`;
+    }
+  }
+  return null;
+}
+
+function releaseInformationQuality(update) {
+  const evidence = jsonArray(update?.evidence);
+  const structuredSources = evidence.filter(item => item?.releaseType && item?.checkedAt).length;
+  const version = String(update?.version || '').trim();
+  const semanticVersion = /^v?\d+(?:[.-]\d+){1,}(?:[-_a-z0-9.]*)?$/i.test(version);
+  const detailedNotes = Math.min(jsonArray(update?.changelog).length, 12)
+    + Math.min(jsonArray(update?.knownIssues).length, 6)
+    + Math.min(jsonArray(update?.riskFactors).length, 6);
+  const checkedAt = Date.parse(update?.lastCheckedAt || update?.updatedAt || '') || 0;
+  return {
+    structuredSources,
+    semanticVersion: semanticVersion ? 1 : 0,
+    detailedNotes,
+    checkedAt,
+  };
+}
+
+function isHigherQualityRelease(candidate, current) {
+  const a = releaseInformationQuality(candidate);
+  const b = releaseInformationQuality(current);
+  for (const key of ['structuredSources', 'semanticVersion', 'detailedNotes', 'checkedAt']) {
+    if (a[key] !== b[key]) return a[key] > b[key];
+  }
+  return false;
+}
+
+function dedupeArticleReleases(updates = []) {
+  const winnerBySource = new Map();
+  for (const update of updates) {
+    const key = canonicalArticleSourceKey(update);
+    if (!key) continue;
+    const current = winnerBySource.get(key);
+    if (!current || isHigherQualityRelease(update, current)) winnerBySource.set(key, update);
+  }
+  return updates.filter(update => {
+    const key = canonicalArticleSourceKey(update);
+    return !key || winnerBySource.get(key) === update;
+  });
 }
 
 function buildFeedMeta(updates = []) {
@@ -769,7 +851,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       query += ` ORDER BY released_at DESC, created_at DESC LIMIT 100`;
 
       const rows = await db.query(query, params);
-      let updates = rows.rows.map(rowToUpdate).filter(isUpdateDisplayable);
+      let updates = dedupeArticleReleases(rows.rows.map(rowToUpdate).filter(isUpdateDisplayable));
       const sorters = {
         date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
         date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
@@ -785,7 +867,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
 
   // Development/test fixtures only. Production returns an honest empty feed.
   if (!canUseStaticUpdates()) return [];
-  let updates = getStaticUpdates().filter(isUpdateDisplayable);
+  let updates = dedupeArticleReleases(getStaticUpdates().filter(isUpdateDisplayable));
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
@@ -898,7 +980,7 @@ async function getUpdateHistory(platform, limit = 20) {
        LIMIT $2`,
       [platform, Math.min(limit, 50)]
     );
-    return rows.rows.map(r => {
+    const updates = rows.rows.map(r => {
       const evidence = jsonArray(r.evidence);
       const officialEvidence = evidence.find(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`));
       return {
@@ -916,6 +998,7 @@ async function getUpdateHistory(platform, limit = 20) {
         lastCheckedAt: r.updated_at || officialEvidence?.checkedAt || r.created_at || null,
       };
     }).filter(isUpdateDisplayable);
+    return dedupeArticleReleases(updates).slice(0, Math.min(limit, 50));
   } catch (err) {
     logger.warn('[updates] getUpdateHistory failed', { platform, error: err.message });
     return [];
@@ -928,5 +1011,12 @@ module.exports = {
   getSentimentSummary,
   getUpdateHistory,
   buildFeedMeta,
-  __test: { isUpdateDisplayable, rowToUpdate, canUseStaticUpdates },
+  __test: {
+    isUpdateDisplayable,
+    rowToUpdate,
+    canUseStaticUpdates,
+    canonicalArticleSourceKey,
+    dedupeArticleReleases,
+    releaseInformationQuality,
+  },
 };

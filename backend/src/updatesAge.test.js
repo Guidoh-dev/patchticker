@@ -109,6 +109,71 @@ test('monthly placeholders require official release metadata', () => {
   })).toBe(true);
 });
 
+test('legacy Steam month labels require structured official article evidence', () => {
+  const legacy = {
+    platform: 'Steam',
+    version: 'Aug 2026',
+    releasedAt: '2026-08-03',
+    evidence: [{
+      source: 'Steam',
+      url: 'https://store.steampowered.com/news/app/1675200/view/667247155276153538',
+    }],
+  };
+  expect(updatesService.__test.isUpdateDisplayable(legacy)).toBe(false);
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...legacy,
+    evidence: [{
+      ...legacy.evidence[0],
+      releaseType: 'official-release',
+    }],
+  })).toBe(true);
+});
+
+test('article-level duplicates keep the release with stronger structured evidence', () => {
+  const sharedUrl = 'https://store.steampowered.com/news/app/1675200/view/667247155276153538?l=english';
+  const legacy = {
+    id: 'steam-aug-2026',
+    platform: 'Steam',
+    version: 'Aug 2026',
+    sourceUrl: sharedUrl,
+    changelog: ['Unstructured release copy'],
+    knownIssues: [],
+    riskFactors: [],
+    evidence: [{ source: 'Steam', url: sharedUrl }],
+    updatedAt: '2026-08-11T18:15:11Z',
+  };
+  const canonical = {
+    id: 'steam-3-8-25',
+    platform: 'Steam',
+    version: '3.8.25',
+    sourceUrl: sharedUrl.replace('?l=english', '#notes'),
+    changelog: ['Feature one', 'Feature two'],
+    knownIssues: ['Known performance regression'],
+    riskFactors: [{ level: 'medium', text: 'Beta channel' }],
+    evidence: [{
+      source: 'Steam News',
+      url: sharedUrl,
+      releaseType: 'official-release',
+      checkedAt: '2026-08-12T21:27:25Z',
+    }],
+    updatedAt: '2026-08-12T21:27:25Z',
+  };
+
+  expect(updatesService.__test.dedupeArticleReleases([legacy, canonical])).toEqual([canonical]);
+  expect(updatesService.__test.dedupeArticleReleases([canonical, legacy])).toEqual([canonical]);
+});
+
+test('rolling support pages do not collapse distinct console releases', () => {
+  const sourceUrl = 'https://support.xbox.com/en-US/help/hardware-network/settings-updates/whats-new-xbox-one-system-updates';
+  const releases = [
+    { id: 'xbox-one', platform: 'Xbox', version: '10.0.1', sourceUrl, evidence: [] },
+    { id: 'xbox-two', platform: 'Xbox', version: '10.0.2', sourceUrl, evidence: [] },
+  ];
+
+  expect(updatesService.__test.canonicalArticleSourceKey(releases[0])).toBeNull();
+  expect(updatesService.__test.dedupeArticleReleases(releases)).toEqual(releases);
+});
+
 test('Discord service incidents are excluded while official technical patch notes remain visible', () => {
   const base = { platform: 'Discord', version: '2026.08.04', releasedAt: '2026-08-04' };
   expect(updatesService.__test.isUpdateDisplayable({
