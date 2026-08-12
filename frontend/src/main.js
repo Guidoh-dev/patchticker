@@ -1264,6 +1264,52 @@ function peerRatingMeta(update) {
   return { score, install, wait, avoid, label, votes };
 }
 
+function formatPackageSize(bytes) {
+  const value = Number(bytes);
+  if (!Number.isFinite(value) || value < 0) return null;
+  if (value === 0) return '0 B';
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const unitIndex = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  const scaled = value / (1024 ** unitIndex);
+  const decimals = scaled >= 100 || unitIndex === 0 ? 0 : scaled >= 10 ? 1 : 2;
+  return `${scaled.toFixed(decimals)} ${units[unitIndex]}`;
+}
+
+function packageSizeMeta(update) {
+  const downloads = [
+    ...(Array.isArray(update?.downloads) ? update.downloads : []),
+    ...(Array.isArray(update?.artifacts) ? update.artifacts : []),
+  ];
+  const evidence = Array.isArray(update?.evidence) ? update.evidence : [];
+  const byteCandidates = [
+    update?.sizeBytes,
+    update?.packageSizeBytes,
+    update?.downloadSizeBytes,
+    ...downloads.map(item => item?.sizeBytes),
+    ...evidence.map(item => item?.sizeBytes),
+  ];
+  const byteValue = byteCandidates.find(value => Number.isFinite(Number(value)) && Number(value) >= 0);
+  const formattedBytes = formatPackageSize(byteValue);
+  if (formattedBytes) {
+    return { value: formattedBytes, available: true, note: 'Vendor package' };
+  }
+
+  const textCandidates = [
+    update?.packageSize,
+    update?.downloadSize,
+    update?.fileSize,
+    ...downloads.map(item => item?.size),
+    ...evidence.map(item => item?.packageSize),
+  ];
+  const textValue = textCandidates.find(value => typeof value === 'string' && value.trim());
+  if (textValue) {
+    return { value: textValue.trim().slice(0, 48), available: true, note: 'Vendor package' };
+  }
+
+  return { value: 'Not listed', available: false, note: 'Not published by vendor' };
+}
+
 
 function getFollowedSteamGames() {
   try { return JSON.parse(localStorage.getItem('patchticker.followedSteamGames') || '[]'); }
@@ -1633,41 +1679,58 @@ function renderUpdateCard(u) {
   const freshness = freshnessMeta(u);
   const securitySignal = securitySignalMeta(u);
   const driverImpact = driverImpactMeta(u);
+  const packageSize = packageSizeMeta(u);
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const methodLabel = analysisMethodLabel(u);
-  const ratingLabel = rating.votes
-    ? `${rating.score !== null ? rating.score.toFixed(1) : '—'}/10 user rating`
-    : `${u.score ?? '—'}/10 PatchTicker score`;
+  const ratingValue = rating.votes && rating.score !== null ? rating.score.toFixed(1) : (u.score ?? '—');
+  const ratingSource = rating.votes ? 'User rating' : 'PatchTicker score';
+  const ratingDetail = rating.votes
+    ? `${rating.votes.toLocaleString()} vote${rating.votes === 1 ? '' : 's'}`
+    : decision.label;
   const routeId = encodeURIComponent(u.id);
   return `
     <article class="decision-card decision-card--compact decision-card--${H(decision.cls)}" data-id="${H(u.id)}">
       <a class="decision-card-link" href="#/updates/${H(routeId)}" aria-label="Open ${H(u.name)} details">
-        <div class="decision-card-mainline">
-          ${renderPlatformLogo(u.platform, 'update-platform-icon decision-platform-icon')}
-          <div class="decision-card-copy">
-            <div class="decision-card-eyebrow">
-              <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
-              ${u.version ? `<span>Version ${H(u.version)}</span>` : ''}
-              <span>${H(updateDateLabel(u))} ${H(formatReleaseDate(u.releasedAt))}</span>
-              <span>${H(age)}</span>
+        <div class="decision-card-content">
+          <header class="decision-card-heading">
+            ${renderPlatformLogo(u.platform, 'update-platform-icon decision-platform-icon')}
+            <div class="decision-card-heading-copy">
+              <div class="decision-card-kicker">
+                <span class="decision-card-platform text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
+                ${u.version ? `<span class="decision-card-version">Version ${H(u.version)}</span>` : ''}
+              </div>
+              <h3 class="decision-title">${H(u.name)}</h3>
             </div>
-            <h3 class="decision-title">${H(u.name)}</h3>
-            <p class="decision-one-line">${H(u.verdict || risk)}</p>
-            <div class="decision-card-trust" aria-label="Source freshness and security context">
-              <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
-              ${securitySignal ? `<span class="security-signal security-signal--${H(securitySignal.tone)}"><i aria-hidden="true">◆</i>${H(securitySignal.label)}</span>` : ''}
-              ${driverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(driverImpact.label)}</span>` : ''}
-              <span>${H(freshness.detail)}</span>
-              <span>${H(sourceLabel)}</span>
-              <span>${H(methodLabel)}</span>
+          </header>
+          <dl class="decision-card-facts" aria-label="Update facts">
+            <div>
+              <dt>${H(updateDateLabel(u))}</dt>
+              <dd>${H(formatReleaseDate(u.releasedAt))}</dd>
+              <small>${H(age)}</small>
             </div>
+            <div class="${packageSize.available ? '' : 'is-unavailable'}">
+              <dt>Package size</dt>
+              <dd>${H(packageSize.value)}</dd>
+              <small>${H(packageSize.note)}</small>
+            </div>
+          </dl>
+          <p class="decision-one-line">${H(u.verdict || risk)}</p>
+          <div class="decision-card-trust" aria-label="Source freshness and security context">
+            <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
+            ${securitySignal ? `<span class="security-signal security-signal--${H(securitySignal.tone)}"><i aria-hidden="true">◆</i>${H(securitySignal.label)}</span>` : ''}
+            ${driverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(driverImpact.label)}</span>` : ''}
+            <span>${H(freshness.detail)}</span>
+            <span>${H(sourceLabel)}</span>
+            <span>${H(methodLabel)}</span>
           </div>
         </div>
-        <div class="decision-card-metrics" aria-label="Patch recommendation">
+        <aside class="decision-card-rating" aria-label="Patch recommendation and rating">
           <span class="decision-action decision-action--${H(decision.cls)}">${H(decision.action)}</span>
-          <strong>${H(ratingLabel)}</strong>
-          <em>${H(decision.label)}</em>
-        </div>
+          <span class="decision-card-rating-label">Rating</span>
+          <div class="decision-card-rating-value"><strong>${H(String(ratingValue))}</strong><span>/10</span></div>
+          <em>${H(ratingSource)}</em>
+          <small>${H(ratingDetail)}</small>
+        </aside>
       </a>
     </article>
   `;
@@ -1690,9 +1753,12 @@ function formatReleaseDate(value) {
 
 function renderMiniUpdateCard(u, variant = 'default') {
   const pSuffix = platformSuffix(u.platform);
-  const short   = PLATFORM_SHORT[u.platform] ?? u.platform.slice(0, 3).toUpperCase();
   const tone    = variant === 'compact' ? ' mini-update-card--compact' : '';
   const freshness = freshnessMeta(u);
+  const packageSize = packageSizeMeta(u);
+  const rating = peerRatingMeta(u);
+  const ratingValue = rating.votes && rating.score !== null ? rating.score.toFixed(1) : (u.score ?? '—');
+  const ratingSource = rating.votes ? 'User rating' : 'PatchTicker score';
   return `
     <a class="mini-update-card${tone}" href="#/updates/${H(u.id)}">
       <div class="mini-update-top">
@@ -1702,12 +1768,15 @@ function renderMiniUpdateCard(u, variant = 'default') {
       <div class="mini-update-title">${H(u.name)}</div>
       <div class="mini-update-meta">
         <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
-        <span>·</span>
-        <span>${H(formatReleaseDate(u.releasedAt))}</span>
+        ${u.version ? `<span>Version ${H(u.version)}</span>` : ''}
       </div>
+      <dl class="mini-update-facts" aria-label="Update facts">
+        <div><dt>Released</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
+        <div class="${packageSize.available ? '' : 'is-unavailable'}"><dt>Size</dt><dd>${H(packageSize.value)}</dd></div>
+        <div><dt>Rating</dt><dd style="color:${scoreColor(Number(ratingValue) || 0)}">${H(String(ratingValue))}/10</dd><small>${H(ratingSource)}</small></div>
+      </dl>
       <div class="mini-update-freshness freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)} · ${H(freshness.detail)}</div>
       <p class="mini-update-copy">${H(u.verdict || u.affects || 'Recent patch coverage available.')}</p>
-      <div class="mini-update-score" style="color:${scoreColor(u.score)}">${H(String(u.score))}/10</div>
     </a>
   `;
 }
@@ -2854,6 +2923,7 @@ async function renderUpdateDetail(id) {
   const pSuffix   = platformSuffix(u.platform);
   const color     = scoreColor(u.score);
   const scorePct  = Math.round((u.score / 10) * 100);
+  const packageSize = packageSizeMeta(u);
 
   const riskLevelIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
 
@@ -2994,6 +3064,7 @@ async function renderUpdateDetail(id) {
               <div><span>Platform</span><strong>${H(platformLabel(u.platform))}</strong></div>
               <div><span>Version</span><strong>${H(u.version || 'Current release')}</strong></div>
               <div><span>${H(updateDateLabel(u))}</span><strong>${H(formatReleaseDate(u.releasedAt))}</strong></div>
+              <div class="${packageSize.available ? '' : 'is-unavailable'}"><span>Package size</span><strong>${H(packageSize.value)}</strong></div>
               <div><span>Applies to</span><strong>${H(u.affects || platformLabel(u.platform))}</strong></div>
             </div>
             <div class="detail-source-health" aria-label="Source health">
@@ -3011,7 +3082,7 @@ async function renderUpdateDetail(id) {
           <div class="status-badge ${H(u.status)} detail-status-badge">${H(u.status.toUpperCase())}</div>
           <div class="detail-decision-score">
             <span style="color:${color}">${H(String(u.score ?? '—'))}</span>
-            <em>Safety score</em>
+            <em>PatchTicker score · out of 10</em>
           </div>
           <div class="detail-decision-facts">
             <div><strong>${impactScore !== null ? H(String(impactScore)) : 'N/A'}</strong><span>${impactScore !== null ? H(impactLabel) : 'Impact pending'}</span></div>

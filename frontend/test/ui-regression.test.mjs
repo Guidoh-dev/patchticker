@@ -48,9 +48,9 @@ test('user-facing setup filters no longer use stack terminology', () => {
 
 test('triad dashboard resets legacy nested grid and uses horizontal metadata rows', () => {
   assert.match(cssSource, /\.dash-wrap--triad \.dash-main\s*\{[^}]*display:\s*block/s);
-  assert.match(cssSource, /\.decision-card-link\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
-  assert.match(cssSource, /\.decision-card-metrics\s*\{[^}]*display:\s*flex/s);
-  assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
+  assert.match(cssSource, /\.decision-card-link\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 148px/s);
+  assert.match(cssSource, /\.decision-card-rating\s*\{[^}]*justify-items:\s*center/s);
+  assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-meta-grid\s*\{\s*grid-template-columns:\s*1fr;/);
 });
 
@@ -58,9 +58,23 @@ test('update detail columns cannot force horizontal page overflow', () => {
   assert.match(cssSource, /\.detail-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(280px, 380px\)/s);
   assert.match(cssSource, /\.detail-col-main,\s*\.detail-col-side\s*\{[^}]*min-width:\s*0/s);
   assert.match(cssSource, /\.detail-reasoning,[\s\S]*?\.detail-requirement-grid strong\s*\{[^}]*overflow-wrap:\s*anywhere/s);
-  assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s);
+  assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
   assert.match(cssSource, /\.detail-meta-grid > div:last-child\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
   assert.match(cssSource, /\.detail-meta-grid > div:nth-child\(2\) strong\s*\{[^}]*white-space:\s*nowrap;/s);
+});
+
+test('update cards organize title, release date, package size, and rating without fabricated size data', () => {
+  assert.match(mainSource, /function packageSizeMeta\(update\)/);
+  assert.match(mainSource, /update\?\.sizeBytes/);
+  assert.match(mainSource, /Array\.isArray\(update\?\.downloads\)/);
+  assert.match(mainSource, /return \{ value: 'Not listed', available: false, note: 'Not published by vendor' \}/);
+  assert.match(mainSource, /class="decision-card-facts" aria-label="Update facts"/);
+  assert.match(mainSource, /<dt>Package size<\/dt>/);
+  assert.match(mainSource, /class="decision-card-rating" aria-label="Patch recommendation and rating"/);
+  assert.match(mainSource, /const ratingSource = rating\.votes \? 'User rating' : 'PatchTicker score'/);
+  assert.match(cssSource, /\.decision-card-facts\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
+  assert.match(cssSource, /\.decision-card-link:hover,[\s\S]*?text-decoration:\s*none !important/s);
+  assert.match(cssSource, /\.decision-card-rating-value strong\s*\{[^}]*font-size:\s*36px/s);
 });
 
 test('non-default filters and sorting use the globally ordered result list', () => {
@@ -149,7 +163,7 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /detail-source-health/);
   assert.match(mainSource, /official source/);
   assert.match(mainSource, /Source \+ issue signals/);
-  assert.match(mainSource, /\/10 PatchTicker score/);
+  assert.match(mainSource, /ratingSource = rating\.votes \? 'User rating' : 'PatchTicker score'/);
   assert.match(mainSource, /updateDateLabel\(u\)/);
   assert.match(mainSource, /id="dash-coverage-pulse"/);
   assert.match(mainSource, /No demo records shown/);
