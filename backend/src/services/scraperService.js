@@ -302,6 +302,86 @@ function parseDiscordPatchPage(html) {
   };
 }
 
+function parseAppleSecurityAdvisory(html) {
+  const $ = cheerio.load(String(html || ''));
+  const sections = $('#sections');
+  if (!sections.length) return null;
+
+  const title = cleanText(sections.find('h1').first().text() || $('h1').first().text(), 180);
+  const product = cleanText(
+    sections.find('h2').filter((_, heading) => !/about apple security updates|additional recognition|apple footer/i.test($(heading).text())).first().text(),
+    160
+  );
+  const sectionsText = cleanText(sections.text(), 200000);
+  const releasedAt = toIsoDate(
+    sectionsText.match(/\bReleased\s+([A-Z][a-z]+\s+\d{1,2},\s+\d{4})/i)?.[1]
+  );
+  if (!title || !product || !releasedAt) return null;
+
+  const entries = [];
+  sections.find('h3').each((order, heading) => {
+    const component = cleanText($(heading).text(), 100);
+    const paragraphs = [];
+    let node = $(heading).next();
+    let guard = 0;
+    while (node.length && guard++ < 12 && !/^h[23]$/i.test(node[0]?.tagName || '')) {
+      const text = cleanText(node.text(), 1200);
+      if (text) paragraphs.push(text);
+      node = node.next();
+    }
+
+    const impact = paragraphs.find(text => /^Impact:/i.test(text))?.replace(/^Impact:\s*/i, '') || null;
+    if (!component || !impact) return;
+    const availability = paragraphs.find(text => /^Available for:/i.test(text))?.replace(/^Available for:\s*/i, '') || null;
+    const description = paragraphs.find(text => /^Description:/i.test(text))?.replace(/^Description:\s*/i, '') || null;
+    const cves = unique(paragraphs.flatMap(text => text.match(/CVE-\d{4}-\d{4,7}/g) || []), 40);
+    const entryText = `${component} ${impact} ${description || ''} ${paragraphs.join(' ')}`;
+    const activelyExploited = /aware of a report[^.]{0,240}(?:actively )?exploited|may have been actively exploited|has been actively exploited/i.test(entryText);
+
+    let priority = activelyExploited ? 100 : 0;
+    if (/arbitrary code|code execution|kernel privileges?|root privileges?/i.test(impact)) priority += 30;
+    if (/authenticate[^.]{0,120}without valid credentials|bypass|sensitive user data|security restrictions?/i.test(impact)) priority += 22;
+    if (/kernel|webkit|screen sharing|apple neural engine/i.test(component)) priority += 8;
+    if (/unexpected system termination|denial of service|crash/i.test(impact)) priority += 5;
+
+    entries.push({ component, impact, availability, description, cves, activelyExploited, priority, order });
+  });
+  if (!entries.length) return null;
+
+  const cves = unique(entries.flatMap(entry => entry.cves), 40);
+  const activelyExploited = entries.some(entry => entry.activelyExploited);
+  const highImpact = entries.some(entry => /arbitrary code|code execution|kernel privileges?|root privileges?|without valid credentials|security restrictions?/i.test(entry.impact));
+  const ranked = [...entries].sort((a, b) => b.priority - a.priority || a.order - b.order);
+  const changelog = ranked.slice(0, 12).map(entry => {
+    const cveLabel = entry.cves.length
+      ? ` (${entry.cves[0]}${entry.cves.length > 1 ? ` +${entry.cves.length - 1} more` : ''})`
+      : '';
+    return cleanText(`${entry.component}: ${entry.impact}${cveLabel}`, 420);
+  });
+
+  const level = activelyExploited ? 'critical' : highImpact ? 'high' : cves.length ? 'medium' : 'low';
+  const label = activelyExploited
+    ? `${cves.length} documented CVEs, including actively exploited issues`
+    : cves.length
+      ? `${cves.length} documented CVE${cves.length === 1 ? '' : 's'} across ${entries.length} security component${entries.length === 1 ? '' : 's'}`
+      : `${entries.length} security component${entries.length === 1 ? '' : 's'} documented by Apple`;
+
+  return {
+    title,
+    product,
+    releasedAt,
+    entries,
+    changelog,
+    securityCriticality: {
+      level,
+      label,
+      cves: cves.slice(0, 50),
+      totalCves: cves.length,
+      activelyExploited,
+    },
+  };
+}
+
 function parseSteamReleaseNotes(html) {
   const $ = cheerio.load(String(html || ''));
   const summary = [];
@@ -663,6 +743,14 @@ async function parseAppleSecurityRelease(kind) {
   if (!match) return null;
   const version = firstVersion(match.product) || match.product;
   const sourceUrl = match.link ? (match.link.startsWith('http') ? match.link : `https://support.apple.com${match.link}`) : url;
+  const advisory = sourceUrl !== url ? parseAppleSecurityAdvisory(await fetchHtml(sourceUrl)) : null;
+  if (!advisory || advisory.releasedAt !== toIsoDate(match.date)) {
+    throw new Error(`Apple ${kind} advisory did not match the security release index`);
+  }
+  const security = advisory.securityCriticality;
+  const cveSummary = security.totalCves
+    ? `${security.totalCves} CVE${security.totalCves === 1 ? '' : 's'} across ${advisory.entries.length} documented security component${advisory.entries.length === 1 ? '' : 's'}`
+    : `${advisory.entries.length} documented security component${advisory.entries.length === 1 ? '' : 's'}`;
   return {
     platform: kind === 'ios' ? 'Apple' : 'macOS',
     name: match.product.slice(0, 100),
@@ -671,12 +759,15 @@ async function parseAppleSecurityRelease(kind) {
     affects: kind === 'ios'
       ? 'iPhone / iPad / WebKit / system security / app compatibility'
       : 'Mac / macOS / Safari-WebKit / system security / device stability',
-    changelog: [`Apple security release listed for ${match.product}. Review CVEs and device eligibility before installing.`],
+    changelog: advisory.changelog,
     knownIssues: [],
+    securityCriticality: security,
     riskFactors: [{ level: 'low', text: 'Security updates are usually recommended quickly, but older devices and managed fleets should verify app compatibility first.' }],
-    verdict: 'Prioritize this update when it includes security fixes, especially for WebKit, kernel, or actively exploited vulnerabilities.',
-    reasoning: 'Apple security releases often include CVE fixes that are not fully discussed until patches are available. PatchTicker tracks Apple’s official security release index and links the advisory for review.',
-    evidence: sourceEvidence('Apple Security Releases', sourceUrl, `${match.product} listed on Apple security releases page.`, { dateBasis: 'released', releaseType: 'official-release' }),
+    verdict: security.activelyExploited
+      ? 'Install promptly after confirming device compatibility; Apple identifies at least one issue in this release as exploited in the wild.'
+      : `Install promptly after confirming device compatibility; Apple documents ${cveSummary} in this release.`,
+    reasoning: `PatchTicker matched Apple’s release index to the full security advisory and prioritized the highest-impact entries. The advisory documents ${cveSummary}; the update brief links each displayed risk back to Apple’s published CVE record.`,
+    evidence: sourceEvidence('Apple Security Advisory', sourceUrl, `${match.product}: ${cveSummary}.`, { dateBasis: 'released', releaseType: 'official-security-advisory', publishedAt: advisory.releasedAt, cveCount: security.totalCves }),
     sourceUrl,
   };
 }
@@ -1162,5 +1253,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseSteamReleaseNotes, parseXboxContentApi, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, safeDecode, validateDetectedUpdate },
 };

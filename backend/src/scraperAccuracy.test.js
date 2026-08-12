@@ -155,6 +155,65 @@ describe('scraper accuracy guards', () => {
     expect(parsed.changelog.join(' ')).not.toMatch(/incident|monitoring|resolved service/i);
   });
 
+  test('Apple advisory parser ranks concrete impacts and preserves the full CVE count', () => {
+    const parsed = __test.parseAppleSecurityAdvisory(`
+      <div id="sections">
+        <h1>About the security content of iOS 26.6 and iPadOS 26.6</h1>
+        <h2>About Apple security updates</h2>
+        <h2>iOS 26.6 and iPadOS 26.6</h2>
+        <p>Released July 27, 2026</p>
+        <h3>Accessibility</h3>
+        <p>Available for: iPhone 11 and later</p>
+        <p>Impact: An attacker with physical access may be able to access sensitive user data</p>
+        <p>Description: This issue was addressed through improved state management.</p>
+        <p>CVE-2026-64732: Researcher</p>
+        <h3>WebKit</h3>
+        <p>Available for: iPhone 11 and later</p>
+        <p>Impact: Processing maliciously crafted web content may lead to arbitrary code execution</p>
+        <p>Description: A memory corruption issue was addressed with improved validation.</p>
+        <p>CVE-2026-65001: Researcher A</p>
+        <p>CVE-2026-65002: Researcher B</p>
+      </div>
+    `);
+
+    expect(parsed).toMatchObject({
+      product: 'iOS 26.6 and iPadOS 26.6',
+      releasedAt: '2026-07-27',
+      securityCriticality: {
+        level: 'high',
+        totalCves: 3,
+        activelyExploited: false,
+      },
+    });
+    expect(parsed.securityCriticality.cves).toEqual([
+      'CVE-2026-64732',
+      'CVE-2026-65001',
+      'CVE-2026-65002',
+    ]);
+    expect(parsed.changelog[0]).toMatch(/^WebKit:.*arbitrary code execution.*CVE-2026-65001/);
+  });
+
+  test('Apple advisory parser raises actively exploited releases above routine security updates', () => {
+    const parsed = __test.parseAppleSecurityAdvisory(`
+      <div id="sections">
+        <h1>About the security content of macOS Tahoe 26.6.2</h1>
+        <h2>macOS Tahoe 26.6.2</h2>
+        <p>Released August 10, 2026</p>
+        <h3>WebKit</h3>
+        <p>Available for: macOS Tahoe</p>
+        <p>Impact: Processing malicious web content may lead to arbitrary code execution</p>
+        <p>Description: Apple is aware of a report that this issue may have been actively exploited.</p>
+        <p>CVE-2026-65555: Researcher</p>
+      </div>
+    `);
+
+    expect(parsed.securityCriticality).toMatchObject({
+      level: 'critical',
+      totalCves: 1,
+      activelyExploited: true,
+    });
+  });
+
   test('Steam parser separates known issues from release changes', () => {
     const parsed = __test.parseSteamReleaseNotes(`
       <p>This update is for the SteamOS Beta and Preview channels.</p>

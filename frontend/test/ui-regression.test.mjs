@@ -158,6 +158,16 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(cssSource, /\.dash-coverage-pulse\.is-degraded\s*\{[^}]*var\(--yellow\)/s);
 });
 
+test('security releases expose bounded CVE context without flooding the detail page', () => {
+  assert.match(mainSource, /function securitySignalMeta\(update\)/);
+  assert.match(mainSource, /CVE\$\{total === 1 \? '' : 's'\} documented/);
+  assert.match(mainSource, /const visibleCves = secCves\.slice\(0, 12\)/);
+  assert.match(mainSource, /more in the official advisory/);
+  assert.match(mainSource, /security-signal--\$\{H\(securitySignal\.tone\)\}/);
+  assert.match(cssSource, /\.security-signal--critical,[\s\S]*?\.security-signal--high\s*\{[^}]*var\(--red\)/s);
+  assert.match(cssSource, /\.detail-cve-more\s*\{[^}]*font-family:\s*var\(--font-mono\)/s);
+});
+
 test('offline update feeds remain honest instead of reviving demo records', () => {
   assert.match(mainSource, /function renderOfflineRails[\s\S]*?_allUpdates = \[\][\s\S]*?renderTapeAndLatest\(\[\], message\)/);
   assert.match(mainSource, /Verified patch data will return when the connection recovers/);

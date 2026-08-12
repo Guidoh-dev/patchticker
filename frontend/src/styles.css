@@ -817,6 +817,17 @@ select.field-input { cursor: pointer; }
   letter-spacing: 0.03em;
 }
 
+.detail-cve-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 /* User Rating card */
 .detail-rating-card {
   background: var(--bg-2);
@@ -6582,6 +6593,22 @@ body { overflow-x: hidden; }
 .freshness-signal--aging { color: var(--yellow); }
 .freshness-signal--stale { color: var(--red); }
 .freshness-signal--snapshot { color: var(--text-2); }
+.security-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.security-signal i {
+  font-size: 7px;
+  font-style: normal;
+  filter: drop-shadow(0 0 7px currentColor);
+}
+.security-signal--critical,
+.security-signal--high { color: var(--red); }
+.security-signal--medium { color: var(--yellow); }
+.security-signal--low { color: var(--green-primary); }
 .mini-update-freshness {
   margin-top: 9px;
   font-family: var(--font-mono);

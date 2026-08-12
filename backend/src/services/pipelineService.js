@@ -197,6 +197,7 @@ function platformContext(platform, detected) {
     knownIssues: detected.knownIssues || [],
     riskFactors: detected.riskFactors || [],
     evidence: detected.evidence?.length ? detected.evidence : (detected.sourceUrl ? [{ source: platform, url: detected.sourceUrl, text: `Current ${platform} update verified from official source` }] : []),
+    securityCriticality: detected.securityCriticality || null,
   };
 }
 
@@ -215,8 +216,9 @@ async function updateExistingMetadata(platform, version, detected) {
        known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb THEN $9::jsonb ELSE known_issues END,
        risk_factors = CASE WHEN $10::jsonb <> '[]'::jsonb THEN $10::jsonb ELSE risk_factors END,
        evidence = CASE WHEN $11::jsonb <> '[]'::jsonb THEN $11::jsonb ELSE evidence END,
-       score = CASE WHEN ai_generated = FALSE THEN $12 ELSE score END,
-       status = CASE WHEN ai_generated = FALSE THEN $13 ELSE status END,
+       security_criticality = COALESCE($12::jsonb, security_criticality),
+       score = CASE WHEN ai_generated = FALSE THEN $13 ELSE score END,
+       status = CASE WHEN ai_generated = FALSE THEN $14 ELSE status END,
        updated_at = now()
      WHERE platform = $1 AND version = $2`,
     [
@@ -231,6 +233,7 @@ async function updateExistingMetadata(platform, version, detected) {
       JSON.stringify(context.knownIssues),
       JSON.stringify(context.riskFactors),
       JSON.stringify(context.evidence),
+      context.securityCriticality ? JSON.stringify(context.securityCriticality) : null,
       fallbackScore,
       fallbackStatus,
     ]
@@ -362,6 +365,7 @@ async function processPlatform(platform) {
     knownIssues: context.knownIssues,
     riskFactors: context.riskFactors,
     evidence:    context.evidence,
+    securityCriticality: context.securityCriticality,
     subreddits:  PLATFORM_SUBREDDITS[platform] || [],
   };
 
@@ -464,4 +468,8 @@ async function runAll() {
   return summary;
 }
 
-module.exports = { processPlatform, runAll };
+module.exports = {
+  processPlatform,
+  runAll,
+  __test: { platformContext, updateExistingMetadata },
+};

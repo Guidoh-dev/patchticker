@@ -5,8 +5,10 @@ const db = require(path.join(process.cwd(), 'backend/src/config/db'));
 const { PLATFORMS } = require(path.join(process.cwd(), 'backend/src/config/platformRegistry'));
 
 const OUT = path.join(process.cwd(), 'patch-database');
-const cutoff = new Date('2026-07-21T00:00:00-04:00');
-cutoff.setDate(cutoff.getDate() - 60);
+const generatedAt = new Date();
+const windowEnd = generatedAt.toISOString().slice(0, 10);
+const cutoff = new Date(generatedAt);
+cutoff.setUTCDate(cutoff.getUTCDate() - 60);
 
 function arr(v) { return Array.isArray(v) ? v : (typeof v === 'string' ? JSON.parse(v || '[]') : []); }
 function obj(v) { return v && typeof v === 'string' ? JSON.parse(v) : v; }
@@ -35,6 +37,50 @@ function normalizeRow(r) {
     securityCriticality: obj(r.security_criticality) || { level: 'low', label: 'No Security Patches', cves: [] },
     scraperGap: !!r.scraper_gap,
   };
+}
+
+function normalizeApiUpdate(update) {
+  return {
+    id: update.id,
+    platform: update.platform,
+    name: update.name,
+    version: update.version,
+    releasedAt: dateOnly(update.releasedAt),
+    status: update.status,
+    storedScore: update.score == null ? null : Number(update.score),
+    impactScore: update.impactScore == null ? null : Number(update.impactScore),
+    bugCount: update.bugCount || 0,
+    affects: update.affects || '',
+    verdict: update.verdict || '',
+    reasoning: update.reasoning || '',
+    changelog: arr(update.changelog),
+    knownIssues: arr(update.knownIssues),
+    riskFactors: arr(update.riskFactors),
+    evidence: arr(update.evidence),
+    securityCriticality: obj(update.securityCriticality) || { level: 'low', label: 'No security advisory attached', cves: [] },
+    scraperGap: false,
+  };
+}
+
+async function loadRecentUpdates() {
+  if (db.isAvailable()) {
+    const rows = await db.query(
+      'select * from software_updates where released_at >= $1 order by platform asc, released_at desc, created_at desc',
+      [dateOnly(cutoff)]
+    );
+    return rows.rows.map(normalizeRow);
+  }
+
+  const apiBase = String(process.env.PATCHTICKER_API_URL || 'https://patchticker.app/api').replace(/\/$/, '');
+  const response = await fetch(`${apiBase}/updates`);
+  if (!response.ok) throw new Error(`PatchTicker API returned HTTP ${response.status}`);
+  const payload = await response.json();
+  const updates = Array.isArray(payload) ? payload : payload.data;
+  if (!Array.isArray(updates)) throw new Error('PatchTicker API returned an invalid update payload');
+  return updates
+    .filter(update => Date.parse(update.releasedAt) >= cutoff.getTime())
+    .map(normalizeApiUpdate)
+    .sort((a, b) => a.platform.localeCompare(b.platform) || Date.parse(b.releasedAt) - Date.parse(a.releasedAt));
 }
 
 function ratingTest(u) {
@@ -82,7 +128,7 @@ function mdFor(platformMeta, updates) {
   lines.push(`- Platform key: \`${platformMeta.key}\``);
   lines.push(`- Lane: ${platformMeta.lane}`);
   lines.push(`- Source type: ${platformMeta.sourceType}`);
-  lines.push(`- Window: ${dateOnly(cutoff)} through 2026-07-21 (<60 days)`);
+  lines.push(`- Window: ${dateOnly(cutoff)} through ${windowEnd} (last 60 days)`);
   lines.push(`- Updates captured: ${updates.length}`);
   lines.push('');
   lines.push('| Release | Version | Rating test | Overall | Recommendation | Source |');
@@ -158,9 +204,9 @@ function updateMd(u) {
 (async()=>{
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
-  const rows = await db.query(`select * from software_updates where released_at >= $1 order by platform asc, released_at desc, created_at desc`, [dateOnly(cutoff)]);
+  const rows = await loadRecentUpdates();
   const byPlatform = new Map();
-  for (const r of rows.rows.map(normalizeRow)) {
+  for (const r of rows) {
     r.ratingTest = ratingTest(r);
     if (!byPlatform.has(r.platform)) byPlatform.set(r.platform, []);
     byPlatform.get(r.platform).push(r);
@@ -172,15 +218,15 @@ function updateMd(u) {
     fs.mkdirSync(dir, { recursive: true });
     const updates = byPlatform.get(meta.key) || [];
     fs.writeFileSync(path.join(dir, 'README.md'), mdFor(meta, updates));
-    fs.writeFileSync(path.join(dir, 'updates.json'), JSON.stringify({ platform: meta, window: { from: dateOnly(cutoff), to: '2026-07-21' }, updates }, null, 2));
+    fs.writeFileSync(path.join(dir, 'updates.json'), JSON.stringify({ platform: meta, window: { from: dateOnly(cutoff), to: windowEnd }, updates }, null, 2));
     for (const u of updates) fs.writeFileSync(path.join(dir, `${u.releasedAt}-${slug(u.id)}.md`), updateMd(u));
     const avg = updates.length ? Math.round((updates.reduce((a,u)=>a+u.ratingTest.score,0)/updates.length)*10)/10 : null;
     indexRows.push({ platform: meta.key, label: meta.label, lane: meta.lane, updates: updates.length, averageRating: avg, folder: `./${slug(meta.key)}/` });
   }
   const index = [
     '# PatchTicker Local Patch Research Database', '',
-    `Generated: 2026-07-21`,
-    `Window: ${dateOnly(cutoff)} through 2026-07-21 (<60 days)`, '',
+    `Generated: ${windowEnd}`,
+    `Window: ${dateOnly(cutoff)} through ${windowEnd} (last 60 days)`, '',
     'This is a local file-based research database generated from current PatchTicker tracked platforms, Supabase `software_updates` rows, scraper results, and official-source links attached to each update. It does not modify Supabase.', '',
     '## Platform Summary', '',
     '| Platform | Lane | Updates | Avg local rating | Folder |',
@@ -193,9 +239,9 @@ function updateMd(u) {
     '- Penalizes beta/preview labels, concrete known issues, medium/high/critical risk factors, missing evidence, generic `Latest` versions, high bug counts, and scraper gaps.',
     '- Labels: `positive` >= 7.2, `mixed/caution` 5.0–7.1, `negative` < 5.0.',
     '',
-    '## Immediate Coverage Gaps', '',
-    '- Reddit signal: `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` are not configured, so community scoring is not active.',
-    '- Anthropic analysis: `ANTHROPIC_API_KEY` is not configured, so AI enrichment is not active; local rating test was used instead.',
+    '## Interpretation Notes', '',
+    '- Community ratings are separate from this source audit and appear publicly only after verified user votes exist.',
+    '- Stored analysis metadata is preserved per update; the local rating test is a reproducible source-quality comparison, not a replacement for the public PatchTicker score.',
   ].join('\n');
   fs.writeFileSync(path.join(OUT, 'README.md'), index);
   fs.writeFileSync(path.join(OUT, 'platform-summary.json'), JSON.stringify(indexRows, null, 2));

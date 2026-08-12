@@ -1440,6 +1440,24 @@ function freshnessMeta(update) {
   return { label: 'Recheck due', tone: 'stale', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
 }
 
+function securitySignalMeta(update) {
+  const security = update?.securityCriticality || {};
+  const cves = Array.isArray(security.cves) ? security.cves : [];
+  const reportedTotal = Number(security.totalCves);
+  const total = Number.isFinite(reportedTotal) && reportedTotal >= cves.length
+    ? reportedTotal
+    : cves.length;
+  if (!total) return null;
+  const tone = ['critical', 'high', 'medium', 'low'].includes(security.level)
+    ? security.level
+    : 'medium';
+  return {
+    total,
+    tone,
+    label: `${total} CVE${total === 1 ? '' : 's'} documented`,
+  };
+}
+
 function updateReturnBrief(updates = []) {
   const brief = document.getElementById('dash-return-brief');
   const label = document.getElementById('dash-return-label');
@@ -1588,6 +1606,7 @@ function renderUpdateCard(u) {
   const risk = primaryRiskText(u);
   const age = timeAgo(u.releasedAt);
   const freshness = freshnessMeta(u);
+  const securitySignal = securitySignalMeta(u);
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const methodLabel = analysisMethodLabel(u);
   const ratingLabel = rating.votes
@@ -1608,8 +1627,9 @@ function renderUpdateCard(u) {
             </div>
             <h3 class="decision-title">${H(u.name)}</h3>
             <p class="decision-one-line">${H(u.verdict || risk)}</p>
-            <div class="decision-card-trust" aria-label="Source freshness">
+            <div class="decision-card-trust" aria-label="Source freshness and security context">
               <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
+              ${securitySignal ? `<span class="security-signal security-signal--${H(securitySignal.tone)}"><i aria-hidden="true">◆</i>${H(securitySignal.label)}</span>` : ''}
               <span>${H(freshness.detail)}</span>
               <span>${H(sourceLabel)}</span>
               <span>${H(methodLabel)}</span>
@@ -2786,9 +2806,14 @@ async function renderUpdateDetail(id) {
   };
   const secC = secColors[sec.level] || secColors.none;
   const secIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢', none: '⚪' }[sec.level] || '⚪';
-  const cveHTML = (sec.cves || []).map(c =>
+  const secCves = Array.isArray(sec.cves) ? sec.cves : [];
+  const secCveTotal = Math.max(secCves.length, Number(sec.totalCves) || 0);
+  const visibleCves = secCves.slice(0, 12);
+  const remainingCves = Math.max(0, secCveTotal - visibleCves.length);
+  const cveHTML = visibleCves.map(c =>
     `<span class="detail-cve-tag">${H(c)}</span>`
   ).join('');
+  const detailSecuritySignal = securitySignalMeta(u);
 
   // ── User Rating (live votes only; hidden until votes exist) ──────────────────
   const ur = u.userRating || null;
@@ -2899,6 +2924,7 @@ async function renderUpdateDetail(id) {
             </div>
             <div class="detail-source-health" aria-label="Source health">
               <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
+              ${detailSecuritySignal ? `<span class="security-signal security-signal--${H(detailSecuritySignal.tone)}"><i aria-hidden="true">◆</i>${H(detailSecuritySignal.label)}</span>` : ''}
               <strong>${H(freshness.detail)}</strong>
               <span>${H(detailSourceLabel)}</span>
               <span>${H(detailMethodLabel)}</span>
@@ -2980,7 +3006,7 @@ async function renderUpdateDetail(id) {
                 <span class="detail-security-level" style="color:${secC.text}">${H(sec.level.toUpperCase())}</span>
                 <span class="detail-security-label">${H(sec.label)}</span>
               </div>
-              ${cveHTML ? `<div class="detail-cve-list">${cveHTML}</div>` : ''}
+              ${cveHTML ? `<div class="detail-cve-list">${cveHTML}${remainingCves ? `<span class="detail-cve-more">+${H(String(remainingCves))} more in the official advisory</span>` : ''}</div>` : ''}
             </div>
           </section>
 
