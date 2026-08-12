@@ -1261,7 +1261,9 @@ function renderBugFeed(containerEl, reports, updateId) {
 
 // ── Time ago helper ───────────────────────────────────────────────────────────
 function timeAgo(isoString) {
-  const diff = Date.now() - new Date(isoString).getTime();
+  const parsed = new Date(isoString).getTime();
+  if (!Number.isFinite(parsed)) return 'refresh pending';
+  const diff = Math.max(0, Date.now() - parsed);
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
   const days  = Math.floor(diff / 86400000);
@@ -1269,6 +1271,32 @@ function timeAgo(isoString) {
   if (mins  < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;
   return `${days}d ago`;
+}
+
+function updateDateLabel(update) {
+  if (update?.dateBasis === 'source-updated') return 'Source updated';
+  if (update?.dateBasis === 'published') return 'Published';
+  return 'Released';
+}
+
+function freshnessMeta(update) {
+  const evidence = Array.isArray(update?.evidence) ? update.evidence : [];
+  const officialSources = Number.isFinite(Number(update?.officialSourceCount))
+    ? Number(update.officialSourceCount)
+    : evidence.filter(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`)).length;
+  const checkedAt = update?.lastCheckedAt
+    || update?.updatedAt
+    || evidence.find(item => item?.checkedAt)?.checkedAt
+    || update?.aiGeneratedAt
+    || null;
+  const checkedMs = checkedAt ? new Date(checkedAt).getTime() : NaN;
+  const hours = Number.isFinite(checkedMs) ? Math.max(0, (Date.now() - checkedMs) / 3600000) : null;
+
+  if (hours === null) return { label: 'Source snapshot', tone: 'snapshot', detail: 'Refresh pending', officialSources };
+  if (hours <= 8) return { label: 'Fresh', tone: 'fresh', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
+  if (hours <= 36) return { label: 'Recent', tone: 'recent', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
+  if (hours <= 96) return { label: 'Aging', tone: 'aging', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
+  return { label: 'Recheck due', tone: 'stale', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
 }
 
 
@@ -1377,6 +1405,8 @@ function renderUpdateCard(u) {
   const rating = peerRatingMeta(u);
   const risk = primaryRiskText(u);
   const age = timeAgo(u.releasedAt);
+  const freshness = freshnessMeta(u);
+  const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const ratingLabel = rating.votes
     ? `${rating.score !== null ? rating.score.toFixed(1) : '—'}/10 user rating`
     : `${u.score ?? '—'}/10 recommendation`;
@@ -1390,11 +1420,16 @@ function renderUpdateCard(u) {
             <div class="decision-card-eyebrow">
               <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
               ${u.version ? `<span>Version ${H(u.version)}</span>` : ''}
-              <span>${H(formatReleaseDate(u.releasedAt))}</span>
+              <span>${H(updateDateLabel(u))} ${H(formatReleaseDate(u.releasedAt))}</span>
               <span>${H(age)}</span>
             </div>
             <h3 class="decision-title">${H(u.name)}</h3>
             <p class="decision-one-line">${H(u.verdict || risk)}</p>
+            <div class="decision-card-trust" aria-label="Source freshness">
+              <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
+              <span>${H(freshness.detail)}</span>
+              <span>${H(sourceLabel)}</span>
+            </div>
           </div>
         </div>
         <div class="decision-card-metrics" aria-label="Patch recommendation">
@@ -1426,6 +1461,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const pSuffix = platformSuffix(u.platform);
   const short   = PLATFORM_SHORT[u.platform] ?? u.platform.slice(0, 3).toUpperCase();
   const tone    = variant === 'compact' ? ' mini-update-card--compact' : '';
+  const freshness = freshnessMeta(u);
   return `
     <a class="mini-update-card${tone}" href="#/updates/${H(u.id)}">
       <div class="mini-update-top">
@@ -1438,6 +1474,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
         <span>·</span>
         <span>${H(formatReleaseDate(u.releasedAt))}</span>
       </div>
+      <div class="mini-update-freshness freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)} · ${H(freshness.detail)}</div>
       <p class="mini-update-copy">${H(u.verdict || u.affects || 'Recent patch coverage available.')}</p>
       <div class="mini-update-score" style="color:${scoreColor(u.score)}">${H(String(u.score))}/10</div>
     </a>
@@ -2559,6 +2596,8 @@ async function renderUpdateDetail(id) {
     e?.url && !/(?:reddit\.com|^r\/)/i.test(`${e.source || ''} ${e.url}`)
   );
   const officialSourceUrl = u.sourceUrl || officialEvidence?.url || null;
+  const freshness = freshnessMeta(u);
+  const detailSourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
 
   const changelogHTML = (u.changelog || []).map(c => `
     <li class="detail-list-item detail-list-item--positive">
@@ -2607,8 +2646,13 @@ async function renderUpdateDetail(id) {
             <div class="detail-meta-grid" aria-label="Update metadata">
               <div><span>Platform</span><strong>${H(platformLabel(u.platform))}</strong></div>
               <div><span>Version</span><strong>${H(u.version || 'Current release')}</strong></div>
-              <div><span>Released</span><strong>${H(formatReleaseDate(u.releasedAt))}</strong></div>
+              <div><span>${H(updateDateLabel(u))}</span><strong>${H(formatReleaseDate(u.releasedAt))}</strong></div>
               <div><span>Applies to</span><strong>${H(u.affects || platformLabel(u.platform))}</strong></div>
+            </div>
+            <div class="detail-source-health" aria-label="Source health">
+              <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
+              <strong>${H(freshness.detail)}</strong>
+              <span>${H(detailSourceLabel)}</span>
             </div>
           </div>
         </div>

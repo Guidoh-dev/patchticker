@@ -7,10 +7,31 @@ const secrets = require('../config/secrets');
 
 const MAX_UPDATE_AGE_DAYS = 240;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const PLACEHOLDER_VERSION_PLATFORMS = new Set(['Xbox', 'PS5', 'BattleNet', 'GOG']);
+
+function jsonArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 function isUpdateWithinDisplayWindow(update) {
   const releasedAt = Date.parse(update?.releasedAt);
   return Number.isFinite(releasedAt) && releasedAt >= Date.now() - (MAX_UPDATE_AGE_DAYS * DAY_MS);
+}
+
+function isUpdateDisplayable(update) {
+  if (!isUpdateWithinDisplayWindow(update)) return false;
+  const placeholderMonth = /^\d{4}-\d{2}$/.test(String(update?.version || ''));
+  if (!placeholderMonth || !PLACEHOLDER_VERSION_PLATFORMS.has(update?.platform)) return true;
+  return jsonArray(update.evidence).some(item =>
+    ['official-release', 'official-version'].includes(item?.releaseType)
+  );
 }
 
 // ── Reddit OAuth token cache ────────────────────────────────────────────────
@@ -48,7 +69,7 @@ async function getRedditToken() {
 }
 
 // ── Fetch top posts from a subreddit ────────────────────────────────────────
-async function fetchSubredditPosts(subreddit, limit = 5) {
+async function _fetchSubredditPosts(subreddit, limit = 5) {
   const token = await getRedditToken();
   if (!token) return [];
 
@@ -567,6 +588,12 @@ function getStaticUpdates() {
 const db = require('../config/db');
 
 function rowToUpdate(row) {
+  const changelog = jsonArray(row.changelog);
+  const knownIssues = jsonArray(row.known_issues);
+  const riskFactors = jsonArray(row.risk_factors);
+  const evidence = jsonArray(row.evidence);
+  const subreddits = jsonArray(row.subreddits);
+  const officialEvidence = evidence.find(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`));
   return {
     id:                   row.id,
     platform:             row.platform,
@@ -580,22 +607,23 @@ function rowToUpdate(row) {
     affects:              row.affects || null,
     verdict:              row.verdict || null,
     reasoning:            row.reasoning || null,
-    changelog:            Array.isArray(row.changelog)    ? row.changelog    : (typeof row.changelog    === 'string' ? JSON.parse(row.changelog)    : []),
-    knownIssues:          Array.isArray(row.known_issues) ? row.known_issues : (typeof row.known_issues === 'string' ? JSON.parse(row.known_issues) : []),
-    riskFactors:          Array.isArray(row.risk_factors) ? row.risk_factors : (typeof row.risk_factors === 'string' ? JSON.parse(row.risk_factors) : []),
-    evidence:             Array.isArray(row.evidence)     ? row.evidence     : (typeof row.evidence     === 'string' ? JSON.parse(row.evidence)     : []),
-    sourceUrl:            (() => {
-      const evidence = Array.isArray(row.evidence) ? row.evidence : (typeof row.evidence === 'string' ? JSON.parse(row.evidence) : []);
-      return evidence.find(e => e?.url)?.url || null;
-    })(),
+    changelog,
+    knownIssues,
+    riskFactors,
+    evidence,
+    sourceUrl:            officialEvidence?.url || evidence.find(e => e?.url)?.url || null,
+    dateBasis:            officialEvidence?.dateBasis || 'released',
+    lastCheckedAt:        row.updated_at || officialEvidence?.checkedAt || row.created_at || null,
+    officialSourceCount:  evidence.filter(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`)).length,
     securityCriticality:  row.security_criticality
       ? (typeof row.security_criticality === 'string' ? JSON.parse(row.security_criticality) : row.security_criticality)
       : { level: 'low', label: 'No Security Patches', cves: [] },
-    subreddits:           Array.isArray(row.subreddits)   ? row.subreddits   : (typeof row.subreddits   === 'string' ? JSON.parse(row.subreddits)   : []),
+    subreddits,
     aiGenerated:          row.ai_generated || false,
     aiModel:              row.ai_model || null,
     aiGeneratedAt:        row.ai_generated_at || null,
     createdAt:            row.created_at,
+    updatedAt:            row.updated_at,
   };
 }
 
@@ -648,47 +676,6 @@ async function hydrateLiveRatings(updates) {
   }
 }
 
-function mergeWithStaticPlatformFallback(dbUpdates, filters = {}) {
-  const byId = new Map(dbUpdates.map(update => [update.id, update]));
-  const byPlatformVersion = new Set(dbUpdates.map(update =>
-    `${update.platform.toLowerCase()}:${String(update.version).toLowerCase()}`
-  ));
-
-  let fallbackUpdates = getStaticUpdates().filter(isUpdateWithinDisplayWindow);
-  if (filters.platform) {
-    const platformFilter = filters.platform.toLowerCase();
-    fallbackUpdates = fallbackUpdates.filter(update =>
-      update.platform.toLowerCase() === platformFilter
-    );
-  }
-  if (filters.status) {
-    fallbackUpdates = fallbackUpdates.filter(update => update.status === filters.status);
-  }
-  if (filters.search) {
-    const q = filters.search.toLowerCase();
-    fallbackUpdates = fallbackUpdates.filter(update =>
-      update.name.toLowerCase().includes(q) ||
-      update.platform.toLowerCase().includes(q) ||
-      (update.version || '').toLowerCase().includes(q) ||
-      (update.affects || '').toLowerCase().includes(q) ||
-      (update.verdict || '').toLowerCase().includes(q) ||
-      (update.reasoning || '').toLowerCase().includes(q) ||
-      JSON.stringify(update.changelog || []).toLowerCase().includes(q) ||
-      JSON.stringify(update.knownIssues || []).toLowerCase().includes(q) ||
-      JSON.stringify(update.riskFactors || []).toLowerCase().includes(q) ||
-      JSON.stringify(update.evidence || []).toLowerCase().includes(q)
-    );
-  }
-
-  fallbackUpdates.forEach((update) => {
-    const platformVersion = `${update.platform.toLowerCase()}:${String(update.version).toLowerCase()}`;
-    if (!byId.has(update.id) && !byPlatformVersion.has(platformVersion)) {
-      byId.set(update.id, update);
-    }
-  });
-  return [...byId.values()];
-}
-
 // ── getUpdates — DB-first with static fallback ────────────────────────────────
 
 async function getUpdates({ platform, status, sort, search } = {}) {
@@ -729,26 +716,22 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       query += ` ORDER BY released_at DESC, created_at DESC LIMIT 100`;
 
       const rows = await db.query(query, params);
-      if (rows.rows.length > 0) {
-        let updates = mergeWithStaticPlatformFallback(rows.rows.map(rowToUpdate), { platform, status, search })
-          .filter(isUpdateWithinDisplayWindow);
-        // Apply sort after DISTINCT ON
-        const sorters = {
-          date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
-          date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
-          score_desc: (a, b) => b.score - a.score,
-          score_asc:  (a, b) => a.score - b.score,
-        };
-        if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
-        return hydrateLiveRatings(updates);
-      }
+      let updates = rows.rows.map(rowToUpdate).filter(isUpdateDisplayable);
+      const sorters = {
+        date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
+        date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
+        score_desc: (a, b) => b.score - a.score,
+        score_asc:  (a, b) => a.score - b.score,
+      };
+      if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
+      return hydrateLiveRatings(updates);
     } catch (err) {
       logger.warn('[updates] DB query failed — falling back to static', { error: err.message });
     }
   }
 
   // Static fallback
-  let updates = getStaticUpdates().filter(isUpdateWithinDisplayWindow);
+  let updates = getStaticUpdates().filter(isUpdateDisplayable);
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
@@ -780,6 +763,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
 
 async function getUpdateById(id) {
   let update = null;
+  let dbReadSucceeded = false;
 
   if (db.isAvailable()) {
     try {
@@ -787,6 +771,7 @@ async function getUpdateById(id) {
         `SELECT * FROM software_updates WHERE id = $1 LIMIT 1`,
         [id]
       );
+      dbReadSucceeded = true;
       if (row.rows[0]) update = rowToUpdate(row.rows[0]);
     } catch (err) {
       logger.warn('[updates] DB getById failed — falling back to static', { id, error: err.message });
@@ -794,12 +779,12 @@ async function getUpdateById(id) {
   }
 
   // Static fallback
-  if (!update) {
+  if (!update && !dbReadSucceeded) {
     const staticUpdates = getStaticUpdates();
     update = staticUpdates.find(u => u.id === id) || null;
   }
 
-  if (!update || !isUpdateWithinDisplayWindow(update)) return null;
+  if (!update || !isUpdateDisplayable(update)) return null;
 
   // Keep patch detail pages focused on first-party update information.
   // Community/social enrichment is intentionally not required for page rendering.
@@ -812,21 +797,21 @@ async function getSentimentSummary() {
   if (db.isAvailable()) {
     try {
       const updates = await getUpdates({});
-      if (updates.length > 0) {
-        return {
-          stable:          updates.filter(u => u.status === 'stable').length,
-          caution:         updates.filter(u => u.status === 'caution').length,
-          avoid:           updates.filter(u => u.status === 'avoid').length,
-          totalBugReports: updates.reduce((sum, u) => sum + (u.bugCount || 0), 0),
-          avgScore:        +(updates.reduce((sum, u) => sum + (u.score || 0), 0) / updates.length).toFixed(1),
-        };
-      }
+      return {
+        stable:          updates.filter(u => u.status === 'stable').length,
+        caution:         updates.filter(u => u.status === 'caution').length,
+        avoid:           updates.filter(u => u.status === 'avoid').length,
+        totalBugReports: updates.reduce((sum, u) => sum + (u.bugCount || 0), 0),
+        avgScore:        updates.length
+          ? +(updates.reduce((sum, u) => sum + (u.score || 0), 0) / updates.length).toFixed(1)
+          : null,
+      };
     } catch (err) {
       logger.warn('[updates] DB summary failed — falling back to static', { error: err.message });
     }
   }
 
-  const updates = getStaticUpdates().filter(isUpdateWithinDisplayWindow);
+  const updates = getStaticUpdates().filter(isUpdateDisplayable);
   return {
     stable:          updates.filter(u => u.status === 'stable').length,
     caution:         updates.filter(u => u.status === 'caution').length,
@@ -842,7 +827,8 @@ async function getUpdateHistory(platform, limit = 20) {
   if (!db.isAvailable()) return [];
   try {
     const rows = await db.query(
-      `SELECT id, name, version, released_at, status, score, bug_count, ai_generated
+      `SELECT id, platform, name, version, released_at, status, score, bug_count,
+              ai_generated, evidence, created_at, updated_at
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
          AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
@@ -850,20 +836,34 @@ async function getUpdateHistory(platform, limit = 20) {
        LIMIT $2`,
       [platform, Math.min(limit, 50)]
     );
-    return rows.rows.map(r => ({
-      id:          r.id,
-      name:        r.name,
-      version:     r.version,
-      releasedAt:  r.released_at,
-      status:      r.status,
-      score:       parseFloat(r.score),
-      bugCount:    r.bug_count,
-      aiGenerated: r.ai_generated,
-    }));
+    return rows.rows.map(r => {
+      const evidence = jsonArray(r.evidence);
+      const officialEvidence = evidence.find(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`));
+      return {
+        id:          r.id,
+        platform:    r.platform,
+        name:        r.name,
+        version:     r.version,
+        releasedAt:  r.released_at,
+        status:      r.status,
+        score:       parseFloat(r.score),
+        bugCount:    r.bug_count,
+        aiGenerated: r.ai_generated,
+        evidence,
+        dateBasis:   officialEvidence?.dateBasis || 'released',
+        lastCheckedAt: r.updated_at || officialEvidence?.checkedAt || r.created_at || null,
+      };
+    }).filter(isUpdateDisplayable);
   } catch (err) {
     logger.warn('[updates] getUpdateHistory failed', { platform, error: err.message });
     return [];
   }
 }
 
-module.exports = { getUpdates, getUpdateById, getSentimentSummary, getUpdateHistory };
+module.exports = {
+  getUpdates,
+  getUpdateById,
+  getSentimentSummary,
+  getUpdateHistory,
+  __test: { isUpdateDisplayable, rowToUpdate },
+};

@@ -17,7 +17,6 @@
 
 'use strict';
 
-const crypto           = require('crypto');
 const db               = require('../config/db');
 const logger           = require('../utils/logger');
 const scraperService   = require('./scraperService');
@@ -207,20 +206,24 @@ async function updateExistingMetadata(platform, version, detected) {
   const fallbackStatus = deriveInitialStatus(fallbackScore);
   await db.query(
     `UPDATE software_updates SET
-       affects = COALESCE($3, affects),
-       verdict = COALESCE($4, verdict),
-       reasoning = COALESCE($5, reasoning),
-       changelog = CASE WHEN $6::jsonb <> '[]'::jsonb THEN $6::jsonb ELSE changelog END,
-       known_issues = CASE WHEN $7::jsonb <> '[]'::jsonb THEN $7::jsonb ELSE known_issues END,
-       risk_factors = CASE WHEN $8::jsonb <> '[]'::jsonb THEN $8::jsonb ELSE risk_factors END,
-       evidence = CASE WHEN $9::jsonb <> '[]'::jsonb THEN $9::jsonb ELSE evidence END,
-       score = CASE WHEN ai_generated = FALSE AND (score IS NULL OR score = 5.0) THEN $10 ELSE score END,
-       status = CASE WHEN ai_generated = FALSE AND (score IS NULL OR score = 5.0) THEN $11 ELSE status END,
+       name = COALESCE($3, name),
+       released_at = COALESCE($4, released_at),
+       affects = COALESCE($5, affects),
+       verdict = COALESCE($6, verdict),
+       reasoning = COALESCE($7, reasoning),
+       changelog = CASE WHEN $8::jsonb <> '[]'::jsonb THEN $8::jsonb ELSE changelog END,
+       known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb THEN $9::jsonb ELSE known_issues END,
+       risk_factors = CASE WHEN $10::jsonb <> '[]'::jsonb THEN $10::jsonb ELSE risk_factors END,
+       evidence = CASE WHEN $11::jsonb <> '[]'::jsonb THEN $11::jsonb ELSE evidence END,
+       score = CASE WHEN ai_generated = FALSE AND (score IS NULL OR score = 5.0) THEN $12 ELSE score END,
+       status = CASE WHEN ai_generated = FALSE AND (score IS NULL OR score = 5.0) THEN $13 ELSE status END,
        updated_at = now()
      WHERE platform = $1 AND version = $2`,
     [
       platform,
       version,
+      detected.name,
+      detected.releasedAt,
       context.affects,
       context.verdict,
       context.reasoning,
@@ -367,6 +370,7 @@ async function processPlatform(platform) {
   logger.info('[pipeline] Inserted new update', logCtx);
 
   // 5. Run AI analysis if configured
+  let aiApplied = false;
   if (aiAnalysisService.isEnabled()) {
     try {
       const ai = await aiAnalysisService.analyseUpdate(initialUpdate);
@@ -380,6 +384,7 @@ async function processPlatform(platform) {
         Object.assign(initialUpdate, ai);
         initialUpdate.status = ai.status;
         initialUpdate.score  = ai.score;
+        aiApplied = true;
       }
     } catch (err) {
       logger.warn('[pipeline] AI analysis failed — proceeding with defaults', { ...logCtx, error: err.message });
@@ -406,7 +411,7 @@ async function processPlatform(platform) {
     version: detected.version,
     id,
     score:   initialUpdate.score,
-    aiRan:   aiAnalysisService.isEnabled(),
+    aiRan:   aiApplied,
     latencyMs: detection.latencyMs,
     attempts: detection.attempts,
   };

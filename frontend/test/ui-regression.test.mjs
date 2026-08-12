@@ -115,3 +115,14 @@ test('expired update permalinks explain the 240-day display window', () => {
   assert.match(mainSource, /err\.status === 404/);
   assert.match(mainSource, /outside PatchTicker’s 240-day display window/);
 });
+
+test('update cards and detail pages expose compact source freshness signals', () => {
+  assert.match(mainSource, /function freshnessMeta\(update\)/);
+  assert.match(mainSource, /Fresh[\s\S]*Recent[\s\S]*Aging[\s\S]*Recheck due/);
+  assert.match(mainSource, /decision-card-trust/);
+  assert.match(mainSource, /detail-source-health/);
+  assert.match(mainSource, /official source/);
+  assert.match(mainSource, /updateDateLabel\(u\)/);
+  assert.match(cssSource, /\.freshness-signal--fresh\s*\{[^}]*var\(--green-primary\)/s);
+  assert.match(cssSource, /\.freshness-signal--stale\s*\{[^}]*var\(--red\)/s);
+});

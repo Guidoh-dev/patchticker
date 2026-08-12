@@ -53,3 +53,40 @@ test('database update and history queries enforce the same 240-day window', asyn
   expect(updateQueries).toHaveLength(2);
   expect(updateQueries.every(sql => sql.includes("INTERVAL '240 days'"))).toBe(true);
 });
+
+test('successful database reads never mix static samples into the live feed', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockImplementation(async (sql) => {
+    if (sql.includes('FROM update_ratings')) return { rows: [] };
+    return { rows: [{
+      id: 'vendor-real-1-2-3', platform: 'Windows', name: 'Verified Vendor Release', version: '1.2.3',
+      released_at: '2026-08-10', status: 'stable', score: '8.2', impact_score: '4.0', bug_count: 0,
+      affects: 'Supported systems', verdict: 'Install', reasoning: 'Official notes loaded.', changelog: [],
+      known_issues: [], risk_factors: [], evidence: [{ source: 'Vendor', url: 'https://vendor.example/release', releaseType: 'official-release' }],
+      security_criticality: null, subreddits: [], ai_generated: false, ai_model: null, ai_generated_at: null,
+      created_at: '2026-08-10T12:00:00Z', updated_at: '2026-08-11T11:00:00Z',
+    }] };
+  });
+
+  const updates = await updatesService.getUpdates();
+  expect(updates).toHaveLength(1);
+  expect(updates[0]).toMatchObject({ id: 'vendor-real-1-2-3', updatedAt: '2026-08-11T11:00:00Z' });
+  expect(updates.some(update => update.id === 'steam-apex-legends-july-2026')).toBe(false);
+});
+
+test('successful empty DB reads stay empty instead of reviving static samples', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+
+  await expect(updatesService.getUpdates({ search: 'not-a-real-release' })).resolves.toEqual([]);
+  await expect(updatesService.getUpdateById('steam-apex-legends-july-2026')).resolves.toBeNull();
+});
+
+test('monthly placeholders require official release metadata', () => {
+  const base = { platform: 'PS5', version: '2026-08', releasedAt: '2026-08-05' };
+  expect(updatesService.__test.isUpdateDisplayable({ ...base, evidence: [{ source: 'Support' }] })).toBe(false);
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base,
+    evidence: [{ source: 'Support', releaseType: 'official-version' }],
+  })).toBe(true);
+});

@@ -16,8 +16,8 @@
 //   Apple iOS — Apple Security Updates HTML page
 //   macOS     — Apple Security Updates HTML page
 //   Steam     — Steam news RSS feed
-//   Xbox      — Xbox Wire RSS feed
-//   PS5       — PlayStation RSS feed
+//   Xbox      — Xbox Support system update page (fails closed when SPA data is unavailable)
+//   PS5       — PlayStation Support system software page
 //   Intel     — Intel download center JSON API
 //
 // All detectors fail silently — a scrape failure never crashes the cron job.
@@ -44,11 +44,11 @@ async function fetchHtml(url) {
     });
     return res.data;
   } catch (err) {
-    if (err.response?.status !== 403 || typeof fetch !== 'function') throw err;
-    const controller = new AbortController();
+    if (err.response?.status !== 403 || typeof globalThis.fetch !== 'function') throw err;
+    const controller = new globalThis.AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT);
     try {
-      const res = await fetch(url, {
+      const res = await globalThis.fetch(url, {
         signal: controller.signal,
         headers: { 'User-Agent': UA, 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
       });
@@ -69,16 +69,32 @@ async function fetchJson(url, headers = {}) {
 }
 
 async function fetchXml(url) {
-  const res = await axios.get(url, {
-    timeout: TIMEOUT,
-    headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
-  });
-  return res.data;
+  try {
+    const res = await axios.get(url, {
+      timeout: TIMEOUT,
+      headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+    return res.data;
+  } catch (err) {
+    if (err.response?.status !== 403 || typeof globalThis.fetch !== 'function') throw err;
+    const controller = new globalThis.AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT);
+    try {
+      const res = await globalThis.fetch(url, {
+        signal: controller.signal,
+        headers: { 'User-Agent': UA, 'Accept': 'application/rss+xml, application/xml, text/xml,*/*;q=0.8', 'Accept-Language': 'en-US,en;q=0.9' },
+      });
+      if (!res.ok) throw err;
+      return await res.text();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }
 
 
-function toIsoDate(value, fallback = new Date()) {
-  if (!value) return fallback.toISOString().slice(0, 10);
+function toIsoDate(value, fallback = null) {
+  if (!value) return fallback ? toIsoDate(fallback) : null;
   const raw = String(value).trim();
   const candidates = [raw];
   if (/^[A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}$/i.test(raw)) {
@@ -88,7 +104,7 @@ function toIsoDate(value, fallback = new Date()) {
     const parsed = new Date(candidate);
     if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
   }
-  return fallback.toISOString().slice(0, 10);
+  return fallback ? toIsoDate(fallback) : null;
 }
 
 function cleanText(value, max = 500) {
@@ -110,15 +126,6 @@ function firstVersion(text) {
   return cleanText(text, 2000).match(/\b\d{1,4}(?:\.\d{1,5}){1,5}(?:[-.]\d{1,5})?\b/)?.[0] || null;
 }
 
-function collectBullets($, root, max = 5) {
-  const bullets = [];
-  root.find('li').each((_, el) => {
-    const t = cleanText($(el).text(), 240);
-    if (t && !/^download|subscribe|share$/i.test(t)) bullets.push(t);
-  });
-  return unique(bullets).slice(0, max);
-}
-
 function sectionBullets($, labels, max = 5) {
   const wanted = labels.map(l => l.toLowerCase());
   const bullets = [];
@@ -137,19 +144,30 @@ function sectionBullets($, labels, max = 5) {
   return unique(bullets).slice(0, max);
 }
 
-function sourceEvidence(source, url, text) {
-  return [{ source, url, text: cleanText(text, 260) }];
+function sourceEvidence(source, url, text, meta = {}) {
+  return [{
+    source,
+    url,
+    text: cleanText(text, 260),
+    checkedAt: new Date().toISOString(),
+    ...meta,
+  }];
 }
 
 function absoluteUrl(url, base) {
   if (!url) return base;
-  try { return new URL(url, base).toString(); }
+  try { return new globalThis.URL(url, base).toString(); }
   catch { return base; }
 }
 
-function versionFromDate(value, fallback = new Date()) {
+function versionFromDate(value, fallback = null) {
   const iso = toIsoDate(value, fallback);
-  return iso.slice(0, 7);
+  return iso ? iso.slice(0, 7) : null;
+}
+
+function safeDecode(value) {
+  try { return decodeURIComponent(String(value || '').replace(/\+/g, ' ')); }
+  catch { return String(value || ''); }
 }
 
 function metaContent($, name) {
@@ -166,6 +184,60 @@ function amdNestedBullets($, label, max = 5) {
     });
   });
   return unique(bullets).slice(0, max);
+}
+
+function parseSwitchReleasePage(html) {
+  const $ = cheerio.load(html);
+  const releaseNodes = $('h1,h2,h3,h4,h5,p,strong,b').toArray();
+  let release = null;
+
+  for (const el of releaseNodes) {
+    const text = cleanText($(el).text(), 220);
+    const match = text.match(/(?:Ver\.?|Version)\s*(\d+(?:\.\d+){2})\s*\(Released\s+([^)]+)\)/i);
+    if (!match) continue;
+    release = { el, version: match[1], releasedAt: toIsoDate(match[2]), heading: match[0] };
+    break;
+  }
+
+  if (!release?.releasedAt) return null;
+
+  const bullets = [];
+  const releaseEl = $(release.el);
+  const anchor = releaseEl.is('strong,b') ? releaseEl.closest('p,h1,h2,h3,h4,h5') : releaseEl;
+  let node = anchor.next();
+  let guard = 0;
+  while (node.length && guard++ < 12) {
+    const nodeText = cleanText(node.text(), 1000);
+    if (/(?:Ver\.?|Version)\s*\d+(?:\.\d+){2}\s*\(Released/i.test(nodeText)) break;
+    node.find('li').each((_, li) => {
+      const ownText = cleanText($(li).clone().children('ul,ol').remove().end().text(), 280);
+      if (ownText) bullets.push(ownText);
+    });
+    if (!node.find('li').length && /improvement|change|feature|stability|issue|shop|video|pin/i.test(nodeText)) {
+      bullets.push(nodeText);
+    }
+    node = node.next();
+  }
+
+  return {
+    version: release.version,
+    releasedAt: release.releasedAt,
+    changelog: unique(bullets).slice(0, 8),
+    heading: release.heading,
+  };
+}
+
+function parsePs5SupportPage(html) {
+  const $ = cheerio.load(html);
+  const version = String(html || '').match(/Release Version:\s*([0-9.]+)/i)?.[1]
+    || $('input[name="lastcodedeployed-releaseversion"]').attr('value')?.match(/([0-9.]+)\s*$/)?.[1]
+    || null;
+  const publishedTimestamp = Number($('meta[name="publish_date_timestamp"]').attr('content'));
+  const sourceUpdatedAt = Number.isFinite(publishedTimestamp) && publishedTimestamp > 0
+    ? toIsoDate(new Date(publishedTimestamp * 1000))
+    : null;
+  if (!version || !sourceUpdatedAt) return null;
+  return { version, sourceUpdatedAt };
 }
 
 // ── Parse RSS helper ──────────────────────────────────────────────────────────
@@ -263,7 +335,7 @@ async function detectWindows() {
       affects:    'Windows 11 supported releases / cumulative OS servicing / security and quality updates',
       changelog:  unique([previewNote, ...changelog]).slice(0, 6),
       knownIssues,
-      evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title),
+      evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title, { dateBasis: 'released', releaseType: 'official-release' }),
       sourceUrl:  update.sourceUrl,
     };
   } catch (err) {
@@ -284,14 +356,19 @@ async function detectNvidia() {
     );
     const driver = data?.IDS?.[0]?.downloadInfo;
     if (!driver) return null;
+    const sourceUrl = driver.DetailsURL || absoluteUrl(driver.DownloadURL || '', 'https://www.nvidia.com/en-us/geforce/drivers/');
+    const decodedNotes = cleanText(safeDecode(driver.ReleaseNotes), 1200);
+    const usefulStart = decodedNotes.search(/Game Ready for|Fixed Gaming Bugs|Release Highlights/i);
+    const releaseNotes = cleanText(usefulStart >= 0 ? decodedNotes.slice(usefulStart) : decodedNotes, 520);
 
     return {
       platform:   'NVIDIA',
       name:       `NVIDIA Game Ready Driver ${driver.Version}`,
       version:    driver.Version,
       releasedAt: toIsoDate(driver.ReleaseDateTime),
-      changelog:  driver.ReleaseNotes ? [driver.ReleaseNotes.slice(0, 400)] : [],
-      sourceUrl:  driver.DetailsURL || absoluteUrl(driver.DownloadURL || '', 'https://www.nvidia.com/en-us/geforce/drivers/'),
+      changelog:  releaseNotes ? [releaseNotes] : [],
+      evidence:   sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}`, { dateBasis: 'released', releaseType: 'official-release' }),
+      sourceUrl,
     };
   } catch (err) {
     logger.warn('[scraper] NVIDIA detection failed', { error: err.message });
@@ -333,7 +410,7 @@ async function detectAmd() {
         riskFactors: known.slice(0, 3).map(text => ({ level: 'medium', text })),
         verdict: 'Check game-specific fixes and known issues before updating, especially if your current Radeon driver is stable.',
         reasoning: 'AMD Adrenalin releases can improve game support and fix crashes, but driver updates may also introduce regressions for specific GPU families or titles. PatchTicker tracks the official AMD release notes and highlights fixed and known issues.',
-        evidence: sourceEvidence('AMD Release Notes', url, `${title}. ${fixed[0] || known[0] || 'Official AMD driver release notes.'}`),
+        evidence: sourceEvidence('AMD Release Notes', url, `${title}. ${fixed[0] || known[0] || 'Official AMD driver release notes.'}`, { dateBasis: 'released', releaseType: 'official-release' }),
         sourceUrl: url,
       };
     }
@@ -378,7 +455,7 @@ async function parseAppleSecurityRelease(kind) {
     riskFactors: [{ level: 'low', text: 'Security updates are usually recommended quickly, but older devices and managed fleets should verify app compatibility first.' }],
     verdict: 'Prioritize this update when it includes security fixes, especially for WebKit, kernel, or actively exploited vulnerabilities.',
     reasoning: 'Apple security releases often include CVE fixes that are not fully discussed until patches are available. PatchTicker tracks Apple’s official security release index and links the advisory for review.',
-    evidence: sourceEvidence('Apple Security Releases', sourceUrl, `${match.product} listed on Apple security releases page.`),
+    evidence: sourceEvidence('Apple Security Releases', sourceUrl, `${match.product} listed on Apple security releases page.`, { dateBasis: 'released', releaseType: 'official-release' }),
     sourceUrl,
   };
 }
@@ -420,14 +497,23 @@ async function detectSteam() {
       .sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
     const update = items.find(i => /Steam Client|Steam Update|Steam Deck|SteamOS/i.test(i.title));
     if (!update) return null;
+    const sourceUrl = update.link || 'https://store.steampowered.com/news/';
+    const version = firstVersion(`${update.title} ${update.description}`) || versionFromDate(update.pubDate);
+    const description = cleanText(update.description, 900);
+    const knownIssueIndex = description.search(/Known Issues?/i);
+    const knownIssueText = knownIssueIndex >= 0
+      ? cleanText(description.slice(knownIssueIndex).replace(/^Known Issues?\s*(?:-\s*Beta)?/i, '').split(/This issue is fixed/i)[0], 320)
+      : null;
 
     return {
       platform:   'Steam',
       name:       update.title.slice(0, 100),
-      version:    update.pubDate ? new Date(update.pubDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Latest',
+      version,
       releasedAt: toIsoDate(update.pubDate),
-      changelog:  [update.description].filter(Boolean),
-      sourceUrl:  update.link || 'https://store.steampowered.com/news/',
+      changelog:  [description].filter(Boolean),
+      knownIssues: knownIssueText ? [knownIssueText] : [],
+      evidence: sourceEvidence('Steam News', sourceUrl, `${update.title}. ${description}`, { dateBasis: 'published', releaseType: 'official-release' }),
+      sourceUrl,
     };
   } catch (err) {
     logger.warn('[scraper] Steam detection failed', { error: err.message });
@@ -439,20 +525,23 @@ async function detectSteam() {
  * Switch — Nintendo Switch system update history
  */
 async function detectSwitch() {
+  const sourceUrl = 'https://en-americas-support.nintendo.com/app/answers/detail/a_id/22525';
   try {
-    const html = await fetchHtml('https://en-americas-support.nintendo.com/app/answers/detail/a_id/22525');
-    const $ = cheerio.load(html);
-    const text = $('body').text().replace(/\s+/g, ' ');
-    const versionMatch = text.match(/Ver\.?\s*(\d+\.\d+\.\d+)/i) || text.match(/version\s+(\d+\.\d+\.\d+)/i);
-    if (!versionMatch) return null;
+    const parsed = parseSwitchReleasePage(await fetchHtml(sourceUrl));
+    if (!parsed) return null;
+    const changelog = parsed.changelog.length
+      ? parsed.changelog
+      : ['Nintendo published a system stability and feature update for supported Switch consoles.'];
 
     return {
       platform:   'Switch',
-      name:       `Nintendo Switch System Update ${versionMatch[1]}`,
-      version:    versionMatch[1],
-      releasedAt: toIsoDate(),
-      changelog:  ['Nintendo Switch system update detected from official support history'],
-      sourceUrl:  'https://en-americas-support.nintendo.com/app/answers/detail/a_id/22525',
+      name:       `Nintendo Switch System Update ${parsed.version}`,
+      version:    parsed.version,
+      releasedAt: parsed.releasedAt,
+      affects:    'Nintendo Switch / Switch OLED / Switch Lite / system firmware / eShop / online services',
+      changelog,
+      evidence:   sourceEvidence('Nintendo Support', sourceUrl, `${parsed.heading}. ${changelog[0]}`, { dateBasis: 'released', releaseType: 'official-release' }),
+      sourceUrl,
     };
   } catch (err) {
     logger.warn('[scraper] Switch detection failed', { error: err.message });
@@ -470,13 +559,15 @@ async function detectDiscord() {
     const items = parseRssItems(xml, 10);
     const update = items.find(i => /resolved|monitoring|incident|maintenance|desktop|voice|api|gateway/i.test(`${i.title} ${i.description}`)) || items[0];
     if (!update) return null;
+    const sourceUrl = update.link || 'https://discordstatus.com/history';
     return {
       platform:   'Discord',
       name:       `Discord Status / Client Signal — ${update.title}`.slice(0, 100),
-      version:    update.pubDate ? new Date(update.pubDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Latest',
+      version:    versionFromDate(update.pubDate),
       releasedAt: toIsoDate(update.pubDate),
       changelog:  [update.description].filter(Boolean),
-      sourceUrl:  update.link || 'https://discordstatus.com/history',
+      evidence:   sourceEvidence('Discord Status', sourceUrl, `${update.title}. ${update.description}`, { dateBasis: 'published', releaseType: 'official-status' }),
+      sourceUrl,
     };
   } catch (err) {
     logger.warn('[scraper] Discord detection failed', { error: err.message });
@@ -485,7 +576,8 @@ async function detectDiscord() {
 }
 
 /**
- * Battle.net — Blizzard launcher/support signal fallback
+ * Battle.net — official launcher/support release pages only.
+ * Generic support shells intentionally return null instead of a dated placeholder.
  */
 async function detectBattleNet() {
   const statusUrl = process.env.BATTLENET_STATUS_URL || 'https://battle.net/support/article/000127080';
@@ -493,21 +585,23 @@ async function detectBattleNet() {
     const html = await fetchHtml(statusUrl);
     const $ = cheerio.load(html);
     const pageTitle = cleanText($('h1').first().text() || $('title').text(), 120);
-    const body = cleanText($('body').text(), 2500);
-    const maintenance = /maintenance|service|login|download|patch|desktop app|launcher/i.test(body);
-    const title = maintenance ? 'Battle.net Desktop App / Service Update Signal' : 'Battle.net Desktop App Update Signal';
+    const body = cleanText($('body').text(), 6000);
+    const version = body.match(/(?:Battle\.net Desktop App|Version|Build)[:\s-]+(\d+(?:\.\d+){1,4})/i)?.[1];
+    const date = body.match(/(?:Released|Updated|Published)[:\s-]+([A-Z][a-z]+\s+\d{1,2},\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
+      || $('time[datetime]').first().attr('datetime');
+    if (!version || !toIsoDate(date)) return null;
     return {
       platform:   'BattleNet',
-      name:       title,
-      version:    versionFromDate(),
-      releasedAt: toIsoDate(),
+      name:       `Battle.net Desktop App ${version}`,
+      version,
+      releasedAt: toIsoDate(date),
       affects:    'Battle.net launcher / Blizzard game updates / login, repair, download, and patch installation flow',
-      changelog:  [pageTitle || 'Battle.net support checked for launcher, login, download, and maintenance issues.'],
-      knownIssues: maintenance ? [] : ['No specific launcher patch note found on the checked Battle.net support source.'],
+      changelog:  [pageTitle || `Battle.net Desktop App ${version} release information.`],
+      knownIssues: [],
       riskFactors: [{ level: 'medium', text: 'Launcher or service issues can block game patching, downloads, login, or repair loops even when the game update itself is healthy.' }],
       verdict: 'Check before large Blizzard game updates; install normally if launcher login/download services are healthy.',
-      reasoning: 'Battle.net does not expose a clean public launcher release feed. PatchTicker tracks the official support surface for client-impacting launcher, login, download, and maintenance signals.',
-      evidence: sourceEvidence('Battle.net Support', statusUrl, pageTitle || body),
+      reasoning: 'PatchTicker only publishes a Battle.net launcher entry when Blizzard’s official support surface exposes both an identifiable version and publication date.',
+      evidence: sourceEvidence('Battle.net Support', statusUrl, `${pageTitle}. Version ${version}.`, { dateBasis: 'published', releaseType: 'official-release' }),
       sourceUrl:  statusUrl,
     };
   } catch (err) {
@@ -517,21 +611,28 @@ async function detectBattleNet() {
 }
 
 /**
- * GOG Galaxy — GOG news feed / Galaxy signal
+ * GOG Galaxy — GOG news release cards with explicit client version/date only.
  */
 async function detectGog() {
+  const newsUrl = 'https://www.gog.com/news';
   try {
-    const html = await fetchHtml('https://www.gog.com/news');
+    const html = await fetchHtml(newsUrl);
     const $ = cheerio.load(html);
     const card = $('article, a').filter((_, el) => /GOG GALAXY|Galaxy|client|update/i.test($(el).text())).first();
-    const title = card.text().replace(/\s+/g, ' ').trim().slice(0, 100);
+    const title = cleanText(card.text(), 140);
+    const version = title.match(/(?:GOG GALAXY|Galaxy)(?:\s+Client)?(?:\s+Update)?\s+(\d+(?:\.\d+){1,4})/i)?.[1];
+    const date = card.find('time[datetime]').first().attr('datetime')
+      || cleanText(card.text(), 500).match(/([A-Z][a-z]+\s+\d{1,2},\s+\d{4})/)?.[1];
+    if (!version || !toIsoDate(date)) return null;
+    const sourceUrl = absoluteUrl(card.attr('href') || card.find('a').first().attr('href'), newsUrl);
     return {
       platform:   'GOG',
-      name:       title || 'GOG Galaxy Update Signal',
-      version:    new Date().toISOString().slice(0, 7),
-      releasedAt: toIsoDate(),
-      changelog:  ['GOG news monitored for Galaxy client and library-sync updates'],
-      sourceUrl:  'https://www.gog.com/news',
+      name:       title,
+      version,
+      releasedAt: toIsoDate(date),
+      changelog:  [title],
+      evidence:   sourceEvidence('GOG News', sourceUrl, title, { dateBasis: 'published', releaseType: 'official-release' }),
+      sourceUrl,
     };
   } catch (err) {
     logger.warn('[scraper] GOG detection failed', { error: err.message });
@@ -541,7 +642,9 @@ async function detectGog() {
 
 
 /**
- * Xbox — Xbox Wire RSS
+ * Xbox — official Xbox Support system-update notes.
+ * The current SPA shell does not expose release data to the server, so this
+ * detector returns null rather than manufacturing a monthly version.
  */
 async function detectXbox() {
   try {
@@ -549,9 +652,10 @@ async function detectXbox() {
     const html = await fetchHtml(url);
     const $ = cheerio.load(html);
     const body = cleanText($('body').text(), 6000);
-    const os = body.match(/OS version[:\s]+([A-Z0-9_\\.\-]+)/i)?.[1] || firstVersion(body) || 'Latest';
+    const os = body.match(/OS version[:\s]+([A-Z0-9_.-]+)/i)?.[1] || firstVersion(body);
     const date = body.match(/(?:Released|Available|Mandatory)[:\s]+([A-Z][a-z]+\s+\d{1,2},\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1];
-    const finalVersion = os === 'Latest' ? versionFromDate(date) : os;
+    if (!os || !toIsoDate(date)) return null;
+    const finalVersion = os;
     const bullets = sectionBullets($, ['New Features', 'Fixes', 'Known Issues', 'System Update Details'], 6);
     return {
       platform: 'Xbox',
@@ -564,7 +668,7 @@ async function detectXbox() {
       riskFactors: [{ level: 'low', text: 'Console updates are generally safe, but dashboard or network changes can temporarily affect party chat, store access, or game launch behavior.' }],
       verdict: 'Install for normal console use unless community reports show dashboard, network, or game-launch regressions.',
       reasoning: 'Xbox system updates can change dashboard behavior, networking, controller handling, and game compatibility. PatchTicker tracks the official Xbox Support update notes rather than relying on blog posts.',
-      evidence: sourceEvidence('Xbox Support', url, `Xbox update notes detected OS/version ${finalVersion}.`),
+      evidence: sourceEvidence('Xbox Support', url, `Xbox update notes detected OS/version ${finalVersion}.`, { dateBasis: 'released', releaseType: 'official-release' }),
       sourceUrl: url,
     };
   } catch (err) {
@@ -574,31 +678,26 @@ async function detectXbox() {
 }
 
 /**
- * PS5 — PlayStation Blog RSS
+ * PS5 — official PlayStation Support release version.
  */
 async function detectPs5() {
   try {
     const url = 'https://www.playstation.com/en-us/support/hardware/ps5/system-software/';
     const html = await fetchHtml(url);
-    const $ = cheerio.load(html);
-    const body = cleanText($('body').text(), 6000);
-    const version = body.match(/Version[:\s]+([\d.\-]+)/i)?.[1]
-      || body.match(/system software[^\d]+([\d]{2}\.\d{2}[\d.\-]*)/i)?.[1]
-      || firstVersion(body)
-      || versionFromDate();
-    const bullets = collectBullets($, $('body'), 8).filter(b => /update|software|system|feature|stability|security|download/i.test(b)).slice(0, 5);
+    const parsed = parsePs5SupportPage(html);
+    if (!parsed) return null;
     return {
       platform: 'PS5',
-      name: `PS5 System Software ${version}`,
-      version,
-      releasedAt: toIsoDate(),
+      name: `PS5 System Software ${parsed.version}`,
+      version: parsed.version,
+      releasedAt: parsed.sourceUpdatedAt,
       affects: 'PlayStation 5 / system software / online services / controller and game compatibility',
-      changelog: bullets.length ? bullets : ['Official PS5 system software page checked for update/install guidance and release information.'],
+      changelog: [`PlayStation’s official support page currently advertises PS5 system software release ${parsed.version}. A per-build changelog is not exposed on the support page.`],
       knownIssues: [],
       riskFactors: [{ level: 'low', text: 'System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.' }],
       verdict: 'Install for online play and system security unless early user reports flag a PS5-specific regression.',
       reasoning: 'PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker uses the official PlayStation support page for the current update signal.',
-      evidence: sourceEvidence('PlayStation Support', url, `Official PS5 system software page detected version ${version}.`),
+      evidence: sourceEvidence('PlayStation Support', url, `Official PS5 system software page advertises release version ${parsed.version}.`, { dateBasis: 'source-updated', releaseType: 'official-version', publishedAt: parsed.sourceUpdatedAt }),
       sourceUrl: url,
     };
   } catch (err) {
@@ -638,7 +737,7 @@ async function detectIntel() {
       riskFactors: [{ level: 'medium', text: 'Graphics driver updates can affect game performance, display output, sleep/wake behavior, and compatibility with capture or overlay tools.' }],
       verdict: 'Good candidate for Arc users chasing game fixes or compatibility updates; wait if your current driver is stable and no listed fix applies to your setup.',
       reasoning: 'Intel graphics drivers often bundle game optimizations, device support, and display fixes. PatchTicker tracks Intel’s official Download Center page and extracts the latest version/date directly from that listing.',
-      evidence: sourceEvidence('Intel Download Center', url, `${title} version ${version}. ${intro || ''}`),
+      evidence: sourceEvidence('Intel Download Center', url, `${title} version ${version}. ${intro || ''}`, { dateBasis: 'released', releaseType: 'official-release' }),
       sourceUrl: url,
     };
   } catch (err) {
@@ -676,10 +775,20 @@ function validateDetectedUpdate(platform, detected) {
   if (!detected.name || !detected.version) {
     throw new Error('Detector returned incomplete update data');
   }
+  const releasedAt = toIsoDate(detected.releasedAt);
+  if (!releasedAt) {
+    throw new Error('Detector returned no trustworthy release/source date');
+  }
+  if (Date.parse(releasedAt) > Date.now() + (48 * 60 * 60 * 1000)) {
+    throw new Error('Detector returned a future-dated release');
+  }
+  if (!detected.sourceUrl || !/^https:\/\//i.test(detected.sourceUrl)) {
+    throw new Error('Detector returned no trustworthy HTTPS source');
+  }
   return {
     ...detected,
     platform: detected.platform || platform,
-    releasedAt: toIsoDate(detected.releasedAt),
+    releasedAt,
     changelog: Array.isArray(detected.changelog) ? detected.changelog.filter(Boolean).slice(0, 12) : [],
     knownIssues: Array.isArray(detected.knownIssues) ? detected.knownIssues.filter(Boolean).slice(0, 12) : [],
     riskFactors: Array.isArray(detected.riskFactors) ? detected.riskFactors.slice(0, 12) : [],
@@ -742,10 +851,10 @@ async function detectPlatform(platform) {
 /**
  * Run all detectors with detailed status for operations/admin display.
  */
-async function detectAllDetailed(platforms = PLATFORM_KEYS) {
+async function detectAllDetailed(platforms = PLATFORM_KEYS, opts = {}) {
   const results = [];
   for (const platform of platforms) {
-    results.push(await detectPlatformDetailed(platform));
+    results.push(await detectPlatformDetailed(platform, opts));
   }
   return results;
 }
@@ -758,4 +867,11 @@ async function detectAll() {
   return (await detectAllDetailed()).map(({ platform, result }) => ({ platform, result }));
 }
 
-module.exports = { detectPlatform, detectPlatformDetailed, detectAll, detectAllDetailed, DETECTORS };
+module.exports = {
+  detectPlatform,
+  detectPlatformDetailed,
+  detectAll,
+  detectAllDetailed,
+  DETECTORS,
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, safeDecode, validateDetectedUpdate },
+};
