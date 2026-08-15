@@ -1550,6 +1550,58 @@ function freshnessMeta(update) {
   return { label: 'Recheck due', tone: 'stale', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
 }
 
+function formatVerifiedMoment(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Pending';
+  return parsed.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+    timeZone: 'UTC', timeZoneName: 'short',
+  });
+}
+
+function renderSourceTimeline(update) {
+  const firstSeenAt = update?.firstSeenAt || update?.createdAt || null;
+  const lastCheckedAt = update?.lastCheckedAt || update?.updatedAt
+    || (update?.evidence || []).find(item => item?.checkedAt)?.checkedAt
+    || null;
+  const points = [
+    {
+      label: updateDateLabel(update),
+      value: formatReleaseDate(update?.releasedAt),
+      detail: 'Vendor or publisher date',
+      datetime: update?.releasedAt,
+    },
+    {
+      label: 'First tracked',
+      value: formatVerifiedMoment(firstSeenAt),
+      detail: firstSeenAt ? `Added ${timeAgo(firstSeenAt)}` : 'First-seen time unavailable',
+      datetime: firstSeenAt,
+    },
+    {
+      label: 'Last verified',
+      value: formatVerifiedMoment(lastCheckedAt),
+      detail: lastCheckedAt ? `Source checked ${timeAgo(lastCheckedAt)}` : 'Verification pending',
+      datetime: lastCheckedAt,
+    },
+  ];
+  return `
+    <div class="detail-source-timeline-wrap" aria-label="Patch source timeline">
+      <span class="detail-source-timeline-title">Source timeline</span>
+      <ol class="detail-source-timeline">
+        ${points.map(point => `
+          <li class="detail-source-timeline-step${point.datetime ? ' is-confirmed' : ''}">
+            <i aria-hidden="true"></i>
+            <span>${H(point.label)}</span>
+            <time${point.datetime ? ` datetime="${H(String(point.datetime))}"` : ''}>${H(point.value)}</time>
+            <small>${H(point.detail)}</small>
+          </li>
+        `).join('')}
+      </ol>
+    </div>
+  `;
+}
+
 function securitySignalMeta(update) {
   const security = update?.securityCriticality || {};
   const cves = Array.isArray(security.cves) ? security.cves : [];
@@ -3412,6 +3464,7 @@ async function renderUpdateDetail(id) {
               <span>${H(detailSourceLabel)}</span>
               <span>${H(detailMethodLabel)}</span>
             </div>
+            ${renderSourceTimeline(u)}
           </div>
         </div>
 

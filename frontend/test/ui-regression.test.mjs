@@ -248,6 +248,15 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(cssSource, /\.dash-coverage-pulse\.is-degraded\s*\{[^}]*var\(--yellow\)/s);
 });
 
+test('detail pages distinguish vendor release, first-seen, and recheck timing', () => {
+  assert.match(mainSource, /function renderSourceTimeline\(update\)/);
+  assert.match(mainSource, /label: 'First tracked'/);
+  assert.match(mainSource, /label: 'Last verified'/);
+  assert.match(mainSource, /Source timeline/);
+  assert.match(cssSource, /\.detail-source-timeline\s*\{[\s\S]*grid-template-columns:\s*repeat\(3/);
+  assert.match(cssSource, /@media \(max-width: 560px\)[\s\S]*\.detail-source-timeline\s*\{[\s\S]*grid-template-columns:\s*1fr/);
+});
+
 test('feed distinguishes the latest release from archived platform history', () => {
   assert.match(mainSource, /function annotateReleasePositions\(updates = \[\]\)/);
   assert.match(mainSource, /releasePosition: latestByLane/);

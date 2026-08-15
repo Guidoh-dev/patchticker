@@ -86,6 +86,7 @@ test('successful database reads never mix static samples into the live feed', as
   expect(updates).toHaveLength(1);
   expect(updates[0]).toMatchObject({
     id: 'vendor-real-1-2-3',
+    firstSeenAt: '2026-08-10T12:00:00Z',
     updatedAt: '2026-08-11T11:00:00Z',
     knownIssuesAuthoritative: true,
     securityCriticality: { level: 'none', label: 'Security context not classified', cves: [] },

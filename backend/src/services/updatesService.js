@@ -822,6 +822,7 @@ function rowToUpdate(row) {
     aiGeneratedAt:        row.ai_generated_at || null,
     analysisMethod:       'source-and-issue-signals',
     createdAt:            row.created_at,
+    firstSeenAt:          row.created_at,
     updatedAt:            row.updated_at,
   };
 }

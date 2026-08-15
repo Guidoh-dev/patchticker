@@ -7034,6 +7034,101 @@ body { overflow-x: hidden; }
   color: var(--text-2);
   font: inherit;
 }
+.detail-source-timeline-wrap {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.detail-source-timeline-title {
+  display: block;
+  margin-bottom: 11px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.detail-source-timeline {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.detail-source-timeline::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  right: 5px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--cyan), var(--green-primary), var(--purple));
+  opacity: .45;
+}
+.detail-source-timeline-step {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding-top: 16px;
+}
+.detail-source-timeline-step > i {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--bg-2);
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.detail-source-timeline-step.is-confirmed > i {
+  background: var(--green-primary);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--green-primary) 55%, transparent);
+}
+.detail-source-timeline-step > span {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+.detail-source-timeline-step time {
+  color: var(--text);
+  font-family: var(--font-number);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+.detail-source-timeline-step small {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 1.35;
+}
+@media (max-width: 560px) {
+  .detail-source-timeline {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding-left: 18px;
+  }
+  .detail-source-timeline::before {
+    top: 5px;
+    bottom: 5px;
+    left: 5px;
+    right: auto;
+    width: 1px;
+    height: auto;
+    background: linear-gradient(180deg, var(--cyan), var(--green-primary), var(--purple));
+  }
+  .detail-source-timeline-step { padding: 0 0 0 10px; }
+  .detail-source-timeline-step > i { left: -18px; }
+}
 .detail-action-btn {
   min-height: 44px;
   border: 1px solid var(--border-2);
