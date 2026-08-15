@@ -146,6 +146,47 @@ test('verified evidence metadata is promoted for API clients without inference',
   });
 });
 
+test('detail pages rank same-product releases before same-lane and platform releases', async () => {
+  const row = (overrides = {}) => ({
+    id: 'steam-current', platform: 'Steam', name: 'Marvel Rivals current patch', version: '9.5',
+    display_version: null, product_id: '2767030', source_kind: 'steam-game-news', source_ref: 'current',
+    released_at: '2026-08-07', status: 'caution', score: '7.2', impact_score: null, bug_count: 0,
+    affects: 'Marvel Rivals on Steam', verdict: 'Review notes', reasoning: 'Official notes loaded.',
+    changelog: ['Documented gameplay changes.'], known_issues: [], risk_factors: [],
+    evidence: [{ source: 'Steam', url: 'https://store.steampowered.com/news/app/2767030/view/1', releaseType: 'official-game-update' }],
+    security_criticality: null, subreddits: [], release_size_bytes: null,
+    created_at: '2026-08-07T12:00:00Z', updated_at: '2026-08-11T11:00:00Z',
+    ...overrides,
+  });
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery
+    .mockResolvedValueOnce({ rows: [row()] })
+    .mockResolvedValueOnce({ rows: [
+      row({
+        id: 'steam-same-product', name: 'Marvel Rivals previous patch', version: '9.4', relation_type: 'same-product',
+        evidence: [{ source: 'Steam', url: 'https://store.steampowered.com/news/app/2767030/view/2', releaseType: 'official-game-update' }],
+      }),
+      row({
+        id: 'steam-same-lane', name: 'Another Steam game patch', version: '2.0', product_id: '570', relation_type: 'same-lane',
+        evidence: [{ source: 'Steam', url: 'https://store.steampowered.com/news/app/570/view/3', releaseType: 'official-game-update' }],
+      }),
+      row({
+        id: 'steam-same-platform', name: 'Steam client patch', version: '2026.08', product_id: '593110', source_kind: 'steam-client-news', relation_type: 'same-platform',
+        evidence: [{ source: 'Steam', url: 'https://store.steampowered.com/news/app/593110/view/4', releaseType: 'official-release' }],
+      }),
+    ] });
+
+  const detail = await updatesService.getUpdateById('steam-current');
+  expect(detail.related.map(item => [item.id, item.relationType])).toEqual([
+    ['steam-same-product', 'same-product'],
+    ['steam-same-lane', 'same-lane'],
+    ['steam-same-platform', 'same-platform'],
+  ]);
+  const [relatedSql, relatedParams] = mockQuery.mock.calls[1];
+  expect(relatedSql).toMatch(/product_id = \$3[\s\S]+source_kind = \$4[\s\S]+released_at DESC/);
+  expect(relatedParams).toEqual(['steam-current', 'Steam', '2767030', 'steam-game-news', 4]);
+});
+
 test('successful empty DB reads stay empty instead of reviving static samples', async () => {
   mockIsAvailable.mockReturnValue(true);
   mockQuery.mockResolvedValue({ rows: [] });

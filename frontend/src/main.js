@@ -2093,6 +2093,21 @@ function renderMiniUpdateCard(u, variant = 'default') {
   `;
 }
 
+function renderRelatedReleaseCard(update) {
+  const labels = {
+    'same-product': 'Same product',
+    'same-lane': update?.sourceKind === 'steam-game-news' ? 'Steam game lane' : 'Same update lane',
+    'same-platform': `More from ${platformLabel(update?.platform)}`,
+  };
+  const relation = labels[update?.relationType] || labels['same-platform'];
+  return `
+    <article class="detail-related-item">
+      <span class="detail-related-relation detail-related-relation--${H(update?.relationType || 'same-platform')}">${H(relation)}</span>
+      ${renderMiniUpdateCard(update, 'compact')}
+    </article>
+  `;
+}
+
 function renderRadarCard(title, description, updates) {
   const body = updates.length
     ? updates.map((u) => renderMiniUpdateCard(u, 'compact')).join('')
@@ -3628,6 +3643,19 @@ async function renderUpdateDetail(id) {
   const freshness = freshnessMeta(u);
   const detailSourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const detailMethodMeta = analysisMethodMeta(u);
+  const relatedReleases = Array.isArray(u.related) ? u.related.slice(0, 4) : [];
+  const hasSameProductRelease = relatedReleases.some(update => update.relationType === 'same-product');
+  const hasSameLaneRelease = relatedReleases.some(update => update.relationType === 'same-lane');
+  const relatedHeading = hasSameProductRelease
+    ? 'More releases for this product'
+    : hasSameLaneRelease && u.sourceKind === 'steam-game-news'
+      ? 'More tracked Steam game updates'
+      : `More ${platformLabel(u.platform)} releases`;
+  const relatedContext = hasSameProductRelease
+    ? 'Continue through verified releases carrying the same product identifier.'
+    : hasSameLaneRelease
+      ? 'Explore recent verified patches from the same update lane.'
+      : `Explore other verified ${platformLabel(u.platform)} releases inside the 240-day window.`;
   const decisionFactsHTML = decisionPanelFacts(u, freshness).map(fact => `
     <div class="detail-decision-fact detail-decision-fact--${H(fact.tone)}">
       <strong>${H(fact.value)}</strong><span>${H(fact.label)}</span>
@@ -3823,6 +3851,21 @@ async function renderUpdateDetail(id) {
 
         </div>
       </div>
+
+      ${relatedReleases.length ? `
+      <section class="detail-related-section" aria-labelledby="detail-related-heading">
+        <header class="detail-related-header">
+          <div>
+            <p class="detail-related-kicker">Keep exploring</p>
+            <h2 id="detail-related-heading">${H(relatedHeading)}</h2>
+            <p>${H(relatedContext)}</p>
+          </div>
+          <a href="#/platform/${encodeURIComponent(u.platform)}">View ${H(platformLabel(u.platform))} history →</a>
+        </header>
+        <div class="detail-related-grid">
+          ${relatedReleases.map(renderRelatedReleaseCard).join('')}
+        </div>
+      </section>` : ''}
 
     </div>
   `);

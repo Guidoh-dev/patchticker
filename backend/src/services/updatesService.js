@@ -1086,28 +1086,24 @@ async function getUpdates({ platform, status, sort, search } = {}) {
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
-    const terms = expandSearchTerms(search);
-    updates = updates.filter(u =>
-      terms.some(q =>
-        u.name.toLowerCase().includes(q) ||
-        u.platform.toLowerCase().includes(q) ||
-        (u.version || '').toLowerCase().includes(q) ||
-        (u.affects || '').toLowerCase().includes(q) ||
-        (u.verdict || '').toLowerCase().includes(q) ||
-        (u.reasoning || '').toLowerCase().includes(q) ||
-        JSON.stringify(u.changelog || []).toLowerCase().includes(q) ||
-        JSON.stringify(u.knownIssues || []).toLowerCase().includes(q) ||
-        JSON.stringify(u.riskFactors || []).toLowerCase().includes(q) ||
-        JSON.stringify(u.evidence || []).toLowerCase().includes(q)
-      )
-    );
+    const groups = buildSearchTermGroups(search);
+    updates = updates.filter(u => {
+      const document = [
+        u.name, u.platform, u.version, u.internalVersion, u.productId,
+        u.affects, u.verdict, u.reasoning,
+        JSON.stringify(u.changelog || []), JSON.stringify(u.knownIssues || []),
+        JSON.stringify(u.riskFactors || []), JSON.stringify(u.evidence || []),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return groups.every(group => group.some(term => document.includes(term)));
+    });
   }
+  const fallbackRelevanceTerms = buildSearchTermGroups(search).flat();
   const sorters = {
     date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
     date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
     score_desc: compareScores('desc'),
     score_asc:  compareScores('asc'),
-    relevance:  (a, b) => searchRelevanceScore(b, expandSearchTerms(search)) - searchRelevanceScore(a, expandSearchTerms(search)),
+    relevance:  (a, b) => searchRelevanceScore(b, fallbackRelevanceTerms) - searchRelevanceScore(a, fallbackRelevanceTerms),
   };
   if (sort && sorters[sort]) updates = [...updates].sort(sorters[sort]);
   return hydrateLiveRatings(updates);
@@ -1144,9 +1140,55 @@ async function getUpdateById(id) {
 
   if (!update || !isUpdateDisplayable(update)) return null;
 
+  let related = [];
+  if (dbReadSucceeded && db.isAvailable()) {
+    try {
+      const rows = await db.query(
+        `SELECT *,
+           CASE
+             WHEN $3::text IS NOT NULL AND product_id = $3 THEN 'same-product'
+             WHEN $4::text IS NOT NULL AND source_kind = $4 THEN 'same-lane'
+             ELSE 'same-platform'
+           END AS relation_type
+         FROM software_updates
+         WHERE id <> $1
+           AND platform = $2
+           AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+         ORDER BY
+           CASE
+             WHEN $3::text IS NOT NULL AND product_id = $3 THEN 0
+             WHEN $4::text IS NOT NULL AND source_kind = $4 THEN 1
+             ELSE 2
+           END,
+           released_at DESC,
+           created_at DESC
+         LIMIT $5`,
+        [update.id, update.platform, update.productId, update.sourceKind, 4]
+      );
+      related = dedupeArticleReleases(rows.rows.map(row => ({
+        ...rowToUpdate(row),
+        relationType: row.relation_type || 'same-platform',
+      })).filter(isUpdateDisplayable));
+    } catch (err) {
+      logger.warn('[updates] Related releases unavailable', { id, error: err.message });
+    }
+  } else if (canUseStaticUpdates()) {
+    related = getStaticUpdates()
+      .map(sanitizeUpdateScores)
+      .filter(candidate => candidate.id !== update.id && candidate.platform === update.platform && isUpdateDisplayable(candidate))
+      .map(candidate => ({
+        ...candidate,
+        relationType: update.productId && candidate.productId === update.productId
+          ? 'same-product'
+          : update.sourceKind && candidate.sourceKind === update.sourceKind ? 'same-lane' : 'same-platform',
+      }))
+      .sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt))
+      .slice(0, 4);
+  }
+
   // Keep patch detail pages focused on first-party update information.
   // Community/social enrichment is intentionally not required for page rendering.
-  return { ...update, feed: [] };
+  return { ...update, related, feed: [] };
 }
 
 // ── getSentimentSummary — DB-first with honest outage metadata ────────────────

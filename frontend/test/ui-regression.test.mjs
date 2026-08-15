@@ -368,6 +368,18 @@ test('Steam game cards explain tracking relevance with verified audience evidenc
   assert.match(cssSource, /\.steam-audience-signal\s*\{[^}]*min-height:\s*24px;[^}]*var\(--cyan\)/s);
 });
 
+test('update details continue into honestly ranked related releases', () => {
+  assert.match(mainSource, /function renderRelatedReleaseCard\(update\)/);
+  assert.match(mainSource, /'same-product': 'Same product'/);
+  assert.match(mainSource, /'same-lane': update\?\.sourceKind === 'steam-game-news' \? 'Steam game lane'/);
+  assert.match(mainSource, /More releases for this product/);
+  assert.match(mainSource, /More tracked Steam game updates/);
+  assert.match(mainSource, /relatedReleases\.map\(renderRelatedReleaseCard\)/);
+  assert.match(mainSource, /View \$\{H\(platformLabel\(u\.platform\)\)\} history/);
+  assert.match(cssSource, /\.detail-related-grid\s*\{[^}]*repeat\(auto-fit, minmax\(min\(100%, 220px\), 1fr\)\)/s);
+  assert.match(cssSource, /\.detail-related-header > a\s*\{[^}]*min-height:\s*44px/s);
+});
+
 test('source heartbeat makes per-platform check recency visible and filterable', () => {
   assert.match(mainSource, /id="coverage-heartbeats"/);
   assert.match(mainSource, /function renderSourceHeartbeats\(updates = \[\]\)/);
