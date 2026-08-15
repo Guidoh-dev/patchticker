@@ -23,6 +23,7 @@ import {
   applyAnalyticsPrivacyMasks, captureAnalytics, initializeAnalyticsConsent,
   openAnalyticsPreferences, syncAnalyticsIdentity,
 } from './analytics.js';
+import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCandidates.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -1202,16 +1203,7 @@ const SEARCH_ALIASES = {
   rtx: ['rtx', 'nvidia', 'dlss', 'game ready'],
   radeon: ['radeon', 'amd', 'rx 7900', 'adrenalin'],
 };
-const FOLLOWABLE_STEAM_GAMES = [
-  { appId: '730', name: 'Counter-Strike 2', tags: 'cs2 counter strike competitive fps valve' },
-  { appId: '553850', name: 'Helldivers 2', tags: 'helldivers co-op anti-cheat shooter' },
-  { appId: '108694', name: 'Baldur’s Gate 3', tags: 'bg3 rpg larian' },
-  { appId: '1172470', name: 'Apex Legends', tags: 'apex battle royale ea' },
-  { appId: '570', name: 'Dota 2', tags: 'dota valve moba' },
-  { appId: '252490', name: 'Rust', tags: 'rust survival facepunch' },
-  { appId: '271590', name: 'Grand Theft Auto V', tags: 'gta online rockstar' },
-  { appId: '1245620', name: 'Elden Ring', tags: 'fromsoftware souls' },
-];
+const FOLLOWABLE_STEAM_GAMES = STEAM_GAME_CANDIDATES;
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
 function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy' })[p] || p; }
@@ -1343,7 +1335,7 @@ function findSteamGame(query) {
   if (!q) return null;
   return FOLLOWABLE_STEAM_GAMES.find(g =>
     g.name.toLowerCase().includes(q) || g.appId === q || g.tags.toLowerCase().includes(q)
-  ) || { appId: q.replace(/\D/g, '') || `custom-${Date.now()}`, name: query.trim(), tags: query.trim().toLowerCase() };
+  ) || null;
 }
 
 function scoreColor(score) {
@@ -2270,7 +2262,7 @@ async function renderDashboard({ focusId = null } = {}) {
             <div class="dash-panel-head dash-panel-head--compact">
               <div><p class="dash-section-kicker">Pro</p><h2>Follow my games</h2></div>
             </div>
-            <p class="dash-side-copy">Track Steam patch notes for the games you actually play.</p>
+            <p class="dash-side-copy">Choose from ${FOLLOWABLE_STEAM_GAMES.length} reviewed Steam games above ${Number(STEAM_GAME_CANDIDATE_META.minimumAveragePlayers).toLocaleString()} average players. Routine hotfixes stay out of the feed.</p>
             <div class="follow-games-box">
               <div class="follow-games-search">
                 <input class="dash-search" id="follow-game-input" type="search" placeholder="Search Steam games…" autocomplete="off" />
@@ -2670,9 +2662,13 @@ async function renderDashboard({ focusId = null } = {}) {
     if (!suggestionsEl || !followedEl) return;
     const followed = getFollowedSteamGames();
     const followedIds = new Set(followed.map(g => g.appId));
-    suggestionsEl.innerHTML = FOLLOWABLE_STEAM_GAMES.map(g => `
+    const query = (document.getElementById('follow-game-input')?.value || '').trim().toLowerCase();
+    const suggestions = FOLLOWABLE_STEAM_GAMES
+      .filter(g => !query || g.name.toLowerCase().includes(query) || g.appId === query || g.tags.includes(query))
+      .slice(0, query ? 12 : 8);
+    suggestionsEl.innerHTML = suggestions.map(g => `
       <button class="follow-game-chip ${followedIds.has(g.appId) ? 'active' : ''}" data-app-id="${H(g.appId)}">${H(g.name)}</button>
-    `).join('');
+    `).join('') || '<span class="follow-games-empty">No tracked game matches that search.</span>';
     followedEl.innerHTML = followed.length
       ? followed.map(g => `
           <div class="followed-game-card" data-app-id="${H(g.appId)}">
@@ -2708,6 +2704,7 @@ async function renderDashboard({ focusId = null } = {}) {
       document.getElementById('follow-game-add')?.click();
     }
   });
+  document.getElementById('follow-game-input')?.addEventListener('input', renderFollowedGames);
   document.getElementById('follow-game-suggestions')?.addEventListener('click', (e) => {
     const chip = e.target.closest('[data-app-id]');
     if (!chip) return;

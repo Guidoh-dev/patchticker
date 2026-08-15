@@ -5,7 +5,7 @@
 // Schedule:
 //   On production startup — catch-up scan (covers hosts that sleep)
 //   Every 6 hours         — full platform scan (all tracked platforms)
-//   Every 2 hours         — drivers, Steam, and launcher/client platforms
+//   Every 2 hours         — drivers, Steam/client platforms, and material game releases
 //   Every 1 hour          — security-priority platforms (Windows, Apple, macOS)
 //
 // The 1-hour scan for security platforms ensures zero-days and critical
@@ -19,11 +19,13 @@
 const cron            = require('node-cron');
 const logger          = require('../utils/logger');
 const pipelineService = require('./pipelineService');
+const steamGamePipelineService = require('./steamGamePipelineService');
 const { SECURITY_PLATFORM_KEYS, HIGH_VELOCITY_PLATFORM_KEYS } = require('../config/platformRegistry');
 
 let _fullScanJob     = null;
 let _fastScanJob     = null;
 let _securityScanJob = null;
+let _steamGameScanJob= null;
 let _startupScanTimer= null;
 let _isRunning       = false;
 let _lastManualRun    = null;
@@ -93,10 +95,34 @@ async function runFullScan() {
   }
 }
 
+async function runSteamGameScan() {
+  if (_isRunning) {
+    logger.info('[cron] Skipping Steam game scan — pipeline already running');
+    return;
+  }
+  _isRunning = true;
+  logger.info('[cron] Material Steam game scan starting');
+  try {
+    const summary = await steamGamePipelineService.run();
+    logger.info('[cron] Material Steam game scan complete', {
+      candidates: summary.candidates,
+      material: summary.material,
+      inserted: summary.inserted,
+      failed: summary.failed,
+    });
+    return summary;
+  } catch (err) {
+    logger.error('[cron] Material Steam game scan error', { error: err.message });
+    throw err;
+  } finally {
+    _isRunning = false;
+  }
+}
+
 // ── Start / stop ──────────────────────────────────────────────────────────────
 
 function start() {
-  if (_fullScanJob || _fastScanJob || _securityScanJob) {
+  if (_fullScanJob || _fastScanJob || _securityScanJob || _steamGameScanJob) {
     logger.warn('[cron] Already started — skipping');
     return;
   }
@@ -114,6 +140,14 @@ function start() {
     timezone:  'UTC',
   });
 
+  // Popular Steam games: every two hours at minute 45. This stays separate
+  // from the platform scan so 81 bounded public feed requests cannot delay a
+  // security lane or duplicate the full scan ten minutes earlier.
+  _steamGameScanJob = cron.schedule('45 */2 * * *', runSteamGameScan, {
+    scheduled: true,
+    timezone:  'UTC',
+  });
+
   // Full scan: every 6 hours at minute 15
   // "15 */6 * * *" = at :15 past every 6th hour
   _fullScanJob = cron.schedule('15 */6 * * *', runFullScan, {
@@ -126,9 +160,14 @@ function start() {
     || (isProduction && process.env.PIPELINE_SCAN_ON_STARTUP !== 'false');
   if (startupScanEnabled) {
     const delayMs = Math.max(1000, Number(process.env.PIPELINE_STARTUP_SCAN_DELAY_MS || 15000));
-    _startupScanTimer = setTimeout(() => {
+    _startupScanTimer = setTimeout(async () => {
       _startupScanTimer = null;
-      runFullScan().catch(err => logger.error('[cron] Startup catch-up scan error', { error: err.message }));
+      try {
+        await runFullScan();
+        await runSteamGameScan();
+      } catch (err) {
+        logger.error('[cron] Startup catch-up scan error', { error: err.message });
+      }
     }, delayMs);
     _startupScanTimer.unref?.();
   }
@@ -136,6 +175,7 @@ function start() {
   logger.info('[cron] Scheduler started', {
     securityScan: 'every hour at :05',
     highVelocityScan: 'every 2 hours at :25',
+    steamGameScan: 'every 2 hours at :45',
     fullScan:     'every 6 hours at :15',
     startupCatchUp: startupScanEnabled,
   });
@@ -145,10 +185,12 @@ function stop() {
   _fullScanJob?.stop();
   _fastScanJob?.stop();
   _securityScanJob?.stop();
+  _steamGameScanJob?.stop();
   if (_startupScanTimer) clearTimeout(_startupScanTimer);
   _fullScanJob     = null;
   _fastScanJob     = null;
   _securityScanJob = null;
+  _steamGameScanJob= null;
   _startupScanTimer= null;
   logger.info('[cron] Scheduler stopped');
 }
@@ -167,7 +209,10 @@ async function triggerManual(platform = null) {
   try {
     const summary = platform
       ? await pipelineService.processPlatform(platform)
-      : await pipelineService.runAll();
+      : {
+          platforms: await pipelineService.runAll(),
+          steamGames: await steamGamePipelineService.run(),
+        };
     _lastManualRun = { ok: true, platform, startedAt, finishedAt: new Date().toISOString(), summary };
     return summary;
   } catch (err) {

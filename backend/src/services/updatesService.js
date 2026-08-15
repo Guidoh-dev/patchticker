@@ -171,6 +171,7 @@ let _redditToken = null;
 let _redditTokenExpiry = 0;
 
 async function getRedditToken() {
+  if (process.env.REDDIT_ENABLED !== 'true') return null;
   if (_redditToken && Date.now() < _redditTokenExpiry) return _redditToken;
 
   const { clientId, clientSecret, userAgent } = secrets.getRedditCredentials();
@@ -728,7 +729,17 @@ function rowToUpdate(row) {
     id:                   row.id,
     platform:             row.platform,
     name:                 row.name,
-    version:              row.version,
+    version:              row.display_version || row.version,
+    internalVersion:      row.version,
+    productId:            row.product_id || null,
+    sourceKind:           row.source_kind || null,
+    sourceRef:            row.source_ref || null,
+    releaseSizeBytes:     row.release_size_bytes === null || row.release_size_bytes === undefined
+      ? null
+      : Number(row.release_size_bytes),
+    sizeBytes:            row.release_size_bytes === null || row.release_size_bytes === undefined
+      ? null
+      : Number(row.release_size_bytes),
     releasedAt:           row.released_at,
     status:               row.status,
     score:                parseFloat(row.score),
@@ -840,6 +851,8 @@ async function getUpdates({ platform, status, sort, search } = {}) {
           LOWER(name) LIKE $${params.length}
           OR LOWER(platform) LIKE $${params.length}
           OR LOWER(version) LIKE $${params.length}
+          OR LOWER(COALESCE(display_version, '')) LIKE $${params.length}
+          OR LOWER(COALESCE(product_id, '')) LIKE $${params.length}
           OR LOWER(COALESCE(affects, '')) LIKE $${params.length}
           OR LOWER(COALESCE(verdict, '')) LIKE $${params.length}
           OR LOWER(COALESCE(reasoning, '')) LIKE $${params.length}

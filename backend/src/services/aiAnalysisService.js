@@ -5,11 +5,14 @@
 // Generates: verdict, reasoning, safety score, impact score, security
 // criticality assessment, changelog bullets, and known issues.
 //
-// Falls back gracefully when ANTHROPIC_API_KEY is not set.
+// Paid calls require ANTHROPIC_ENABLED=true as well as a valid key; otherwise
+// deterministic first-party analysis remains active without provider spend.
 // All AI outputs are logged to ai_analysis_log for auditing.
 // ─────────────────────────────────────────────────────────────────────────────
 
 'use strict';
+
+/* global fetch */
 
 const crypto  = require('crypto');
 const db      = require('../config/db');
@@ -20,7 +23,10 @@ const MODEL             = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-202505
 
 function isEnabled() {
   const key = process.env.ANTHROPIC_API_KEY;
-  return !!(key && key.length > 10 && !key.startsWith('REPLACE_WITH'));
+  // Paid analysis is opt-in even when a key exists. This prevents a copied key
+  // from turning scheduled scraper discoveries into unexpected API spend.
+  return process.env.ANTHROPIC_ENABLED === 'true'
+    && !!(key && key.length > 10 && !key.startsWith('REPLACE_WITH'));
 }
 
 // ── Core API call ─────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ Open the SQL editor and run these files in order:
 -- 1. supabase/migrations/202607160001_initial_patchticker_schema.sql
 -- 2. supabase/migrations/202607200001_email_delivery_log.sql
 -- 3. supabase/migrations/202608040001_launch_schema_repair.sql
+-- 4. supabase/migrations/20260815152854_steam_games_and_email_quota.sql
 ```
 
 ## Required backend `.env` values

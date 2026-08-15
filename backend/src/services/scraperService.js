@@ -1204,21 +1204,21 @@ async function detectMacos() {
  */
 async function detectSteam() {
   try {
-    const trackedAppIds = String(process.env.STEAM_TRACKED_APP_IDS || '')
-      .split(',')
-      .map(id => id.trim())
-      .filter(Boolean)
-      .slice(0, 25);
     const feeds = await Promise.allSettled([
-      fetchXml('https://store.steampowered.com/feeds/news/?appids=0&appids=&type=events'),
+      // 593110 is Valve's official Steam Client news app. Game feeds are
+      // intentionally handled by steamGamePipelineService instead of being
+      // mixed into this platform/client detector.
+      fetchXml('https://store.steampowered.com/feeds/news/app/593110/?cc=US&l=english'),
       fetchXml('https://store.steampowered.com/feeds/news/app/1675200/?cc=US&l=english'),
-      ...trackedAppIds.map(id => fetchXml(`https://store.steampowered.com/feeds/news/app/${encodeURIComponent(id)}/?cc=US&l=english`)),
     ]);
     const items = feeds
       .filter(r => r.status === 'fulfilled')
       .flatMap(r => parseRssItems(r.value, 10))
       .sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
-    const update = items.find(i => /Steam Client|Steam Update|Steam Deck|SteamOS/i.test(i.title));
+    const update = items.find(i =>
+      /(?:Steam Client Update|SteamOS\s+\d|Steam Deck.+Update)/i.test(i.title)
+      && !/\b(?:beta|preview|experimental)\b/i.test(`${i.title} ${i.description || ''}`)
+    );
     if (!update) return null;
     const sourceUrl = update.link || 'https://store.steampowered.com/news/';
     const version = firstVersion(`${update.title} ${update.description}`) || versionFromDate(update.pubDate);

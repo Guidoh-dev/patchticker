@@ -6,6 +6,9 @@ import posthog from 'posthog-js/dist/module.no-external';
 
 const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY || '';
 const POSTHOG_HOST = import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com';
+// PostHog is an explicit cost opt-in. A stored project key alone must never
+// activate billable analytics traffic after a deploy or account-plan change.
+const POSTHOG_ENABLED = import.meta.env.VITE_POSTHOG_ENABLED === 'true';
 const CLARITY_PROJECT_ID = import.meta.env.VITE_CLARITY_PROJECT_ID || '';
 const CONSENT_KEY = 'patchticker.analytics.consent.v1';
 const CONSENT_VERSION = 1;
@@ -33,7 +36,7 @@ let currentUserId = null;
 let maskObserver = null;
 
 function configured() {
-  return Boolean(POSTHOG_KEY || CLARITY_PROJECT_ID);
+  return Boolean((POSTHOG_ENABLED && POSTHOG_KEY) || CLARITY_PROJECT_ID);
 }
 
 function readConsent() {
@@ -99,7 +102,7 @@ function sanitizePostHogEvent(event) {
 }
 
 function initPostHog() {
-  if (!POSTHOG_KEY || posthogReady) return;
+  if (!POSTHOG_ENABLED || !POSTHOG_KEY || posthogReady) return;
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
     defaults: '2026-05-30',

@@ -8,12 +8,14 @@ const mockSchedule = jest.fn((expression, handler) => {
 });
 const mockRunAll = jest.fn(async () => ({ total: 13, newUpdates: 0 }));
 const mockProcessPlatform = jest.fn(async platform => ({ platform, status: 'unchanged' }));
+const mockSteamGameRun = jest.fn(async () => ({ candidates: 81, material: 0, inserted: 0, failed: 0 }));
 
 jest.mock('node-cron', () => ({ schedule: mockSchedule }));
 jest.mock('./services/pipelineService', () => ({
   runAll: mockRunAll,
   processPlatform: mockProcessPlatform,
 }));
+jest.mock('./services/steamGamePipelineService', () => ({ run: mockSteamGameRun }));
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
 const cronService = require('./services/cronService');
@@ -31,6 +33,7 @@ describe('pipeline scheduler', () => {
     mockSchedule.mockClear();
     mockRunAll.mockClear();
     mockProcessPlatform.mockClear();
+    mockSteamGameRun.mockClear();
     process.env.NODE_ENV = 'production';
     process.env.PIPELINE_SCAN_ON_STARTUP = 'true';
     process.env.PIPELINE_STARTUP_SCAN_DELAY_MS = '1000';
@@ -55,11 +58,13 @@ describe('pipeline scheduler', () => {
     expect(mockSchedule.mock.calls.map(([expression]) => expression)).toEqual([
       '5 * * * *',
       '25 */2 * * *',
+      '45 */2 * * *',
       '15 */6 * * *',
     ]);
 
     await jest.advanceTimersByTimeAsync(1000);
     expect(mockRunAll).toHaveBeenCalledTimes(1);
+    expect(mockSteamGameRun).toHaveBeenCalledTimes(1);
     expect(HIGH_VELOCITY_PLATFORM_KEYS).toEqual([
       'NVIDIA', 'AMD', 'Intel', 'Steam', 'Discord', 'BattleNet', 'GOG',
     ]);
@@ -68,7 +73,7 @@ describe('pipeline scheduler', () => {
   test('stopping the scheduler clears every registered job', () => {
     cronService.start();
     cronService.stop();
-    expect(mockScheduledJobs).toHaveLength(3);
+    expect(mockScheduledJobs).toHaveLength(4);
     expect(mockScheduledJobs.every(job => job.stop.mock.calls.length === 1)).toBe(true);
   });
 
@@ -88,5 +93,11 @@ describe('pipeline scheduler', () => {
 
     expect(mockProcessPlatform).toHaveBeenCalledTimes(HIGH_VELOCITY_PLATFORM_KEYS.length);
     expect(peak).toBe(2);
+  });
+
+  test('Steam game candidates run on their own bounded two-hour schedule', async () => {
+    cronService.start();
+    await mockScheduledJobs[2].handler();
+    expect(mockSteamGameRun).toHaveBeenCalledTimes(1);
   });
 });

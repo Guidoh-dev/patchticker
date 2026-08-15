@@ -15,6 +15,11 @@ test('analytics vendors require an explicit granted consent state', () => {
   assert.match(analytics, /ad_Storage: 'denied'/);
 });
 
+test('PostHog billing requires a separate explicit production opt-in', () => {
+  assert.match(analytics, /VITE_POSTHOG_ENABLED === 'true'/);
+  assert.match(analytics, /!POSTHOG_ENABLED \|\| !POSTHOG_KEY/);
+});
+
 test('session replay and automatic PostHog capture are disabled at the SDK boundary', () => {
   assert.match(analytics, /autocapture: false/);
   assert.match(analytics, /capture_pageview: false/);

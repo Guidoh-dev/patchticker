@@ -309,6 +309,56 @@ function recipientHash(email) {
   return crypto.createHash('sha256').update(String(email || '').trim().toLowerCase()).digest('hex');
 }
 
+function emailQuotaLimits() {
+  // Brevo Free is 300/day. Never permit an environment typo to raise the hard
+  // application ceiling above that amount. Alerts are capped at 250 so account
+  // verification, password reset, and billing mail retain 50 daily slots.
+  const configuredGlobal = Number(process.env.EMAIL_DAILY_LIMIT || 300);
+  const global = Math.max(0, Math.min(300, Number.isFinite(configuredGlobal) ? Math.floor(configuredGlobal) : 300));
+  const configuredAlerts = Number(process.env.EMAIL_ALERT_DAILY_LIMIT || 250);
+  const alerts = Math.max(0, Math.min(
+    Math.max(0, global - 50),
+    Number.isFinite(configuredAlerts) ? Math.floor(configuredAlerts) : 250
+  ));
+  return { global, alerts };
+}
+
+function quotaRequired() {
+  return getEmailConfigStatus().provider !== 'ethereal';
+}
+
+async function reserveDailyEmailQuota(category) {
+  if (!quotaRequired()) return { allowed: true, bypassed: true, globalUsed: 0, alertUsed: 0 };
+  if (!db.isAvailable()) {
+    const error = new Error('Email delivery paused because the durable daily quota store is unavailable');
+    error.code = 'EMAIL_QUOTA_UNAVAILABLE';
+    throw error;
+  }
+  const limits = emailQuotaLimits();
+  const result = await db.query(
+    `SELECT allowed, global_used, alert_used
+     FROM reserve_patchticker_email_quota($1, $2, $3)`,
+    [category || 'transactional', limits.global, limits.alerts]
+  );
+  const quota = result.rows?.[0] || {};
+  if (quota.allowed !== true) {
+    const error = new Error(category === 'patch_alert'
+      ? `Daily patch-alert email cap reached (${limits.alerts})`
+      : `Daily email cap reached (${limits.global})`);
+    error.code = 'EMAIL_DAILY_LIMIT_REACHED';
+    error.globalUsed = Number(quota.global_used || 0);
+    error.alertUsed = Number(quota.alert_used || 0);
+    throw error;
+  }
+  return {
+    allowed: true,
+    bypassed: false,
+    globalUsed: Number(quota.global_used || 0),
+    alertUsed: Number(quota.alert_used || 0),
+    limits,
+  };
+}
+
 async function logEmailDelivery({ to, subject, category, status, messageId = null, error = null }) {
   if (!db.isAvailable()) return;
   try {
@@ -331,6 +381,20 @@ async function send({ to, subject, html, text, category = 'transactional' }) {
 
   const safeRecipientHash = recipientHash(to).slice(0, 12);
   try {
+    // Reserve before contacting a real provider. Reservations count attempts and
+    // are intentionally not released after provider timeouts: the remote side
+    // may have accepted an ambiguous request, so reusing that slot could exceed
+    // the user's hard 300/day ceiling.
+    const quota = await reserveDailyEmailQuota(category);
+    if (!quota.bypassed) {
+      logger.debug('[email] Daily quota reserved', {
+        category,
+        globalUsed: quota.globalUsed,
+        globalLimit: quota.limits.global,
+        alertUsed: quota.alertUsed,
+        alertLimit: quota.limits.alerts,
+      });
+    }
     if (brevoApiConfigured()) {
       const info = await sendViaBrevoApi({ to, subject, html, text, category });
       logger.info('[email] Sent via Brevo API', { messageId: info.messageId, recipientHash: safeRecipientHash, category });
@@ -609,5 +673,5 @@ module.exports = {
   sendTestEmail,
   getEmailConfigStatus,
   verifyEmailTransport,
-  _test: { appTokenUrl, recipientHash },
+  _test: { appTokenUrl, recipientHash, emailQuotaLimits, reserveDailyEmailQuota },
 };
