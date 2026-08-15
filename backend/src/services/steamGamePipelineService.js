@@ -206,10 +206,35 @@ function postReleasedAt(post) {
   return Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp) : null;
 }
 
+function explicitReleaseDateFromTitle(rawTitle) {
+  const title = stripSteamMarkup(rawTitle || '');
+  const compactDate = title.match(/\b(20\d{2})(\d{2})(\d{2})\b/);
+  if (compactDate) {
+    const parsed = new Date(`${compactDate[1]}-${compactDate[2]}-${compactDate[3]}T12:00:00.000Z`);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  const monthDate = title.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,)?\s+(20\d{2})\b/i);
+  if (!monthDate) return null;
+  const parsed = new Date(`${monthDate[1]} ${monthDate[2]}, ${monthDate[3]} 12:00:00 UTC`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function displayVersion(post, releasedAt) {
-  const text = `${post?.title || ''} ${String(post?.contents || '').slice(0, 400)}`;
-  const semantic = text.match(/\b(?:v(?:ersion)?\s*)?(\d+\.\d+(?:\.\d+)?(?:\.\d+)?[a-z]?)\b/i)?.[1];
-  return semantic || releasedAt.toISOString().slice(0, 10).replaceAll('-', '.');
+  const title = stripSteamMarkup(post?.title || '');
+  const titledReleaseDate = explicitReleaseDateFromTitle(title);
+  if (titledReleaseDate) return titledReleaseDate.toISOString().slice(0, 10).replaceAll('-', '.');
+
+  const seasonBuild = title.match(/\b(Y\d+S\d+(?:\.\d+)*)\b/i)?.[1];
+  if (seasonBuild) return seasonBuild.toUpperCase();
+
+  const labeled = title.match(/\b(?:version|ver\.?|build|patch|update)\s*(?:v(?:ersion)?\s*)?(\d+(?:\.\d+){1,3}[a-z]?)\b/i)?.[1];
+  if (labeled) return labeled;
+
+  const explicitV = title.match(/\bv(\d+(?:\.\d+){1,3}[a-z]?)\b/i)?.[1];
+  if (explicitV) return explicitV;
+
+  const bareSemantic = title.match(/\b(\d+(?:\.\d+){2,3}[a-z]?)\b/i)?.[1];
+  return bareSemantic || releasedAt.toISOString().slice(0, 10).replaceAll('-', '.');
 }
 
 function knownIssuesFromNotes(changelog) {
@@ -225,7 +250,8 @@ function releaseTitle(gameName, postTitle) {
 }
 
 function toDatabaseUpdate(game, post, classification) {
-  const releasedAt = postReleasedAt(post);
+  const publishedAt = postReleasedAt(post);
+  const releasedAt = explicitReleaseDateFromTitle(post?.title) || publishedAt;
   const gid = String(post.gid || '').replace(/\D/g, '');
   const version = `${game.appId}:${gid}`.slice(0, 64);
   const sourceUrl = trustedSteamNewsUrl(post, game.appId);
@@ -262,7 +288,7 @@ function toDatabaseUpdate(game, post, classification) {
       text: `${stripSteamMarkup(post.title || 'Update')}; material signals: ${classification.signals.join(', ')}.`,
       dateBasis: 'published',
       releaseType: 'official-game-update',
-      publishedAt: releasedAt.toISOString(),
+      publishedAt: publishedAt.toISOString(),
       steamAppId: game.appId,
       steamNewsGid: gid,
       averagePlayersSnapshot: game.averagePlayers,
@@ -416,6 +442,8 @@ module.exports = {
   run,
   __test: {
     classifyMaterialUpdate,
+    displayVersion,
+    explicitReleaseDateFromTitle,
     explicitPackageSizeBytes,
     releaseNotesFromPost,
     selectBestMaterialPost,

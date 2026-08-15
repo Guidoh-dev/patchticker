@@ -119,4 +119,13 @@ describe('material Steam game update pipeline', () => {
     ]);
     expect(selected.post.gid).toBe('2');
   });
+
+  test('derives display versions from the release title rather than unrelated body dates', () => {
+    const releasedAt = new Date('2026-08-13T01:00:00.000Z');
+    expect(__test.displayVersion({ title: 'NARAKA Update – August 13th, 2026', contents: 'Previously scheduled for 2026.08.12.' }, releasedAt)).toBe('2026.08.13');
+    expect(__test.displayVersion({ title: 'Marvel Rivals Version 20260813 Patch Notes' }, releasedAt)).toBe('2026.08.13');
+    expect(__test.displayVersion({ title: 'Y11S2.3 PATCH NOTES' }, releasedAt)).toBe('Y11S2.3');
+    expect(__test.displayVersion({ title: 'Rocket League Patch Notes v2.72' }, releasedAt)).toBe('2.72');
+    expect(__test.explicitReleaseDateFromTitle('NARAKA Update – August 13th, 2026').toISOString().slice(0, 10)).toBe('2026-08-13');
+  });
 });
