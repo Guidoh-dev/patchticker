@@ -120,7 +120,7 @@ function searchRelevanceScore(update, terms = []) {
   ];
   return fields.reduce((score, [value, weight]) => {
     const haystack = String(value || '').toLowerCase();
-    return score + (needles.some(term => haystack.includes(term)) ? weight : 0);
+    return Math.max(score, needles.some(term => haystack.includes(term)) ? weight : 0);
   }, 0);
 }
 
@@ -953,17 +953,17 @@ async function getUpdates({ platform, status, sort, search } = {}) {
             changelog::text, known_issues::text, risk_factors::text, evidence::text
           )) LIKE search_pattern.pattern
         )`;
-        relevanceOrder = `(
-          CASE WHEN LOWER(name) LIKE ANY(${patternParam}::text[]) THEN 100 ELSE 0 END +
-          CASE WHEN LOWER(platform) LIKE ANY(${patternParam}::text[]) THEN 85 ELSE 0 END +
-          CASE WHEN LOWER(version) LIKE ANY(${patternParam}::text[]) OR LOWER(COALESCE(display_version, '')) LIKE ANY(${patternParam}::text[]) THEN 80 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(product_id, '')) LIKE ANY(${patternParam}::text[]) THEN 80 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(affects, '')) LIKE ANY(${patternParam}::text[]) THEN 60 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(verdict, '')) LIKE ANY(${patternParam}::text[]) THEN 40 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(reasoning, '')) LIKE ANY(${patternParam}::text[]) THEN 35 ELSE 0 END +
-          CASE WHEN LOWER(changelog::text) LIKE ANY(${patternParam}::text[]) THEN 30 ELSE 0 END +
-          CASE WHEN LOWER(known_issues::text) LIKE ANY(${patternParam}::text[]) THEN 30 ELSE 0 END +
-          CASE WHEN LOWER(risk_factors::text) LIKE ANY(${patternParam}::text[]) THEN 25 ELSE 0 END +
+        relevanceOrder = `GREATEST(
+          CASE WHEN LOWER(name) LIKE ANY(${patternParam}::text[]) THEN 100 ELSE 0 END,
+          CASE WHEN LOWER(platform) LIKE ANY(${patternParam}::text[]) THEN 85 ELSE 0 END,
+          CASE WHEN LOWER(version) LIKE ANY(${patternParam}::text[]) OR LOWER(COALESCE(display_version, '')) LIKE ANY(${patternParam}::text[]) THEN 80 ELSE 0 END,
+          CASE WHEN LOWER(COALESCE(product_id, '')) LIKE ANY(${patternParam}::text[]) THEN 80 ELSE 0 END,
+          CASE WHEN LOWER(COALESCE(affects, '')) LIKE ANY(${patternParam}::text[]) THEN 60 ELSE 0 END,
+          CASE WHEN LOWER(COALESCE(verdict, '')) LIKE ANY(${patternParam}::text[]) THEN 40 ELSE 0 END,
+          CASE WHEN LOWER(COALESCE(reasoning, '')) LIKE ANY(${patternParam}::text[]) THEN 35 ELSE 0 END,
+          CASE WHEN LOWER(changelog::text) LIKE ANY(${patternParam}::text[]) THEN 30 ELSE 0 END,
+          CASE WHEN LOWER(known_issues::text) LIKE ANY(${patternParam}::text[]) THEN 30 ELSE 0 END,
+          CASE WHEN LOWER(risk_factors::text) LIKE ANY(${patternParam}::text[]) THEN 25 ELSE 0 END,
           CASE WHEN LOWER(evidence::text) LIKE ANY(${patternParam}::text[]) THEN 20 ELSE 0 END
         ) DESC, `;
       }

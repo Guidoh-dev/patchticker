@@ -134,6 +134,8 @@ test('search relevance favors direct product matches over incidental patch-note 
   expect(updatesService.__test.searchRelevanceScore(amdRelease, terms)).toBeGreaterThan(
     updatesService.__test.searchRelevanceScore(incidentalSteamRelease, terms)
   );
+  expect(updatesService.__test.searchRelevanceScore(amdRelease, terms)).toBe(100);
+  expect(updatesService.__test.searchRelevanceScore(incidentalSteamRelease, terms)).toBe(30);
 });
 
 test('monthly placeholders require official release metadata', () => {

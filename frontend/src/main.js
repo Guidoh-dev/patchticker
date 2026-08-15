@@ -1311,7 +1311,7 @@ function updateSearchRelevance(update, query) {
   ];
   return fields.reduce((score, [value, weight]) => {
     const haystack = String(value || '').toLowerCase();
-    return score + (needles.some(needle => haystack.includes(needle)) ? weight : 0);
+    return Math.max(score, needles.some(needle => haystack.includes(needle)) ? weight : 0);
   }, 0);
 }
 
