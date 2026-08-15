@@ -96,7 +96,7 @@ test('live chat uses a short-lived ticket instead of exposing the access JWT in 
   expect(feedRouter.__test.consumeStreamTicket(ticketResponse.body.ticket)).toBeNull();
 });
 
-test('production request guard accepts the short SSE ticket and still rejects a legacy long JWT query', async () => {
+test('production request guard accepts the short SSE ticket and drains legacy JWT clients without abuse strikes', async () => {
   const app = makeApp();
   const ticketResponse = await request(app)
     .post('/api/feed/stream-ticket')
@@ -111,15 +111,23 @@ test('production request guard accepts the short SSE ticket and still rejects a 
     .get(`/api/feed/stream?ticket=${ticketResponse.body.ticket}`)
     .expect(401);
 
-  const legacyJwt = `eyJ${'a'.repeat(240)}`;
+  // A stale first-party tab is allowed through the generic length guard, but
+  // the feed route never authenticates it and returns 401. This avoids turning
+  // a rolling frontend deployment into an IP auto-blacklist event.
+  const legacyJwt = `eyJ${'a'.repeat(180)}.${'b'.repeat(40)}.${'c'.repeat(40)}`;
   await request(app)
     .get(`/api/feed/stream?token=${legacyJwt}`)
-    .expect(400);
+    .expect(401);
 
+  const oversizedQuery = 's'.repeat(240);
+  await request(app)
+    .get(`/api/feed/stream?search=${oversizedQuery}`)
+    .expect(400);
   const logger = require('./utils/logger');
   const guardLog = logger.warn.mock.calls.find(([message]) => message.startsWith('requestGuard:'));
   expect(guardLog?.[1]?.url).toBe('/api/feed/stream?[query-redacted]');
-  expect(JSON.stringify(guardLog)).not.toContain(legacyJwt);
+  expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(legacyJwt);
+  expect(JSON.stringify(guardLog)).not.toContain(oversizedQuery);
 });
 
 test('new verified releases stream as privacy-safe first-party events', () => {

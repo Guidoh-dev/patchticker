@@ -51,6 +51,26 @@ function safeLogUrl(req) {
 }
 
 /**
+ * A pre-ticket frontend briefly opened EventSource with the access JWT in a
+ * `token` query parameter. Browser tabs running that retired bundle can keep
+ * reconnecting after a rolling deploy. Let only that bounded JWT-shaped value
+ * reach the feed route, which ignores it and returns 401. This prevents stale
+ * first-party clients from accumulating abuse strikes without reviving URL
+ * token authentication or relaxing the query guard globally.
+ *
+ * @param {import('express').Request} req
+ * @param {string} key
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isRetiredFeedToken(req, key, value) {
+  if (req.path !== '/api/feed/stream' || key !== 'token' || typeof value !== 'string') {
+    return false;
+  }
+  return value.length <= 2048 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
+}
+
+/**
  * Log, record an abuse signal, and reject a suspicious request.
  * @param {import('express').Response} res
  * @param {number} status
@@ -122,7 +142,7 @@ function requestGuard(req, res, next) {
   // ── 6. Oversized query param values ─────────────────────────────────────────
   for (const [key, value] of Object.entries(req.query)) {
     const val = Array.isArray(value) ? value.join('') : String(value ?? '');
-    if (val.length > MAX_QUERY_VALUE_LEN) {
+    if (val.length > MAX_QUERY_VALUE_LEN && !isRetiredFeedToken(req, key, value)) {
       return reject(
         res, 400,
         `Query parameter "${key}" exceeds maximum length of ${MAX_QUERY_VALUE_LEN}`,
