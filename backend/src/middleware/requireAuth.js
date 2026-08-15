@@ -29,17 +29,11 @@ const logger                = require('../utils/logger');
 async function requireAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
 
-  // SSE connections cannot send custom headers (EventSource API limitation).
-  // Accept token via ?token= query param for /api/feed/stream only.
-  // This is intentionally limited to SSE Accept type to avoid misuse.
-  const isSSE = req.headers['accept'] === 'text/event-stream';
-  const queryToken = isSSE ? req.query.token : null;
-
-  if (!authHeader?.startsWith('Bearer ') && !queryToken) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const token = queryToken ?? authHeader.slice(7);
+  const token = authHeader.slice(7);
 
   if (!token) {
     return res.status(401).json({ error: 'Unauthorized' });

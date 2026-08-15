@@ -54,6 +54,9 @@ describe('pipeline source metadata preservation', () => {
 
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain('security_criticality = COALESCE($12::jsonb, security_criticality)');
+    expect(sql).toContain('score = $13');
+    expect(sql).toContain('status = $14');
+    expect(sql).not.toContain('ai_generated = FALSE');
     expect(JSON.parse(params[11])).toEqual(securityCriticality);
     expect(params[12]).toEqual(expect.any(Number));
     expect(params[13]).toMatch(/stable|caution|avoid/);
@@ -77,6 +80,27 @@ describe('pipeline source metadata preservation', () => {
     expect(sql).toContain("known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb OR $15::boolean");
     expect(params[8]).toBe('[]');
     expect(params[14]).toBe(true);
+  });
+
+  test('generated summaries cannot overwrite ratings or structured source facts', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+
+    await __test.updateWithAiResults('nvidia-610-88', {
+      verdict: 'Review the official release notes.',
+      reasoning: 'The generated layer is restricted to prose.',
+      aiModel: 'test-model',
+      aiGeneratedAt: '2026-08-15T12:00:00.000Z',
+      score: 10,
+      changelog: ['Invented change'],
+      knownIssues: ['Invented issue'],
+    });
+
+    const [sql] = db.query.mock.calls[0];
+    expect(sql).not.toMatch(/\bscore\s*=/);
+    expect(sql).not.toMatch(/\bstatus\s*=/);
+    expect(sql).not.toMatch(/\bchangelog\s*=/);
+    expect(sql).not.toMatch(/\bknown_issues\s*=/);
+    expect(sql).not.toMatch(/\bsecurity_criticality\s*=/);
   });
 
   test('known-issue authority is preserved inside source evidence for API clients', () => {
@@ -107,8 +131,8 @@ describe('pipeline source metadata preservation', () => {
     };
 
     const score = __test.deriveInitialScore('Intel', detected, context);
-    expect(score).toBe(5);
-    expect(__test.deriveInitialStatus(score)).toBe('caution');
+    expect(score).toBe(1);
+    expect(__test.deriveInitialStatus(score)).toBe('avoid');
   });
 
   test('materially older unknown source versions are rejected as regressions', () => {

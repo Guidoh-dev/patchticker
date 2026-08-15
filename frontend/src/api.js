@@ -142,14 +142,14 @@ export async function openBillingPortal() {
 export async function getBillingStatus() { return request('/billing/status'); }
 
 // ── Updates ───────────────────────────────────────────────────────────────────
-export async function fetchUpdates({ platform, status, sort, search } = {}) {
+export async function fetchUpdates({ platform, status, sort, search, signal } = {}) {
   const params = new URLSearchParams();
   if (platform) params.set('platform', platform);
   if (status)   params.set('status', status);
   if (sort)     params.set('sort', sort);
   if (search)   params.set('search', search);
   const qs = params.toString();
-  return request(`/updates${qs ? `?${qs}` : ''}`, { skipAuth: true });
+  return request(`/updates${qs ? `?${qs}` : ''}`, { skipAuth: true, ...(signal ? { signal } : {}) });
 }
 // ── Community feed ────────────────────────────────────────────────────────────
 
@@ -164,18 +164,20 @@ export async function submitPost({ body, platform }) {
   });
 }
 
+export async function createFeedStreamTicket() {
+  return request('/feed/stream-ticket', { method: 'POST', body: JSON.stringify({}) });
+}
+
 /**
  * Opens an SSE connection to /api/feed/stream.
  * Returns a function that closes the connection when called.
  *
- * @param {string}   accessToken
+ * @param {string}   ticket       — short-lived, single-use SSE ticket
  * @param {Function} onMessage   — called with each parsed post object
  * @param {Function} onError     — called on connection error
  */
-export function openFeedStream(accessToken, onMessage, onError) {
-  // SSE doesn't support custom headers natively — pass token as query param.
-  // The backend reads it from ?token= as a fallback for SSE connections.
-  const url = `${window.__API_BASE__ || '/api'}/feed/stream?token=${encodeURIComponent(accessToken)}`;
+export function openFeedStream(ticket, onMessage, onError) {
+  const url = `${window.__API_BASE__ || '/api'}/feed/stream?ticket=${encodeURIComponent(ticket)}`;
   const es  = new EventSource(url);
 
   es.onmessage = (e) => {

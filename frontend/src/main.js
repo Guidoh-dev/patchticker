@@ -15,7 +15,7 @@ import {
   forgotPassword as apiForgotPassword, resetPassword as apiResetPassword,
   createCheckout, openBillingPortal, getBillingStatus,
   fetchUpdates, fetchSummary, submitBugReport,
-  fetchUpdateById, fetchRecentPosts, submitPost, openFeedStream,
+  fetchUpdateById, fetchRecentPosts, submitPost, createFeedStreamTicket, openFeedStream,
 } from './api.js';
 import { restoreSession, setUser, signOut, getUser, isLoggedIn, hasRole, onAuthChange } from './auth.js';
 import { route, fallback, navigate, start, queryParams } from './router.js';
@@ -164,6 +164,7 @@ const UPDATE_VISIT_STORAGE_KEY = 'patchticker.updates.lastSeenAt';
 const _updateVisitBaseline = Date.parse(localStorage.getItem(UPDATE_VISIT_STORAGE_KEY) || '');
 let _updateVisitRecorded = false;
 let _quickbarScrollController = null;
+let _liveFeedCleanup = null;
 
 function isUpdateWithinDisplayWindow(update, now = Date.now()) {
   const releasedAt = Date.parse(update?.releasedAt);
@@ -195,6 +196,9 @@ const H = (s) => String(s).replace(/[&<>"']/g,
 function setHTML(html) {
   _quickbarScrollController?.abort();
   _quickbarScrollController = null;
+  _liveFeedCleanup?.();
+  _liveFeedCleanup = null;
+  document.body.classList.remove('dashboard-shell-active');
   app.innerHTML = html;
   applyAnalyticsPrivacyMasks(app);
   document.getElementById('analytics-privacy-choices')?.addEventListener('click', openAnalyticsPreferences);
@@ -301,10 +305,14 @@ function attachQuickbarScrollBehavior() {
   const search = document.getElementById('dash-top-search');
   if (!quickbar || !toggle) return;
 
+  const mainScroller = document.querySelector('.dash-main');
+  const scrollRoot = window.matchMedia('(max-width: 768px)').matches || !mainScroller ? window : mainScroller;
+  const getScrollY = () => scrollRoot === window ? window.scrollY : scrollRoot.scrollTop;
+
   _quickbarScrollController?.abort();
   _quickbarScrollController = new AbortController();
   const { signal } = _quickbarScrollController;
-  let lastY = window.scrollY;
+  let lastY = getScrollY();
   let framePending = false;
   let manualOpenUntil = 0;
   let lastDirection = lastY > QUICKBAR_TOP_ZONE_PX ? 'down' : 'idle';
@@ -336,7 +344,7 @@ function attachQuickbarScrollBehavior() {
 
   const updateForScroll = () => {
     framePending = false;
-    const currentY = Math.max(0, window.scrollY);
+    const currentY = Math.max(0, getScrollY());
     const delta = currentY - lastY;
     const direction = Date.now() < directionLockedUntil
       ? lastDirection
@@ -353,7 +361,9 @@ function attachQuickbarScrollBehavior() {
       setHidden(false);
       setCollapsed(true);
     } else if (direction === 'down') {
-      lastDirection = 'down';
+      // Collapsing changes layout height and can trigger a small synthetic
+      // upward scroll. Hold the real downward intent through that reflow.
+      lockDirection('down', 520);
       if (document.activeElement === search) search.blur();
       setCollapsed(true);
       setHidden(true);
@@ -364,7 +374,7 @@ function attachQuickbarScrollBehavior() {
   const settleScrollState = () => {
     clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
-      const currentY = Math.max(0, window.scrollY);
+      const currentY = Math.max(0, getScrollY());
       if (currentY <= QUICKBAR_TOP_ZONE_PX) {
         setHidden(false);
         setCollapsed(false);
@@ -419,11 +429,11 @@ function attachQuickbarScrollBehavior() {
     setCollapsed(willCollapse);
   }, { signal });
   search?.addEventListener('focus', () => setHidden(false), { signal });
-  window.addEventListener('wheel', onWheel, { passive: true, signal });
+  scrollRoot.addEventListener('wheel', onWheel, { passive: true, signal });
   window.addEventListener('keydown', onKeyDown, { signal });
-  window.addEventListener('touchstart', onTouchStart, { passive: true, signal });
-  window.addEventListener('touchmove', onTouchMove, { passive: true, signal });
-  window.addEventListener('scroll', onScroll, { passive: true, signal });
+  scrollRoot.addEventListener('touchstart', onTouchStart, { passive: true, signal });
+  scrollRoot.addEventListener('touchmove', onTouchMove, { passive: true, signal });
+  scrollRoot.addEventListener('scroll', onScroll, { passive: true, signal });
   signal.addEventListener('abort', () => clearTimeout(settleTimer), { once: true });
 
   setCollapsed(lastY > QUICKBAR_TOP_ZONE_PX);
@@ -1098,8 +1108,8 @@ async function hydrateLandingSignals() {
     }
     if (!latest) throw new Error('No verified updates available');
 
-    const score = Math.max(0, Math.min(10, Number(latest.score) || 0));
-    const scoreBucket = Math.round(score);
+    const score = validScoreOrNull(latest.score);
+    const scoreBucket = score === null ? null : Math.round(score);
     const status = ['stable', 'caution', 'avoid'].includes(latest.status) ? latest.status : 'caution';
     const state = document.getElementById('landing-live-state');
     const scoreEl = document.getElementById('landing-live-score');
@@ -1112,8 +1122,8 @@ async function hydrateLandingSignals() {
 
     if (state) state.textContent = 'LIVE';
     if (scoreEl) {
-      scoreEl.textContent = score.toFixed(1);
-      scoreEl.setAttribute('aria-label', `${score.toFixed(1)} out of 10 PatchTicker score`);
+      scoreEl.textContent = scoreDisplay(score);
+      scoreEl.setAttribute('aria-label', score === null ? 'PatchTicker score unavailable' : `${score.toFixed(1)} out of 10 PatchTicker score`);
     }
     if (statusEl) {
       statusEl.className = `status-badge ${status}`;
@@ -1126,7 +1136,7 @@ async function hydrateLandingSignals() {
         ? `${updateName} · ${version}`
         : updateName;
     }
-    if (meter) meter.className = `landing-meter landing-meter--${scoreBucket}`;
+    if (meter) meter.className = scoreBucket === null ? 'landing-meter landing-meter--unscored' : `landing-meter landing-meter--${scoreBucket}`;
     if (verdict) verdict.textContent = latest.verdict || latest.reasoning || 'Open the verified release notes for the current install read.';
     if (meta) {
       const liveVotes = Number(latest.userRating?.totalVotes || 0);
@@ -1265,7 +1275,7 @@ function peerRatingMeta(update) {
   const install = Math.max(0, Math.min(100, Number(breakdown.install) || 0));
   const wait = Math.max(0, Math.min(100, Number(breakdown.wait) || 0));
   const avoid = Math.max(0, Math.min(100, Number(breakdown.avoid) || 0));
-  const score = votes ? Number(rating.score ?? 0) : null;
+  const score = votes ? validScoreOrNull(rating.score) : null;
   const label = !votes ? 'Patch notes only'
     : install >= 70 ? 'Users say install'
       : avoid >= 35 ? 'Users say avoid'
@@ -1276,8 +1286,7 @@ function peerRatingMeta(update) {
 
 function formatPackageSize(bytes) {
   const value = Number(bytes);
-  if (!Number.isFinite(value) || value < 0) return null;
-  if (value === 0) return '0 B';
+  if (!Number.isFinite(value) || value <= 0) return null;
 
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const unitIndex = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
@@ -1299,7 +1308,7 @@ function packageSizeMeta(update) {
     ...downloads.map(item => item?.sizeBytes),
     ...evidence.map(item => item?.sizeBytes),
   ];
-  const byteValue = byteCandidates.find(value => Number.isFinite(Number(value)) && Number(value) >= 0);
+  const byteValue = byteCandidates.find(value => Number.isFinite(Number(value)) && Number(value) > 0);
   const formattedBytes = formatPackageSize(byteValue);
   if (formattedBytes) {
     return { value: formattedBytes, available: true, note: 'Vendor package' };
@@ -1339,12 +1348,27 @@ function findSteamGame(query) {
 }
 
 function scoreColor(score) {
+  const valid = validScoreOrNull(score);
+  if (valid === null) return 'var(--text-3)';
   // Returns an interpolated hex between red (#f87171) and green (#4ade80) based on score 0–10
-  const t   = Math.max(0, Math.min(10, score)) / 10;
+  const t   = valid / 10;
   const r   = Math.round(248 + (74  - 248) * t);
   const g   = Math.round(113 + (222 - 113) * t);
   const b   = Math.round(113 + (128 - 113) * t);
   return `rgb(${r},${g},${b})`;
+}
+
+function validScoreOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= 0 && numeric <= 10
+    ? Math.round(numeric * 10) / 10
+    : null;
+}
+
+function scoreDisplay(value) {
+  const score = validScoreOrNull(value);
+  return score === null ? 'Not scored' : score.toFixed(1);
 }
 
 // ── Bug report community feed renderer ───────────────────────────────────────
@@ -1635,8 +1659,9 @@ function analysisMethodLabel(update) {
 
 function decisionForUpdate(u) {
   const vote = u.userRating?.breakdown || {};
-  if (u.status === 'avoid' || (vote.avoid || 0) >= 35 || u.score < 4.5) return { label: 'Avoid for now', cls: 'avoid', action: 'AVOID' };
-  if (u.status === 'caution' || (vote.wait || 0) >= 30 || u.score < 7) return { label: 'Wait and watch', cls: 'caution', action: 'WAIT' };
+  const score = validScoreOrNull(u.score);
+  if (u.status === 'avoid' || (vote.avoid || 0) >= 35 || (score !== null && score < 4.5)) return { label: 'Avoid for now', cls: 'avoid', action: 'AVOID' };
+  if (u.status === 'caution' || (vote.wait || 0) >= 30 || (score !== null && score < 7)) return { label: 'Wait and watch', cls: 'caution', action: 'WAIT' };
   return { label: 'Safe to install', cls: 'stable', action: 'INSTALL' };
 }
 
@@ -1653,14 +1678,16 @@ function setupMatchScore(u, terms) {
 }
 
 function renderScoreBar(score, status) {
-  const pct   = Math.round((score / 10) * 100);
-  const color = scoreColor(score);
+  const valid = validScoreOrNull(score);
+  if (valid === null) return '<div class="score-unavailable">Score unavailable · patch notes remain available</div>';
+  const pct   = Math.round((valid / 10) * 100);
+  const color = scoreColor(valid);
   return `
-    <div class="score-bar-wrap" title="Score: ${H(String(score))} / 10">
+    <div class="score-bar-wrap" title="Score: ${H(String(valid))} / 10">
       <div class="score-bar-track">
         <div class="score-bar-fill" style="height:${pct}%;background:${color};box-shadow:0 0 8px ${color}55"></div>
       </div>
-      <div class="score-bar-value" style="color:${color}">${H(String(score))}</div>
+      <div class="score-bar-value" style="color:${color}">${H(valid.toFixed(1))}</div>
     </div>
   `;
 }
@@ -1744,7 +1771,8 @@ function renderUpdateCard(u) {
   const packageSize = packageSizeMeta(u);
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const methodLabel = analysisMethodLabel(u);
-  const ratingValue = rating.votes && rating.score !== null ? rating.score.toFixed(1) : (u.score ?? '—');
+  const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
+  const ratingDisplay = scoreDisplay(ratingValue);
   const scoreLabel = rating.votes ? 'User rating' : 'Safety score';
   const ratingSource = rating.votes ? 'Live community' : 'PatchTicker';
   const ratingDetail = rating.votes
@@ -1791,7 +1819,7 @@ function renderUpdateCard(u) {
         <aside class="decision-card-rating" aria-label="Patch recommendation and rating">
           <span class="decision-action decision-action--${H(decision.cls)}">${H(decision.action)}</span>
           <span class="decision-card-rating-label">${H(scoreLabel)}</span>
-          <div class="decision-card-rating-value"><strong>${H(String(ratingValue))}</strong><span>/10</span></div>
+          <div class="decision-card-rating-value"><strong>${H(ratingDisplay)}</strong>${ratingValue === null ? '' : '<span>/10</span>'}</div>
           <em>${H(ratingSource)}</em>
           <small>${H(ratingDetail)}</small>
         </aside>
@@ -1801,7 +1829,12 @@ function renderUpdateCard(u) {
 }
 
 function normaliseUpdatesResponse(res) {
-  return Array.isArray(res) ? res : (res?.data || []);
+  const updates = Array.isArray(res) ? res : (res?.data || []);
+  return updates.map(update => ({
+    ...update,
+    score: validScoreOrNull(update?.score),
+    impactScore: validScoreOrNull(update?.impactScore),
+  }));
 }
 
 function annotateReleasePositions(updates = []) {
@@ -1840,7 +1873,8 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const freshness = freshnessMeta(u);
   const packageSize = packageSizeMeta(u);
   const rating = peerRatingMeta(u);
-  const ratingValue = rating.votes && rating.score !== null ? rating.score.toFixed(1) : (u.score ?? '—');
+  const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
+  const ratingDisplay = scoreDisplay(ratingValue);
   const scoreLabel = rating.votes ? 'User rating' : 'Safety score';
   const ratingSource = rating.votes ? 'Live community' : 'PatchTicker';
   return `
@@ -1857,7 +1891,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
       <dl class="mini-update-facts" aria-label="Update facts">
         <div><dt>Released</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
         <div class="${packageSize.available ? '' : 'is-unavailable'}"><dt>Size</dt><dd>${H(packageSize.value)}</dd></div>
-        <div><dt>${H(scoreLabel)}</dt><dd style="color:${scoreColor(Number(ratingValue) || 0)}">${H(String(ratingValue))}/10</dd><small>${H(ratingSource)}</small></div>
+        <div><dt>${H(scoreLabel)}</dt><dd style="color:${scoreColor(ratingValue)}">${H(ratingDisplay)}${ratingValue === null ? '' : '/10'}</dd><small>${H(ratingSource)}</small></div>
       </dl>
       <div class="mini-update-freshness freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)} · ${H(freshness.detail)}</div>
       <p class="mini-update-copy">${H(u.verdict || u.affects || 'Recent patch coverage available.')}</p>
@@ -1891,7 +1925,7 @@ function renderCompareCard(label, u) {
       <strong>${H(u.name)}</strong>
       <div class="compare-meta">
         <span>${H(platformLabel(u.platform))}</span>
-        <span>${H(String(u.score))}/10 safety</span>
+        <span>${H(scoreDisplay(u.score))}${validScoreOrNull(u.score) === null ? '' : '/10 safety'}</span>
         ${rating.votes ? `<span>${H(String(rating.votes))} votes</span>` : '<span>patch notes only</span>'}
       </div>
       <p>${H(primaryRiskText(u))}</p>
@@ -2086,8 +2120,13 @@ async function renderDashboard({ focusId = null } = {}) {
               <input class="dash-search" id="dash-search" type="search" placeholder="Search service, device, game, version…" autocomplete="off" />
               <button class="dash-search-clear hidden" id="dash-search-clear" type="button" aria-label="Clear search">×</button>
             </div>
+            <div class="dash-search-status" id="dash-search-status" aria-live="polite"></div>
             <div class="dash-active-filters hidden" id="dash-active-filters">
               <span id="dash-filter-summary"></span>
+            </div>
+            <div class="dash-filter-actions">
+              <span class="dash-filter-pending" id="dash-filter-pending" aria-live="polite">Filters are up to date</span>
+              <button class="btn btn--primary dash-apply-filters" id="dash-apply-filters" type="button" disabled>Apply filters</button>
             </div>
           </section>
 
@@ -2140,6 +2179,13 @@ async function renderDashboard({ focusId = null } = {}) {
                 <span>Search</span>
                 <input id="dash-top-search" type="search" placeholder="Search patches, devices, versions…" autocomplete="off" />
               </div>
+              <select class="dash-top-sort" id="dash-top-sort" aria-label="Sort patch desk">
+                <option value="date_desc">Newest first</option>
+                <option value="date_asc">Oldest first</option>
+                <option value="score_desc">Highest score</option>
+                <option value="score_asc">Lowest score</option>
+              </select>
+              <button class="btn btn--primary dash-top-apply" id="dash-top-apply-filters" type="button" disabled>Apply</button>
               <button class="dash-quickbar-toggle" id="dash-quickbar-toggle" type="button" aria-controls="dash-quickbar-details" aria-expanded="true" aria-label="Hide update filters"><span>Hide filters</span><b aria-hidden="true">↑</b></button>
             </div>
             <div class="dash-quickbar-details" id="dash-quickbar-details">
@@ -2152,6 +2198,12 @@ async function renderDashboard({ focusId = null } = {}) {
                 <button class="chip" type="button" data-status="stable">Stable</button>
                 <button class="chip" type="button" data-status="caution">Caution</button>
                 <button class="chip" type="button" data-status="avoid">Avoid</button>
+              </div>
+              <div class="dash-lens-ribbon" aria-label="Setup lenses">
+                <button class="setup-lens active" type="button" data-lens="" data-label="Everything">Everything</button>
+                <button class="setup-lens" type="button" data-lens="windows nvidia amd intel steam discord battle.net gog galaxy" data-label="PC &amp; Steam">PC &amp; Steam</button>
+                <button class="setup-lens" type="button" data-lens="steam steamdeck steamos switch ps5 xbox" data-label="Console &amp; handheld">Console &amp; handheld</button>
+                <button class="setup-lens" type="button" data-lens="apple macos ios macbook" data-label="Apple devices">Apple devices</button>
               </div>
               <div class="dash-category-jumps" aria-label="Category jumps">
                 ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
@@ -2200,7 +2252,7 @@ async function renderDashboard({ focusId = null } = {}) {
           </section>
 
           <section class="dash-panel update-tape-panel topic-section" id="section-tape" aria-label="Live update tape">
-            <div class="dash-panel-head">
+            <div class="dash-panel-head update-tape-heading">
               <div><p class="dash-section-kicker">Live tape</p><h2>Newest movement</h2></div>
               <span class="dash-panel-badge">Right to left</span>
             </div>
@@ -2226,18 +2278,26 @@ async function renderDashboard({ focusId = null } = {}) {
         <aside class="dash-aside" aria-label="Live signals and service list">
           <section class="dash-panel dash-live-feed">
             <div class="dash-panel-head dash-panel-head--compact">
-              <div><p class="dash-section-kicker">Live signals</p><h2>Recent activity</h2></div>
-              <span class="feed-status"><span class="feed-dot" id="feed-dot"></span> ${isAuthed ? 'Live' : 'Recent'}</span>
+              <div><p class="dash-section-kicker">Community</p><h2>PatchTicker live chat</h2></div>
+              <span class="feed-status"><span class="feed-dot" id="feed-dot"></span><span id="feed-status-text">${isAuthed ? 'Connecting' : 'Recent'}</span></span>
             </div>
+            <p class="feed-privacy-note">Native community chat · no third-party tracker</p>
             <div class="feed-messages" id="feed-messages" aria-live="polite">
               <div class="feed-empty">Checking recent community activity…</div>
             </div>
             ${isAuthed ? `
               <div class="feed-compose">
-                <input class="feed-input" id="feed-input" type="text" maxlength="280" placeholder="Share an update note…" />
+                <select class="feed-platform-select" id="feed-platform" aria-label="Chat platform">
+                  <option value="">General</option>
+                  ${TRACKED_PLATFORMS.map(platform => `<option value="${H(platform)}">${H(platformLabel(platform))}</option>`).join('')}
+                </select>
+                <div class="feed-compose-message">
+                  <input class="feed-input" id="feed-input" type="text" maxlength="280" placeholder="Share an update note…" aria-describedby="feed-char-count" />
+                  <span class="feed-char-count" id="feed-char-count">0/280</span>
+                </div>
                 <button class="feed-send" id="feed-send" type="button">Send</button>
               </div>
-            ` : `<p class="dash-side-copy">Sign in to post update notes. Public reads stay open.</p>`}
+            ` : `<p class="dash-side-copy">Public reading stays open. <a href="#/login">Sign in</a> to join the chat.</p>`}
           </section>
 
           <section class="dash-panel topic-section" id="section-services">
@@ -2288,6 +2348,7 @@ async function renderDashboard({ focusId = null } = {}) {
     </div><!-- /.dash-wrap -->
     ${renderFooter()}
   `);
+  document.body.classList.add('dashboard-shell-active');
   attachNavHandlers(user);
   attachTopicScrollNav();
   attachQuickbarScrollBehavior();
@@ -2325,22 +2386,85 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   // ── Filter state ─────────────────────────────────────────────────────────────
-  // All filtering is client-side on the cached dataset for instant response.
-  // The initial fetch loads all updates; subsequent filter changes re-render
-  // from the cache without hitting the network.
+  // Controls edit a draft state. The feed changes only after an explicit Apply
+  // action, preventing a sequence of selections from moving the results under
+  // the user before they finish choosing.
   let _allUpdates  = [];   // full dataset from last fetch
-  let _filterState = { platform: '', status: '', sort: 'date_desc', search: '' };
+  const defaultFilterState = () => ({
+    platform: '', status: '', sort: 'date_desc', search: '', searchDisplay: '', searchMode: 'local',
+  });
+  let _filterState = defaultFilterState();
+  let _draftFilterState = defaultFilterState();
+  let _serverSearchResults = null;
+  let _searchMode = 'local';
+  let _searchLoading = false;
+  let _searchError = '';
+  let _searchRequestId = 0;
+  let _searchAbortController = null;
   let _watchedPlatforms = new Set(JSON.parse(localStorage.getItem('patchticker.dashboardWatchlist') || '[]'));
   const saveDashboardWatchlist = () => localStorage.setItem('patchticker.dashboardWatchlist', JSON.stringify([..._watchedPlatforms]));
 
+  function filtersAreDirty() {
+    return ['platform', 'status', 'sort', 'search', 'searchMode']
+      .some(key => _draftFilterState[key] !== _filterState[key]);
+  }
+
+  function syncDraftFilterControls() {
+    document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(button =>
+      button.classList.toggle('active', button.dataset.platform === _draftFilterState.platform)
+    );
+    document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(button =>
+      button.classList.toggle('active', button.dataset.status === _draftFilterState.status)
+    );
+    document.querySelectorAll('[data-source-platform]').forEach(button =>
+      button.classList.toggle('active', button.dataset.sourcePlatform === _draftFilterState.platform)
+    );
+    document.querySelectorAll('.setup-lens').forEach(button =>
+      button.classList.toggle('active', button.dataset.lens === _draftFilterState.search && _draftFilterState.searchMode === 'local')
+    );
+
+    const visibleSearch = _draftFilterState.searchDisplay || _draftFilterState.search;
+    const searchEl = document.getElementById('dash-search');
+    const topSearchEl = document.getElementById('dash-top-search');
+    if (searchEl && searchEl.value !== visibleSearch) searchEl.value = visibleSearch;
+    if (topSearchEl && topSearchEl.value !== visibleSearch) topSearchEl.value = visibleSearch;
+    document.getElementById('dash-search-clear')?.classList.toggle('hidden', !visibleSearch);
+
+    const sortEl = document.getElementById('dash-sort');
+    const topSortEl = document.getElementById('dash-top-sort');
+    if (sortEl) sortEl.value = _draftFilterState.sort;
+    if (topSortEl) topSortEl.value = _draftFilterState.sort;
+
+    const dirty = filtersAreDirty();
+    document.querySelectorAll('#dash-apply-filters, #dash-top-apply-filters').forEach(button => {
+      button.disabled = !dirty;
+      button.classList.toggle('has-pending', dirty);
+    });
+    const pendingEl = document.getElementById('dash-filter-pending');
+    if (pendingEl) {
+      pendingEl.textContent = dirty ? 'Changes ready · press Apply' : 'Filters are up to date';
+      pendingEl.classList.toggle('is-pending', dirty);
+    }
+    updateSearchStatus();
+  }
+
+  function setDraftFilters(patch) {
+    _draftFilterState = { ..._draftFilterState, ...patch };
+    syncDraftFilterControls();
+  }
+
   function applyFilters() {
     const { platform, status, sort, search } = _filterState;
-    let filtered = _allUpdates;
+    let filtered = search && _searchMode === 'server' && Array.isArray(_serverSearchResults)
+      ? _serverSearchResults
+      : _allUpdates;
 
     if (platform) filtered = filtered.filter(u => u.platform === platform);
     if (status)   filtered = filtered.filter(u => u.status   === status);
     if (search) {
-      const needles = searchNeedles(search);
+      const needles = _filterState.searchMode === 'local'
+        ? search.toLowerCase().split(/\s+/).filter(Boolean)
+        : searchNeedles(search);
       filtered = filtered.filter(u => {
         const haystack = searchableTextForUpdate(u);
         return needles.some(q => haystack.includes(q));
@@ -2350,8 +2474,8 @@ async function renderDashboard({ focusId = null } = {}) {
     const sorters = {
       date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
       date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
-      score_desc: (a, b) => b.score - a.score,
-      score_asc:  (a, b) => a.score - b.score,
+      score_desc: (a, b) => (validScoreOrNull(b.score) ?? -1) - (validScoreOrNull(a.score) ?? -1),
+      score_asc:  (a, b) => (validScoreOrNull(a.score) ?? 11) - (validScoreOrNull(b.score) ?? 11),
     };
     if (sorters[sort]) filtered = [...filtered].sort(sorters[sort]);
 
@@ -2361,7 +2485,9 @@ async function renderDashboard({ focusId = null } = {}) {
     if (!filtered.length) {
       const hasFilters = platform || status || search;
       listEl.innerHTML = hasFilters
-        ? '<p class="empty-state">No updates match your filters. <button class="link-btn" id="clear-inline">Clear filters</button></p>'
+        ? (search
+          ? `<div class="empty-state empty-state--search"><strong>No verified updates found for “${H(search)}”.</strong><span>Try a full game name, version number, Steam App ID, device, or platform. PatchTicker searches the last 240 days.</span><button class="link-btn" id="clear-inline">Clear filters</button></div>`
+          : '<p class="empty-state">No updates match your filters. <button class="link-btn" id="clear-inline">Clear filters</button></p>')
         : '<p class="empty-state">No updates found.</p>';
       document.getElementById('clear-inline')?.addEventListener('click', clearAllFilters);
     } else {
@@ -2373,11 +2499,95 @@ async function renderDashboard({ focusId = null } = {}) {
 
     refreshMotionEffects(listEl);
     updateFilterSummary();
+    updateSearchStatus(filtered.length);
     return filtered.length;
   }
 
+  function updateSearchStatus(resultCount = 0) {
+    const el = document.getElementById('dash-search-status');
+    if (!el) return;
+    if (filtersAreDirty()) {
+      el.textContent = 'Ready to update · press Apply filters';
+      el.className = 'dash-search-status is-pending';
+      return;
+    }
+    if (!_filterState.search) {
+      el.textContent = '';
+      el.className = 'dash-search-status';
+      return;
+    }
+    if (_searchLoading) {
+      el.textContent = 'Searching every verified release…';
+      el.className = 'dash-search-status is-loading';
+      return;
+    }
+    if (_searchError) {
+      el.textContent = `Live search unavailable · showing cached matches (${resultCount})`;
+      el.className = 'dash-search-status is-error';
+      return;
+    }
+    el.textContent = _searchMode === 'server'
+      ? `Database search · ${resultCount} ${resultCount === 1 ? 'match' : 'matches'}`
+      : `${resultCount} cached ${resultCount === 1 ? 'match' : 'matches'}`;
+    el.className = 'dash-search-status is-ready';
+  }
+
+  function resetServerSearch() {
+    _searchRequestId += 1;
+    _searchAbortController?.abort();
+    _searchAbortController = null;
+    _serverSearchResults = null;
+    _searchLoading = false;
+    _searchError = '';
+  }
+
+  async function runAuthoritativeSearch(rawQuery) {
+    const query = String(rawQuery || '').trim();
+    _searchMode = 'server';
+    resetServerSearch();
+    if (!query) {
+      _searchMode = 'local';
+      return applyFilters();
+    }
+
+    const requestId = ++_searchRequestId;
+    const controller = new AbortController();
+    _searchAbortController = controller;
+    _searchLoading = true;
+    applyFilters(); // instant cached matches while the authoritative search runs
+
+    try {
+      const response = await fetchUpdates({
+        platform: _filterState.platform,
+        status: _filterState.status,
+        search: query,
+        sort: _filterState.sort,
+        signal: controller.signal,
+      });
+      if (requestId !== _searchRequestId) return 0;
+      _serverSearchResults = annotateReleasePositions(
+        normaliseUpdatesResponse(response).filter(update => isUpdateWithinDisplayWindow(update))
+      );
+      _searchLoading = false;
+      _searchError = '';
+      const resultCount = applyFilters();
+      captureAnalytics('search_completed', {
+        query_length: query.length,
+        result_count: resultCount,
+        has_results: resultCount > 0,
+      });
+      return resultCount;
+    } catch (err) {
+      if (err?.name === 'AbortError' || requestId !== _searchRequestId) return 0;
+      _searchLoading = false;
+      _searchError = err?.message || 'Search unavailable';
+      _serverSearchResults = null;
+      return applyFilters();
+    }
+  }
+
   function updateFilterSummary() {
-    const { platform, status, search } = _filterState;
+    const { platform, status, search, searchDisplay } = _filterState;
     const summaryEl  = document.getElementById('dash-filter-summary');
     const containerEl = document.getElementById('dash-active-filters');
     if (!summaryEl || !containerEl) return;
@@ -2385,7 +2595,7 @@ async function renderDashboard({ focusId = null } = {}) {
     const parts = [];
     if (platform) parts.push(`Platform: <strong>${H(platformLabel(platform))}</strong>`);
     if (status)   parts.push(`Status: <strong>${H(status)}</strong>`);
-    if (search)   parts.push(`Search: <strong>"${H(search)}"</strong>`);
+    if (search)   parts.push(`Search: <strong>"${H(searchDisplay || search)}"</strong>`);
 
     if (parts.length) {
       summaryEl.innerHTML = parts.join(' · ');
@@ -2396,35 +2606,36 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   function clearAllFilters() {
-    _filterState = { platform: '', status: '', sort: _filterState.sort, search: '' };
-
-    document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(b =>
-      b.classList.toggle('active', b.dataset.platform === '')
-    );
-    document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(b =>
-      b.classList.toggle('active', b.dataset.status === '')
-    );
-    const searchEl = document.getElementById('dash-search');
-    if (searchEl) searchEl.value = '';
-    const topSearchEl = document.getElementById('dash-top-search');
-    if (topSearchEl) topSearchEl.value = '';
-    document.getElementById('dash-search-clear')?.classList.add('hidden');
-    document.querySelectorAll('.setup-lens').forEach(b => b.classList.toggle('active', b.dataset.lens === ''));
-    document.querySelectorAll('[data-source-platform]').forEach(b => b.classList.remove('active'));
-
+    resetServerSearch();
+    _searchMode = 'local';
+    const preservedSort = _draftFilterState.sort || _filterState.sort;
+    _filterState = { ...defaultFilterState(), sort: preservedSort };
+    _draftFilterState = { ..._filterState };
+    syncDraftFilterControls();
     applyFilters();
   }
 
   function setPlatformFilter(platform) {
-    _filterState.platform = platform || '';
-    document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(b =>
-      b.classList.toggle('active', b.dataset.platform === _filterState.platform)
-    );
-    document.querySelectorAll('[data-source-platform]').forEach(b =>
-      b.classList.toggle('active', b.dataset.sourcePlatform === _filterState.platform)
-    );
-    applyFilters();
-    captureAnalytics('platform_filter_selected', { platform: _filterState.platform || 'all' });
+    setDraftFilters({ platform: platform || '' });
+  }
+
+  async function applyDraftFilters() {
+    _filterState = { ..._draftFilterState };
+    syncDraftFilterControls();
+    captureAnalytics('filters_applied', {
+      platform: _filterState.platform || 'all',
+      status: _filterState.status || 'all',
+      sort: _filterState.sort,
+      has_search: Boolean(_filterState.search),
+    });
+
+    if (_filterState.search && _filterState.searchMode === 'server') {
+      return runAuthoritativeSearch(_filterState.search);
+    }
+
+    resetServerSearch();
+    _searchMode = 'local';
+    return applyFilters();
   }
 
   function syncWatchButtons(platform) {
@@ -2500,7 +2711,7 @@ async function renderDashboard({ focusId = null } = {}) {
         ? tapeItems.map((u) => {
             const d = decisionForUpdate(u);
             const delta = u.status === 'stable' ? '↑' : u.status === 'avoid' ? '↓' : '•';
-            return `<a class="update-tape-item update-tape-item--${H(d.cls)}" href="#/updates/${H(u.id)}"><b>${H(platformLabel(u.platform))}</b><span>${H(String(u.score))}</span><em>${H(d.action)} ${delta}</em></a>`;
+            return `<a class="update-tape-item update-tape-item--${H(d.cls)}" href="#/updates/${H(u.id)}"><b>${H(platformLabel(u.platform))}</b><span>${H(scoreDisplay(u.score))}</span><em>${H(d.action)} ${delta}</em></a>`;
           }).join('')
         : `<span class="update-tape-empty">${H(message)}</span>`;
     }
@@ -2532,7 +2743,7 @@ async function renderDashboard({ focusId = null } = {}) {
           return `<a class="feed-verified-item" href="#/updates/${H(update.id)}">
             ${renderPlatformLogo(update.platform, 'feed-verified-logo')}
             <span><strong>${H(update.name)}</strong><small>${H(platformLabel(update.platform))} · ${H(timeAgo(update.releasedAt))}</small></span>
-            <em class="feed-verified-score feed-verified-score--${H(decision.cls)}">${H(String(update.score))}</em>
+            <em class="feed-verified-score feed-verified-score--${H(decision.cls)}">${H(scoreDisplay(update.score))}</em>
           </a>`;
         }).join('') || '<span class="feed-empty">Verified patch data is reconnecting…</span>'}
       </div>`;
@@ -2567,6 +2778,7 @@ async function renderDashboard({ focusId = null } = {}) {
         document.getElementById('section-latest')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
+    syncDraftFilterControls();
   }
 
   // ── Initial data load ─────────────────────────────────────────────────────
@@ -2633,19 +2845,13 @@ async function renderDashboard({ focusId = null } = {}) {
   // ── Setup lens buttons ─────────────────────────────────────────────────────
   document.querySelectorAll('.setup-lens').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.setup-lens').forEach(b => b.classList.toggle('active', b === btn));
-      _filterState.search = btn.dataset.lens || '';
-      _filterState.platform = '';
-      document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(b =>
-        b.classList.toggle('active', b.dataset.platform === '')
-      );
-      const searchEl = document.getElementById('dash-search');
-      const topSearchEl = document.getElementById('dash-top-search');
       const label = btn.dataset.label === 'Everything' ? '' : btn.dataset.label;
-      if (searchEl) searchEl.value = label;
-      if (topSearchEl) topSearchEl.value = label;
-      document.getElementById('dash-search-clear')?.classList.toggle('hidden', !btn.dataset.lens);
-      applyFilters();
+      setDraftFilters({
+        search: btn.dataset.lens || '',
+        searchDisplay: label,
+        searchMode: 'local',
+        platform: '',
+      });
     });
   });
 
@@ -2721,83 +2927,49 @@ async function renderDashboard({ focusId = null } = {}) {
     }
     const filterBtn = e.target.closest('.followed-game-filter');
     if (filterBtn) {
-      _filterState.search = filterBtn.dataset.game || '';
-      const searchEl = document.getElementById('dash-search');
-      const topSearchEl = document.getElementById('dash-top-search');
-      if (searchEl) searchEl.value = _filterState.search;
-      if (topSearchEl) topSearchEl.value = _filterState.search;
-      document.getElementById('dash-search-clear')?.classList.remove('hidden');
-      applyFilters();
+      const query = filterBtn.dataset.game || '';
+      setDraftFilters({ search: query, searchDisplay: query, searchMode: 'server' });
+      showToast('Game filter ready. Press Apply to update the patch desk.', 'info');
     }
   });
 
   // ── Status chip buttons ───────────────────────────────────────────────────
   document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(btn => {
     btn.addEventListener('click', () => {
-      _filterState.status = btn.dataset.status;
-      document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(b =>
-        b.classList.toggle('active', b.dataset.status === _filterState.status)
-      );
-      applyFilters();
-      captureAnalytics('status_filter_selected', { status: _filterState.status || 'all' });
+      setDraftFilters({ status: btn.dataset.status || '' });
     });
   });
 
   // ── Sort dropdown ─────────────────────────────────────────────────────────
-  document.getElementById('dash-sort')?.addEventListener('change', (e) => {
-    _filterState.sort = e.target.value;
-    applyFilters();
-    captureAnalytics('sort_changed', { sort: _filterState.sort });
+  document.querySelectorAll('#dash-sort, #dash-top-sort').forEach(select => {
+    select.addEventListener('change', event => setDraftFilters({ sort: event.target.value }));
   });
 
-  // ── Search input (debounced 250ms) ────────────────────────────────────────
-  let _searchTimer = null;
+  // ── Search input (staged; Apply performs authoritative database search) ──
   const searchEl   = document.getElementById('dash-search');
   const topSearchEl = document.getElementById('dash-top-search');
   const clearBtn   = document.getElementById('dash-search-clear');
 
   topSearchEl?.addEventListener('input', (e) => {
     const val = e.target.value;
-    if (searchEl) searchEl.value = val;
-    clearBtn?.classList.toggle('hidden', !val);
-    clearTimeout(_searchTimer);
-    _searchTimer = setTimeout(() => {
-      _filterState.search = val.trim();
-      const resultCount = applyFilters();
-      captureAnalytics('search_completed', {
-        query_length: _filterState.search.length,
-        result_count: resultCount,
-        has_results: resultCount > 0,
-      });
-    }, 250);
+    setDraftFilters({ search: val.trim(), searchDisplay: val, searchMode: 'server' });
   });
 
   searchEl?.addEventListener('input', (e) => {
     const val = e.target.value;
-    if (topSearchEl) topSearchEl.value = val;
-    clearBtn?.classList.toggle('hidden', !val);
-    clearTimeout(_searchTimer);
-    _searchTimer = setTimeout(() => {
-      _filterState.search = val.trim();
-      const resultCount = applyFilters();
-      captureAnalytics('search_completed', {
-        query_length: _filterState.search.length,
-        result_count: resultCount,
-        has_results: resultCount > 0,
-      });
-    }, 250);
+    setDraftFilters({ search: val.trim(), searchDisplay: val, searchMode: 'server' });
   });
 
   clearBtn?.addEventListener('click', () => {
-    if (searchEl) searchEl.value = '';
-    if (topSearchEl) topSearchEl.value = '';
-    clearBtn.classList.add('hidden');
-    _filterState.search = '';
-    applyFilters();
+    setDraftFilters({ search: '', searchDisplay: '', searchMode: 'local' });
   });
 
   // ── Clear all ─────────────────────────────────────────────────────────────
   document.getElementById('dash-clear-all')?.addEventListener('click', clearAllFilters);
+  document.querySelectorAll('#dash-apply-filters, #dash-top-apply-filters').forEach(button => {
+    button.addEventListener('click', applyDraftFilters);
+  });
+  syncDraftFilterControls();
 
   loadUpdates();
 
@@ -2807,9 +2979,15 @@ async function renderDashboard({ focusId = null } = {}) {
     const inputEl    = document.getElementById('feed-input');
     const sendBtn    = document.getElementById('feed-send');
     const dotEl      = document.getElementById('feed-dot');
+    const statusEl   = document.getElementById('feed-status-text');
+    const platformEl = document.getElementById('feed-platform');
+    const countEl    = document.getElementById('feed-char-count');
     if (!messagesEl) return;
 
     let   _sseClose    = null;
+    let   _reconnectTimer = null;
+    let   _connectionAttempt = 0;
+    let   _disposed = false;
     let   _autoScroll  = true;   // pause scroll when user scrolls up
     const MAX_MESSAGES = 80;     // cap DOM nodes to keep it light
 
@@ -2839,6 +3017,7 @@ async function renderDashboard({ focusId = null } = {}) {
     }
 
     function appendMessage(post, animate = true) {
+      if (!post?.id || messagesEl.querySelector(`[data-id="${CSS.escape(String(post.id))}"]`)) return;
       messagesEl.querySelector('.feed-empty')?.remove();
       messagesEl.querySelector('.feed-verified-list')?.remove();
       const userLabel = post.userLabel || post.userEmail?.split('@')[0] || 'Member';
@@ -2869,10 +3048,12 @@ async function renderDashboard({ focusId = null } = {}) {
     }
 
     function setStatus(status) {
-      // status: 'connecting' | 'live' | 'error'
-      if (!dotEl) return;
-      dotEl.className   = `feed-dot feed-dot--${status}`;
-      dotEl.title       = { connecting: 'Connecting…', live: 'Live', error: 'Reconnecting…' }[status] || '';
+      const labels = { connecting: 'Connecting', live: 'Live', error: 'Reconnecting', recent: 'Recent' };
+      if (dotEl) {
+        dotEl.className = `feed-dot feed-dot--${status}`;
+        dotEl.title = labels[status] || '';
+      }
+      if (statusEl) statusEl.textContent = labels[status] || 'Recent';
     }
 
     // Load historical posts first
@@ -2891,34 +3072,41 @@ async function renderDashboard({ focusId = null } = {}) {
     }
 
     // Open SSE stream
-    function connectSSE() {
+    async function connectSSE() {
+      if (_disposed || !isAuthed) {
+        setStatus('recent');
+        return;
+      }
+      const attempt = ++_connectionAttempt;
       if (_sseClose) _sseClose();
+      clearTimeout(_reconnectTimer);
       setStatus('connecting');
 
-      const token = window.__feedToken__;
-      if (!token) { setStatus('live'); return; }
-
-      _sseClose = openFeedStream(
-        token,
-        (post) => {
-          // Deduplicate: skip if already in DOM (from history load)
-          if (messagesEl.querySelector(`[data-id="${post.id}"]`)) return;
-          // Remove empty state
-          messagesEl.querySelector('.feed-empty')?.remove();
-          appendMessage(post, true);
-          setStatus('live');
-        },
-        () => {
-          setStatus('error');
-          // Reconnect after 5s
-          setTimeout(connectSSE, 5000);
-        }
-      );
-
-      // Mark live once the connection is established
-      setTimeout(() => {
-        if (dotEl?.classList.contains('feed-dot--connecting')) setStatus('live');
-      }, 1500);
+      try {
+        const { ticket } = await createFeedStreamTicket();
+        if (_disposed || attempt !== _connectionAttempt) return;
+        _sseClose = openFeedStream(
+          ticket,
+          post => {
+            appendMessage(post, true);
+            setStatus('live');
+          },
+          () => {
+            if (_disposed || attempt !== _connectionAttempt) return;
+            _sseClose?.();
+            _sseClose = null;
+            setStatus('error');
+            _reconnectTimer = setTimeout(connectSSE, 5000);
+          }
+        );
+        setTimeout(() => {
+          if (!_disposed && attempt === _connectionAttempt && dotEl?.classList.contains('feed-dot--connecting')) setStatus('live');
+        }, 900);
+      } catch {
+        if (_disposed || attempt !== _connectionAttempt) return;
+        setStatus('error');
+        _reconnectTimer = setTimeout(connectSSE, 5000);
+      }
     }
 
     // Send a post
@@ -2930,8 +3118,10 @@ async function renderDashboard({ focusId = null } = {}) {
       inputEl.disabled  = true;
 
       try {
-        await submitPost({ body });
+        const created = await submitPost({ body, platform: platformEl?.value || undefined });
+        appendMessage({ ...created, isOwn: true }, true);
         inputEl.value = '';
+        if (countEl) countEl.textContent = '0/280';
       } catch (err) {
         showToast(err.message || 'Failed to post', 'error');
       } finally {
@@ -2942,9 +3132,19 @@ async function renderDashboard({ focusId = null } = {}) {
     }
 
     sendBtn?.addEventListener('click', sendPost);
+    inputEl?.addEventListener('input', () => {
+      if (countEl) countEl.textContent = `${inputEl.value.length}/280`;
+    });
     inputEl?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendPost(); }
     });
+
+    _liveFeedCleanup = () => {
+      _disposed = true;
+      _connectionAttempt += 1;
+      clearTimeout(_reconnectTimer);
+      _sseClose?.();
+    };
 
     loadHistory().then(connectSSE);
   })();
@@ -3029,6 +3229,12 @@ async function renderUpdateDetail(id) {
     return;
   }
 
+  u = {
+    ...u,
+    score: validScoreOrNull(u.score),
+    impactScore: validScoreOrNull(u.impactScore),
+  };
+
   captureAnalytics('update_opened', {
     update_id: u.id,
     platform: u.platform,
@@ -3036,7 +3242,9 @@ async function renderUpdateDetail(id) {
   });
 
   const pSuffix   = platformSuffix(u.platform);
-  const color     = scoreColor(u.score);
+  const updateScore = validScoreOrNull(u.score);
+  const updateScoreDisplay = scoreDisplay(updateScore);
+  const color     = scoreColor(updateScore);
   const packageSize = packageSizeMeta(u);
 
   const riskLevelIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
@@ -3072,14 +3280,16 @@ async function renderUpdateDetail(id) {
 
   function ratingHTML(r, currentVote) {
     if (!r) return '<p class="detail-empty-note">User rating appears after real votes are recorded.</p>';
-    const urColor = scoreColor(r.score ?? 5);
+    const communityScore = validScoreOrNull(r.score);
+    if (communityScore === null) return '<p class="detail-empty-note">The current user rating failed validation and was not displayed.</p>';
+    const urColor = scoreColor(communityScore);
     const install = r.breakdown?.install ?? 0;
     const wait = r.breakdown?.wait ?? 0;
     const avoid = r.breakdown?.avoid ?? 0;
     return `
       <div class="detail-rating-card detail-rating-card--compact">
         <div class="detail-rating-top">
-          <div class="detail-rating-score" style="color:${urColor}">${(r.score ?? '—').toString()}</div>
+          <div class="detail-rating-score" style="color:${urColor}">${H(communityScore.toFixed(1))}</div>
           <div>
             <div class="detail-rating-title">User Rating</div>
             <div class="detail-rating-count">${(r.totalVotes || 0).toLocaleString()} votes${ratingsLive ? ' <span class="rating-live-dot">●</span>' : ''}</div>
@@ -3194,15 +3404,15 @@ async function renderUpdateDetail(id) {
         <aside class="detail-decision-panel detail-decision-panel--${H(u.status)}" aria-label="PatchTicker decision summary">
           <div class="status-badge ${H(u.status)} detail-status-badge">${H(u.status.toUpperCase())}</div>
           <div class="detail-decision-score">
-            <span style="color:${color}">${H(String(u.score ?? '—'))}</span>
-            <em>PatchTicker score · out of 10</em>
+            <span style="color:${color}">${H(updateScoreDisplay)}</span>
+            <em>${updateScore === null ? 'Patch notes available · rating rejected or unavailable' : 'PatchTicker score · out of 10'}</em>
           </div>
           <div class="detail-decision-facts">
             ${decisionFactsHTML}
           </div>
           <details class="detail-score-method">
             <summary>What shaped this score</summary>
-            <p>PatchTicker weighs release channel, vendor-known issues, published risk severity, security urgency, and a platform baseline. Source count shows evidence coverage and does not raise the score.</p>
+            <p>PatchTicker weighs documented release channels, vendor-known issues, structured risk severity, source availability, and release-note completeness. Community votes and generated summaries never alter this score.</p>
           </details>
           ${officialSourceUrl
             ? `<a class="detail-source-primary" href="${H(officialSourceUrl)}" target="_blank" rel="noopener">Open official source ↗</a>`
@@ -4018,7 +4228,8 @@ async function renderPlatformPage(platformName) {
     if (!current) {
       currentEl.innerHTML = '<p class="platform-empty">No update data yet for this platform.</p>';
     } else {
-      const color  = scoreColor(current.score);
+      const currentScore = validScoreOrNull(current.score);
+      const color  = scoreColor(currentScore);
       const status = current.status || 'caution';
       const statusColors = { stable: 'var(--green)', caution: 'var(--yellow)', avoid: 'var(--red)' };
       currentEl.innerHTML = `
@@ -4032,8 +4243,8 @@ async function renderPlatformPage(platformName) {
           </div>
           <div class="platform-current-right">
             <div class="platform-score-ring" style="--ring-color:${color}">
-              <span class="platform-score-num" style="color:${color}">${current.score?.toFixed(1)}</span>
-              <span class="platform-score-label">/ 10</span>
+              <span class="platform-score-num" style="color:${color}">${H(scoreDisplay(currentScore))}</span>
+              ${currentScore === null ? '' : '<span class="platform-score-label">/ 10</span>'}
             </div>
             <div class="platform-status-badge" style="color:${statusColors[status]||'#888'};border-color:${statusColors[status]||'#888'}">
               ${status.toUpperCase()}
@@ -4071,12 +4282,13 @@ async function renderPlatformPage(platformName) {
             </tr></thead>
             <tbody>
               ${history.map(h => {
-                const c = scoreColor(h.score);
+                const historyScore = validScoreOrNull(h.score);
+                const c = scoreColor(historyScore);
                 const statusColors = { stable: 'var(--green)', caution: 'var(--yellow)', avoid: 'var(--red)' };
                 return `<tr class="history-row">
                   <td class="history-td history-td--version">${H(h.version)}</td>
                   <td class="history-td history-td--date">${new Date(h.releasedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
-                  <td class="history-td"><span style="color:${c};font-weight:700">${h.score?.toFixed(1)}</span></td>
+                  <td class="history-td"><span style="color:${c};font-weight:700">${H(scoreDisplay(historyScore))}</span></td>
                   <td class="history-td"><span class="history-status" style="color:${statusColors[h.status]||'#888'}">${(h.status||'').toUpperCase()}</span></td>
                   <td class="history-td">${h.bugCount ?? '—'}</td>
                   <td class="history-td"><a class="history-link" href="#/updates/${H(h.id)}">View →</a></td>
@@ -4329,8 +4541,6 @@ async function boot() {
   // Try to restore session from refresh token cookie
   const restoredUser = await restoreSession();
   syncAnalyticsIdentity(restoredUser);
-  // Expose access token for SSE (EventSource cannot set custom headers)
-  window.__feedToken__ = (await import('./api.js')).getAccessToken();
 
   // Auth event listeners
   onAuthChange((event, user) => {

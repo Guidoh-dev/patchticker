@@ -5,8 +5,35 @@ const axios   = require('axios');
 const { URL } = require('node:url');
 const logger  = require('../utils/logger');
 const secrets = require('../config/secrets');
+const { validateScore } = require('../utils/updateScore');
 
 const MAX_UPDATE_AGE_DAYS = 240;
+
+// Common user shorthand should resolve to the same authoritative database
+// search as the full product name. Keep this intentionally small and focused
+// on names that users are likely to type but vendors do not publish verbatim.
+const SEARCH_ALIAS_GROUPS = [
+  ['cs2', 'counter-strike 2', 'counter strike 2', 'global offensive'],
+  ['steamdeck', 'steam deck', 'steamos', 'steam os'],
+  ['battlenet', 'battle.net', 'blizzard'],
+  ['gog', 'gog galaxy', 'galaxy client'],
+  ['macbook', 'macbook pro', 'macbook air'],
+  ['radeon', 'amd adrenalin', 'adrenalin'],
+  ['geforce', 'nvidia game ready', 'game ready driver'],
+  ['switch', 'nintendo switch', 'switch oled', 'switch lite'],
+];
+
+function expandSearchTerms(rawSearch) {
+  const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!query) return [];
+  const terms = new Set([query]);
+  for (const group of SEARCH_ALIAS_GROUPS) {
+    if (group.some(alias => query === alias || query.includes(alias) || alias.includes(query))) {
+      group.forEach(alias => terms.add(alias));
+    }
+  }
+  return [...terms].slice(0, 12);
+}
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PLACEHOLDER_VERSION_PLATFORMS = new Set(['Xbox', 'PS5', 'BattleNet', 'GOG']);
 const MONTH_NAMES = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
@@ -31,6 +58,35 @@ function jsonArray(value) {
   } catch {
     return [];
   }
+}
+
+function scoreOrNull(value, context = {}) {
+  const result = validateScore(value, { allowNull: context.allowNull === true });
+  if (!result.ok) {
+    logger.error('[updates] Rejected invalid persisted score', {
+      updateId: context.updateId || null,
+      field: context.field || 'score',
+      reason: result.reason,
+    });
+    return null;
+  }
+  return result.value;
+}
+
+function sanitizeUpdateScores(update) {
+  return {
+    ...update,
+    score: scoreOrNull(update?.score, { updateId: update?.id, field: 'score' }),
+    impactScore: scoreOrNull(update?.impactScore, { updateId: update?.id, field: 'impact_score', allowNull: true }),
+  };
+}
+
+function compareScores(direction = 'desc') {
+  return (a, b) => {
+    const aScore = a.score === null ? (direction === 'desc' ? -1 : 11) : a.score;
+    const bScore = b.score === null ? (direction === 'desc' ? -1 : 11) : b.score;
+    return direction === 'desc' ? bScore - aScore : aScore - bScore;
+  };
 }
 
 function isUpdateWithinDisplayWindow(update) {
@@ -742,8 +798,8 @@ function rowToUpdate(row) {
       : Number(row.release_size_bytes),
     releasedAt:           row.released_at,
     status:               row.status,
-    score:                parseFloat(row.score),
-    impactScore:          row.impact_score ? parseFloat(row.impact_score) : null,
+    score:                scoreOrNull(row.score, { updateId: row.id, field: 'score' }),
+    impactScore:          scoreOrNull(row.impact_score, { updateId: row.id, field: 'impact_score', allowNull: true }),
     bugCount:             row.bug_count || 0,
     affects:              row.affects || null,
     verdict:              row.verdict || null,
@@ -846,20 +902,17 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         query += ` AND status = $${params.length}`;
       }
       if (search) {
-        params.push(`%${search.toLowerCase()}%`);
-        query += ` AND (
-          LOWER(name) LIKE $${params.length}
-          OR LOWER(platform) LIKE $${params.length}
-          OR LOWER(version) LIKE $${params.length}
-          OR LOWER(COALESCE(display_version, '')) LIKE $${params.length}
-          OR LOWER(COALESCE(product_id, '')) LIKE $${params.length}
-          OR LOWER(COALESCE(affects, '')) LIKE $${params.length}
-          OR LOWER(COALESCE(verdict, '')) LIKE $${params.length}
-          OR LOWER(COALESCE(reasoning, '')) LIKE $${params.length}
-          OR LOWER(changelog::text) LIKE $${params.length}
-          OR LOWER(known_issues::text) LIKE $${params.length}
-          OR LOWER(risk_factors::text) LIKE $${params.length}
-          OR LOWER(evidence::text) LIKE $${params.length}
+        const patterns = expandSearchTerms(search).map(term => `%${term}%`);
+        params.push(patterns);
+        query += ` AND EXISTS (
+          SELECT 1
+          FROM unnest($${params.length}::text[]) AS search_pattern(pattern)
+          WHERE LOWER(CONCAT_WS(' ',
+            name, platform, version, COALESCE(display_version, ''),
+            COALESCE(product_id, ''), COALESCE(affects, ''),
+            COALESCE(verdict, ''), COALESCE(reasoning, ''),
+            changelog::text, known_issues::text, risk_factors::text, evidence::text
+          )) LIKE search_pattern.pattern
         )`;
       }
 
@@ -870,8 +923,8 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       const sorters = {
         date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
         date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
-        score_desc: (a, b) => b.score - a.score,
-        score_asc:  (a, b) => a.score - b.score,
+        score_desc: compareScores('desc'),
+        score_asc:  compareScores('asc'),
       };
       if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
       return hydrateLiveRatings(updates);
@@ -882,29 +935,31 @@ async function getUpdates({ platform, status, sort, search } = {}) {
 
   // Development/test fixtures only. Production returns an honest empty feed.
   if (!canUseStaticUpdates()) return [];
-  let updates = dedupeArticleReleases(getStaticUpdates().filter(isUpdateDisplayable));
+  let updates = dedupeArticleReleases(getStaticUpdates().map(sanitizeUpdateScores).filter(isUpdateDisplayable));
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
-    const q = search.toLowerCase();
+    const terms = expandSearchTerms(search);
     updates = updates.filter(u =>
-      u.name.toLowerCase().includes(q) ||
-      u.platform.toLowerCase().includes(q) ||
-      (u.version || '').toLowerCase().includes(q) ||
-      (u.affects || '').toLowerCase().includes(q) ||
-      (u.verdict || '').toLowerCase().includes(q) ||
-      (u.reasoning || '').toLowerCase().includes(q) ||
-      JSON.stringify(u.changelog || []).toLowerCase().includes(q) ||
-      JSON.stringify(u.knownIssues || []).toLowerCase().includes(q) ||
-      JSON.stringify(u.riskFactors || []).toLowerCase().includes(q) ||
-      JSON.stringify(u.evidence || []).toLowerCase().includes(q)
+      terms.some(q =>
+        u.name.toLowerCase().includes(q) ||
+        u.platform.toLowerCase().includes(q) ||
+        (u.version || '').toLowerCase().includes(q) ||
+        (u.affects || '').toLowerCase().includes(q) ||
+        (u.verdict || '').toLowerCase().includes(q) ||
+        (u.reasoning || '').toLowerCase().includes(q) ||
+        JSON.stringify(u.changelog || []).toLowerCase().includes(q) ||
+        JSON.stringify(u.knownIssues || []).toLowerCase().includes(q) ||
+        JSON.stringify(u.riskFactors || []).toLowerCase().includes(q) ||
+        JSON.stringify(u.evidence || []).toLowerCase().includes(q)
+      )
     );
   }
   const sorters = {
     date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
     date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
-    score_desc: (a, b) => b.score - a.score,
-    score_asc:  (a, b) => a.score - b.score,
+    score_desc: compareScores('desc'),
+    score_asc:  compareScores('asc'),
   };
   if (sort && sorters[sort]) updates = [...updates].sort(sorters[sort]);
   return hydrateLiveRatings(updates);
@@ -935,7 +990,7 @@ async function getUpdateById(id) {
 
   // Development/test fixture fallback only.
   if (!update && !dbReadSucceeded && canUseStaticUpdates()) {
-    const staticUpdates = getStaticUpdates();
+    const staticUpdates = getStaticUpdates().map(sanitizeUpdateScores);
     update = staticUpdates.find(u => u.id === id) || null;
   }
 
@@ -957,8 +1012,8 @@ async function getSentimentSummary() {
         caution:         updates.filter(u => u.status === 'caution').length,
         avoid:           updates.filter(u => u.status === 'avoid').length,
         totalBugReports: updates.reduce((sum, u) => sum + (u.bugCount || 0), 0),
-        avgScore:        updates.length
-          ? +(updates.reduce((sum, u) => sum + (u.score || 0), 0) / updates.length).toFixed(1)
+        avgScore:        updates.some(u => u.score !== null)
+          ? +(updates.filter(u => u.score !== null).reduce((sum, u) => sum + u.score, 0) / updates.filter(u => u.score !== null).length).toFixed(1)
           : null,
         ...buildFeedMeta(updates),
       };
@@ -967,14 +1022,14 @@ async function getSentimentSummary() {
     }
   }
 
-  const updates = canUseStaticUpdates() ? getStaticUpdates().filter(isUpdateDisplayable) : [];
+  const updates = canUseStaticUpdates() ? getStaticUpdates().map(sanitizeUpdateScores).filter(isUpdateDisplayable) : [];
   return {
     stable:          updates.filter(u => u.status === 'stable').length,
     caution:         updates.filter(u => u.status === 'caution').length,
     avoid:           updates.filter(u => u.status === 'avoid').length,
     totalBugReports: updates.reduce((sum, u) => sum + u.bugCount, 0),
-    avgScore:        updates.length
-      ? +(updates.reduce((sum, u) => sum + u.score, 0) / updates.length).toFixed(1)
+    avgScore:        updates.some(u => u.score !== null)
+      ? +(updates.filter(u => u.score !== null).reduce((sum, u) => sum + u.score, 0) / updates.filter(u => u.score !== null).length).toFixed(1)
       : null,
     ...buildFeedMeta(updates),
   };
@@ -1005,7 +1060,7 @@ async function getUpdateHistory(platform, limit = 20) {
         version:     r.version,
         releasedAt:  r.released_at,
         status:      r.status,
-        score:       parseFloat(r.score),
+        score:       scoreOrNull(r.score, { updateId: r.id, field: 'score' }),
         bugCount:    r.bug_count,
         aiGenerated: r.ai_generated,
         evidence,
@@ -1033,5 +1088,6 @@ module.exports = {
     canonicalArticleSourceKey,
     dedupeArticleReleases,
     releaseInformationQuality,
+    expandSearchTerms,
   },
 };

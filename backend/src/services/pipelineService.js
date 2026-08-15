@@ -23,6 +23,12 @@ const scraperService   = require('./scraperService');
 const aiAnalysisService= require('./aiAnalysisService');
 const watchlistService = require('./watchlistService');
 const { PLATFORM_KEYS } = require('../config/platformRegistry');
+const {
+  deriveDeterministicScore,
+  deriveDeterministicImpactScore,
+  requireValidScore,
+  statusForScore,
+} = require('../utils/updateScore');
 
 // ── ID generation ─────────────────────────────────────────────────────────────
 // Deterministic slug from platform + version: "nvidia-572-16"
@@ -83,6 +89,22 @@ function isSourceVersionRegression(latest, detected) {
 }
 
 async function insertUpdate(update) {
+  let score;
+  let impactScore;
+  try {
+    score = requireValidScore(update.score);
+    impactScore = update.impactScore === null || update.impactScore === undefined
+      ? null
+      : requireValidScore(update.impactScore, 'impact score');
+  } catch (error) {
+    logger.error('[pipeline] Rejected update with invalid deterministic rating', {
+      updateId: update?.id || null,
+      field: error.field || null,
+      reason: error.reason || error.message,
+    });
+    throw error;
+  }
+  const status = statusForScore(score);
   const result = await db.query(
     `INSERT INTO software_updates
        (id, platform, name, version, released_at, status, score,
@@ -99,9 +121,9 @@ async function insertUpdate(update) {
       update.name,
       update.version,
       update.releasedAt,
-      update.status          || 'caution',
-      update.score           ?? 5.0,
-      update.impactScore     ?? null,
+      status,
+      score,
+      impactScore,
       update.bugCount        ?? 0,
       update.affects         || null,
       update.verdict         || null,
@@ -123,29 +145,17 @@ async function insertUpdate(update) {
 async function updateWithAiResults(id, ai) {
   await db.query(
     `UPDATE software_updates SET
-       status             = $2,
-       score              = $3,
-       impact_score       = $4,
-       verdict            = $5,
-       reasoning          = $6,
-       security_criticality = $7,
-       changelog          = $8,
-       known_issues       = $9,
+       verdict            = $2,
+       reasoning          = $3,
        ai_generated       = TRUE,
-       ai_model           = $10,
-       ai_generated_at    = $11,
+       ai_model           = $4,
+       ai_generated_at    = $5,
        updated_at         = now()
      WHERE id = $1`,
     [
       id,
-      ai.status              || 'caution',
-      ai.score               ?? 5.0,
-      ai.impactScore         ?? null,
       ai.verdict             || null,
       ai.reasoning           || null,
-      ai.securityCriticality ? JSON.stringify(ai.securityCriticality) : null,
-      JSON.stringify(ai.changelog   || []),
-      JSON.stringify(ai.knownIssues || []),
       ai.aiModel             || null,
       ai.aiGeneratedAt       || null,
     ]
@@ -259,8 +269,8 @@ async function updateExistingMetadata(platform, version, detected) {
        risk_factors = CASE WHEN $10::jsonb <> '[]'::jsonb THEN $10::jsonb ELSE risk_factors END,
        evidence = CASE WHEN $11::jsonb <> '[]'::jsonb THEN $11::jsonb ELSE evidence END,
        security_criticality = COALESCE($12::jsonb, security_criticality),
-       score = CASE WHEN ai_generated = FALSE THEN $13 ELSE score END,
-       status = CASE WHEN ai_generated = FALSE THEN $14 ELSE status END,
+       score = $13,
+       status = $14,
        updated_at = now()
      WHERE platform = $1 AND version = $2`,
     [
@@ -287,55 +297,22 @@ async function updateExistingMetadata(platform, version, detected) {
 // Before AI runs we need a rough status to store. AI will refine it.
 
 function deriveInitialStatus(score) {
-  if (score >= 7.5) return 'stable';
-  if (score >= 5.0) return 'caution';
-  return 'avoid';
+  return statusForScore(score);
 }
 
 function deriveInitialScore(platform, detected, context) {
-  let score = 7.2;
-  const text = `${detected.name || ''} ${detected.version || ''} ${(context.changelog || []).join(' ')} ${(context.knownIssues || []).join(' ')} ${(context.riskFactors || []).map(r => `${r.level || ''} ${r.label || ''} ${r.text || ''}`).join(' ')}`.toLowerCase();
-  const releaseRiskText = `${detected.name || ''} ${detected.version || ''} ${(context.riskFactors || []).map(r => `${r.level || ''} ${r.label || ''} ${r.text || ''}`).join(' ')}`.toLowerCase();
-
-  // Do not mistake a supported game's name (for example, "E-Day Open Beta")
-  // for a beta driver. Release-channel penalties must come from the release
-  // identity or explicit risk metadata, not arbitrary changelog text.
-  if (/preview|beta|insider|canary|experimental/.test(releaseRiskText)) score -= 1.4;
-  if (/out-of-band|oob|hotfix|security|cve|vulnerab|zero-day|actively exploited/.test(text)) score += 0.8;
-  if (/not currently aware of any issues|no known issues|stability improvements|bug fixes|quality improvements/.test(text)) score += 0.4;
-
-  const knownIssueCount = context.knownIssues?.length || 0;
-  const hardwareScopedIssues = ['NVIDIA', 'AMD', 'Intel'].includes(platform);
-  score -= hardwareScopedIssues
-    ? Math.min(1.2, knownIssueCount * 0.2)
-    : Math.min(2.4, knownIssueCount * 0.45);
-
-  for (const risk of context.riskFactors || []) {
-    const level = String(risk.level || '').toLowerCase();
-    if (level === 'critical') score -= 2.4;
-    else if (level === 'high') score -= 1.6;
-    else if (level === 'medium') score -= 0.8;
-    else if (level === 'low') score -= 0.15;
-  }
-
-  const platformBaselines = {
-    Apple: 0.4,
-    macOS: 0.2,
-    Windows: -0.1,
-    NVIDIA: -0.2,
-    AMD: -0.2,
-    Intel: -0.1,
-    Steam: 0.1,
-    Switch: 0.2,
-    Xbox: 0.2,
-    PS5: 0.2,
-    Discord: -0.1,
-    BattleNet: -0.1,
-    GOG: 0.0,
-  };
-  score += platformBaselines[platform] || 0;
-
-  return Math.max(1, Math.min(9.2, Math.round(score * 10) / 10));
+  return deriveDeterministicScore({
+    platform,
+    name: detected?.name,
+    version: detected?.version,
+    releaseChannel: detected?.releaseChannel,
+    changelog: context?.changelog,
+    knownIssues: context?.knownIssues,
+    knownIssuesAuthoritative: context?.knownIssuesAuthoritative,
+    riskFactors: context?.riskFactors,
+    evidence: context?.evidence,
+    securityCriticality: context?.securityCriticality,
+  });
 }
 
 // ── Platform subreddit map ────────────────────────────────────────────────────
@@ -438,6 +415,11 @@ async function processPlatform(platform) {
   const id = makeUpdateId(platform, detected.version);
   const context = platformContext(platform, detected);
   const initialScore = deriveInitialScore(platform, detected, context);
+  const initialImpactScore = deriveDeterministicImpactScore({
+    changelog: context.changelog,
+    riskFactors: context.riskFactors,
+    securityCriticality: context.securityCriticality,
+  });
   const initialUpdate = {
     id,
     platform,
@@ -446,6 +428,7 @@ async function processPlatform(platform) {
     releasedAt:  detected.releasedAt,
     status:      deriveInitialStatus(initialScore),
     score:       initialScore,
+    impactScore: initialImpactScore,
     bugCount:    0,
     affects:     context.affects,
     verdict:     context.verdict,
@@ -479,15 +462,16 @@ async function processPlatform(platform) {
     try {
       const ai = await aiAnalysisService.analyseUpdate(initialUpdate);
       if (ai) {
-        // Derive status from AI score
-        ai.status = deriveInitialStatus(ai.score);
         await updateWithAiResults(id, ai);
-        logger.info('[pipeline] AI analysis applied', { ...logCtx, score: ai.score, status: ai.status });
+        logger.info('[pipeline] Grounded text analysis applied; deterministic rating preserved', {
+          ...logCtx,
+          score: initialUpdate.score,
+          status: initialUpdate.status,
+        });
 
-        // Use AI-enriched data for alerts
+        // Generated text may enrich the brief, but can never replace the
+        // deterministic score, impact score, or status.
         Object.assign(initialUpdate, ai);
-        initialUpdate.status = ai.status;
-        initialUpdate.score  = ai.score;
         aiApplied = true;
       }
     } catch (err) {
@@ -586,6 +570,7 @@ module.exports = {
   __test: {
     platformContext,
     updateExistingMetadata,
+    updateWithAiResults,
     deriveInitialScore,
     deriveInitialStatus,
     isCanonicalPipelineRelease,

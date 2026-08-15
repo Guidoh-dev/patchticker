@@ -20,6 +20,12 @@ const { URL } = require('node:url');
 const db = require('../config/db');
 const logger = require('../utils/logger');
 const {
+  deriveDeterministicScore,
+  deriveDeterministicImpactScore,
+  requireValidScore,
+  statusForScore,
+} = require('../utils/updateScore');
+const {
   STEAM_GAME_CANDIDATE_SNAPSHOT,
   STEAM_GAME_CANDIDATES,
 } = require('../data/steamGameCandidates');
@@ -62,6 +68,12 @@ function stripSteamMarkup(value) {
   const decoded = cheerio.load(`<body>${withBreaks}</body>`).text();
   return decoded
     .replace(/\r/g, '')
+    // Valve's bounded news response can flatten heading markup completely
+    // ("INTROWelcome" or "UPDATESGameplay"). Restore readable boundaries
+    // before extracting sentences and changelog items.
+    .replace(/\b(CHANGES AND UPDATES|BUG FIXES|KNOWN ISSUES|PERFORMANCE AND STABILITY|PERFORMANCE & STABILITY|GAMEPLAY|GENERAL|VISUALS|AUDIO|INTRO)(?=[A-Z][a-z])/g, '$1\n')
+    .replace(/\b([A-Z][A-Z0-9 &/:'’()-]{2,}?)(?=[A-Z][a-z])/g, '$1\n')
+    .replace(/([.!?])(?=[A-Z][a-z])/g, '$1\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s*\n+/g, '\n')
     .trim();
@@ -256,12 +268,36 @@ function toDatabaseUpdate(game, post, classification) {
   const version = `${game.appId}:${gid}`.slice(0, 64);
   const sourceUrl = trustedSteamNewsUrl(post, game.appId);
   const knownIssues = knownIssuesFromNotes(classification.changelog);
-  const score = Math.max(5.2, Math.min(8.2, 7.3 - Math.min(1.8, knownIssues.length * 0.35)));
-  const status = score >= 7.5 ? 'stable' : 'caution';
   const statedSize = classification.packageSizeBytes;
   const sizeSentence = statedSize
     ? 'The publisher explicitly states a package/download size in its notes.'
     : 'The publisher does not state a download size; PatchTicker qualified this release by the breadth of documented gameplay or requirement changes.';
+
+  const evidence = [{
+    source: `${game.name} official Steam announcement`,
+    url: sourceUrl,
+    text: `${stripSteamMarkup(post.title || 'Update')}; material signals: ${classification.signals.join(', ')}.`,
+    dateBasis: 'published',
+    releaseType: 'official-game-update',
+    publishedAt: publishedAt.toISOString(),
+    steamAppId: game.appId,
+    steamNewsGid: gid,
+    averagePlayersSnapshot: game.averagePlayers,
+    averagePlayersObservedAt: STEAM_GAME_CANDIDATE_SNAPSHOT.observedAt,
+    ...(statedSize ? { sizeBytes: statedSize } : {}),
+  }];
+  const riskFactors = [
+    ...(classification.requirements ? [{ level: 'medium', text: 'The release changes or discusses platform, hardware, anti-cheat, or system requirements; confirm compatibility before updating.' }] : []),
+    ...knownIssues.slice(0, 2).map(text => ({ level: 'medium', text })),
+  ];
+  const score = deriveDeterministicScore({
+    name: releaseTitle(game.name, post.title),
+    version,
+    changelog: classification.changelog,
+    knownIssues,
+    riskFactors,
+    evidence,
+  });
 
   return {
     id: `steam-${game.appId}-${gid}`.slice(0, 64),
@@ -270,31 +306,16 @@ function toDatabaseUpdate(game, post, classification) {
     version,
     displayVersion: displayVersion(post, releasedAt),
     releasedAt: releasedAt.toISOString().slice(0, 10),
-    status,
-    score: Math.round(score * 10) / 10,
-    impactScore: classification.impactScore,
+    status: statusForScore(score),
+    score,
+    impactScore: deriveDeterministicImpactScore({ changelog: classification.changelog, riskFactors }),
     affects: `${game.name} on Steam / gameplay / compatibility / installation requirements`,
     verdict: 'This is a material game update, not a routine hotfix. Review the official gameplay and system-requirement changes before installing; a user rating appears only after real votes are recorded.',
     reasoning: `PatchTicker tracks this release because ${game.name} exceeded 15,000 average Steam players in the reviewed 30-day snapshot and its first-party notes document material ${classification.signals.join(', ')} changes. ${sizeSentence}`,
     changelog: classification.changelog,
     knownIssues,
-    riskFactors: [
-      ...(classification.requirements ? [{ level: 'medium', text: 'The release changes or discusses platform, hardware, anti-cheat, or system requirements; confirm compatibility before updating.' }] : []),
-      ...knownIssues.slice(0, 2).map(text => ({ level: 'medium', text })),
-    ],
-    evidence: [{
-      source: `${game.name} official Steam announcement`,
-      url: sourceUrl,
-      text: `${stripSteamMarkup(post.title || 'Update')}; material signals: ${classification.signals.join(', ')}.`,
-      dateBasis: 'published',
-      releaseType: 'official-game-update',
-      publishedAt: publishedAt.toISOString(),
-      steamAppId: game.appId,
-      steamNewsGid: gid,
-      averagePlayersSnapshot: game.averagePlayers,
-      averagePlayersObservedAt: STEAM_GAME_CANDIDATE_SNAPSHOT.observedAt,
-      ...(statedSize ? { sizeBytes: statedSize } : {}),
-    }],
+    riskFactors,
+    evidence,
     sourceKind: 'steam-game-news',
     sourceRef: `steam-news:${game.appId}:${gid}`,
     productId: String(game.appId),
@@ -342,6 +363,19 @@ async function fetchGameNews(game, options = {}) {
 
 async function upsertMaterialUpdate(update, dryRun = false) {
   if (dryRun) return { inserted: false, dryRun: true };
+  let score;
+  let impactScore;
+  try {
+    score = requireValidScore(update.score);
+    impactScore = requireValidScore(update.impactScore, 'impact score');
+  } catch (error) {
+    logger.error('[steam-games] Rejected material update with invalid deterministic rating', {
+      updateId: update?.id || null,
+      field: error.field || null,
+      reason: error.reason || error.message,
+    });
+    throw error;
+  }
   const result = await db.query(
     `INSERT INTO software_updates
        (id, platform, name, version, display_version, released_at, status, score,
@@ -353,6 +387,8 @@ async function upsertMaterialUpdate(update, dryRun = false) {
        name = EXCLUDED.name,
        display_version = EXCLUDED.display_version,
        released_at = EXCLUDED.released_at,
+       status = EXCLUDED.status,
+       score = EXCLUDED.score,
        impact_score = EXCLUDED.impact_score,
        affects = EXCLUDED.affects,
        verdict = EXCLUDED.verdict,
@@ -366,7 +402,7 @@ async function upsertMaterialUpdate(update, dryRun = false) {
      RETURNING id, (xmax = 0) AS inserted`,
     [
       update.id, update.platform, update.name, update.version, update.displayVersion,
-      update.releasedAt, update.status, update.score, update.impactScore, update.affects,
+      update.releasedAt, statusForScore(score), score, impactScore, update.affects,
       update.verdict, update.reasoning, JSON.stringify(update.changelog),
       JSON.stringify(update.knownIssues), JSON.stringify(update.riskFactors),
       JSON.stringify(update.evidence), update.sourceKind, update.sourceRef,

@@ -84,6 +84,19 @@ test('non-default filters and sorting use the globally ordered result list', () 
   assert.match(mainSource, /updates\.map\(renderUpdateCard\)\.join\(''\)/);
 });
 
+test('typed dashboard searches query the full database with race protection', () => {
+  assert.match(apiSource, /fetchUpdates\(\{ platform, status, sort, search, signal \} = \{\}\)/);
+  assert.match(mainSource, /async function runAuthoritativeSearch\(rawQuery\)/);
+  assert.match(mainSource, /new AbortController\(\)/);
+  assert.match(mainSource, /requestId !== _searchRequestId/);
+  assert.match(mainSource, /fetchUpdates\(\{[\s\S]*?platform: _filterState\.platform,[\s\S]*?status: _filterState\.status,[\s\S]*?search: query,[\s\S]*?sort: _filterState\.sort,[\s\S]*?signal: controller\.signal/);
+  assert.match(mainSource, /Searching every verified release/);
+  assert.match(mainSource, /Database search ·/);
+  assert.match(mainSource, /PatchTicker searches the last 240 days/);
+  assert.match(cssSource, /\.dash-search-status\.is-loading\s*\{[^}]*var\(--cyan\)/s);
+  assert.match(cssSource, /\.empty-state--search\s*\{[^}]*display:\s*grid/s);
+});
+
 test('theme and tracked-game preferences use persistent local storage keys', () => {
   assert.match(mainSource, /patchticker\.theme/);
   assert.match(mainSource, /patchticker\.followedSteamGames/);
@@ -97,8 +110,9 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(mainSource, /direction === 'down'[\s\S]*?setCollapsed\(true\)[\s\S]*?setHidden\(true\)/);
   assert.match(mainSource, /direction === 'up'[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(true\)/);
   assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(false\)/);
-  assert.match(mainSource, /window\.addEventListener\('wheel', onWheel/);
-  assert.match(mainSource, /window\.addEventListener\('touchmove', onTouchMove/);
+  assert.match(mainSource, /const scrollRoot = window\.matchMedia\('\(max-width: 768px\)'\)\.matches/);
+  assert.match(mainSource, /scrollRoot\.addEventListener\('wheel', onWheel/);
+  assert.match(mainSource, /scrollRoot\.addEventListener\('touchmove', onTouchMove/);
   assert.match(mainSource, /lockDirection\('down', 1200\)/);
   assert.match(mainSource, /lockDirection\('up', 1200\)/);
   assert.match(mainSource, /function settleScrollState|const settleScrollState/);
@@ -158,7 +172,53 @@ test('an empty community feed becomes a verified-release activity rail', () => {
 test('public community reads use privacy-safe display labels', () => {
   assert.match(apiSource, /request\('\/feed\/recent', \{ skipAuth: true \}\)/);
   assert.match(mainSource, /post\.userLabel \|\| post\.userEmail\?\.split/);
-  assert.match(mainSource, /Recent activity/);
+  assert.match(mainSource, /PatchTicker live chat/);
+  assert.match(mainSource, /Native community chat · no third-party tracker/);
+});
+
+test('filter controls stage draft state and only update the feed through Apply', () => {
+  assert.match(mainSource, /let _draftFilterState = defaultFilterState\(\)/);
+  assert.match(mainSource, /function setDraftFilters\(patch\)/);
+  assert.match(mainSource, /function applyDraftFilters\(\)/);
+  assert.match(mainSource, /_filterState = \{ \.\.\._draftFilterState \}/);
+  assert.match(mainSource, /id="dash-apply-filters"[^>]*disabled>Apply filters/);
+  assert.match(mainSource, /id="dash-top-apply-filters"[^>]*disabled>Apply/);
+  assert.match(mainSource, /button\.addEventListener\('click', applyDraftFilters\)/);
+  assert.match(mainSource, /if \(platform\) filtered = filtered\.filter/);
+  assert.match(mainSource, /if \(status\)\s+filtered = filtered\.filter/);
+  assert.match(mainSource, /needles\.some\(q => haystack\.includes\(q\)\)/);
+  assert.doesNotMatch(mainSource, /setTimeout\(\(\) => runAuthoritativeSearch/);
+});
+
+test('dashboard uses independent desktop scrollers and native mobile page scroll', () => {
+  assert.match(mainSource, /document\.body\.classList\.add\('dashboard-shell-active'\)/);
+  assert.match(cssSource, /@media \(min-width: 769px\)[\s\S]*?body\.dashboard-shell-active\s*\{[^}]*height:\s*100vh;[^}]*overflow:\s*hidden/s);
+  assert.match(cssSource, /body\.dashboard-shell-active \.dash-sidebar,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*?body\.dashboard-shell-active \.dash-main,[\s\S]*?overflow-y:\s*visible/s);
+  assert.match(cssSource, /body\.dashboard-shell-active \.dash-sidebar\s*\{\s*display:\s*none;/s);
+});
+
+test('newest movement heading is centered across viewports', () => {
+  assert.match(mainSource, /class="dash-panel-head update-tape-heading"/);
+  assert.match(cssSource, /\.update-tape-heading\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*text-align:\s*center/s);
+});
+
+test('native live chat uses one-time SSE tickets and completes the composer', () => {
+  assert.match(apiSource, /createFeedStreamTicket\(\)/);
+  assert.match(apiSource, /\/feed\/stream\?ticket=/);
+  assert.doesNotMatch(apiSource, /\/feed\/stream\?token=/);
+  assert.match(mainSource, /id="feed-platform"/);
+  assert.match(mainSource, /id="feed-char-count">0\/280/);
+  assert.match(mainSource, /appendMessage\(\{ \.\.\.created, isOwn: true \}, true\)/);
+  assert.match(mainSource, /_liveFeedCleanup = \(\) =>/);
+});
+
+test('invalid update scores are dropped rather than coerced to zero or five', () => {
+  assert.match(mainSource, /function validScoreOrNull\(value\)/);
+  assert.match(mainSource, /Number\.isFinite\(numeric\) && numeric >= 0 && numeric <= 10/);
+  assert.match(mainSource, /score: validScoreOrNull\(update\?\.score\)/);
+  assert.match(mainSource, /return score === null \? 'Not scored'/);
+  assert.doesNotMatch(mainSource, /Number\(latest\.score\) \|\| 0/);
 });
 
 test('expired update permalinks explain the 240-day display window', () => {

@@ -15,6 +15,7 @@
 /* global fetch */
 
 const crypto  = require('crypto');
+const { z }   = require('zod');
 const db      = require('../config/db');
 const logger  = require('../utils/logger');
 
@@ -90,6 +91,11 @@ function parseJson(text) {
   return JSON.parse(clean);
 }
 
+const GroundedAnalysisSchema = z.object({
+  verdict: z.string().min(1).max(500),
+  reasoning: z.string().min(1).max(2000),
+}).strict();
+
 // ── Main: generate full analysis for an update ────────────────────────────────
 
 /**
@@ -101,36 +107,15 @@ function parseJson(text) {
  *                     impactScore, securityCriticality, changelog, knownIssues
  */
 async function analyseUpdate(update) {
-  const systemPrompt = `You are PatchTicker's AI analyst. You assess software updates for safety, security impact, and install risk.
+  const systemPrompt = `You are PatchTicker's evidence summarizer. Summarize only facts present in the supplied vendor material.
 You respond ONLY with a valid JSON object — no preamble, no markdown fences, no explanation.
+Never invent a score, severity, issue, requirement, CVE, or recommendation. PatchTicker calculates ratings separately with deterministic code.
 
 JSON schema:
 {
-  "score": <number 0-10, safety/stability score>,
-  "impactScore": <number 0-10, how broadly this update affects users>,
   "verdict": <string, 1-2 sentence plain-English install recommendation>,
-  "reasoning": <string, 3-5 sentence detailed analysis>,
-  "securityCriticality": {
-    "level": <"critical"|"high"|"medium"|"low">,
-    "label": <string, e.g. "Critical CVEs — Actively Exploited">,
-    "cves": [<string>, ...]
-  },
-  "changelog": [<string>, ...],
-  "knownIssues": [<string>, ...]
-}
-
-Scoring rubric:
-- 9-10: Exceptionally clean, no regressions, minimal reports
-- 7-8: Stable with minor issues only
-- 5-6: Caution warranted, real issues but manageable
-- 3-4: Significant regressions affecting many users
-- 1-2: Critical failures, avoid entirely
-
-Impact score rubric:
-- 9-10: Core OS/driver update affecting nearly all users
-- 6-8: Major platform update, wide hardware coverage
-- 3-5: Feature update, moderate scope
-- 1-2: Minor launcher/cosmetic update`;
+  "reasoning": <string, 3-5 sentence evidence-grounded summary>
+}`;
 
   const userPrompt = `Analyse this software update and return JSON only:
 
@@ -155,26 +140,26 @@ Evidence sources: ${JSON.stringify((update.evidence || []).map(e => e.text || e)
     tokensOut = result.tokensOut;
     latency   = result.latency;
 
-    const parsed = parseJson(result.text);
+    const parsed = GroundedAnalysisSchema.parse(parseJson(result.text));
 
     await logAiCall({ updateId: update.id, promptHash, tokensIn, tokensOut, latency, success: true });
 
     logger.info('[ai] Analysis complete', {
       updateId: update.id,
-      score:    parsed.score,
+      scoreAuthority: 'deterministic-engine',
       tokensIn,
       tokensOut,
       latencyMs: latency,
     });
 
     return {
-      score:               Math.max(0, Math.min(10, Number(parsed.score) || 5)),
-      impactScore:         Math.max(0, Math.min(10, Number(parsed.impactScore) || 5)),
       verdict:             String(parsed.verdict || '').slice(0, 500),
       reasoning:           String(parsed.reasoning || '').slice(0, 2000),
-      securityCriticality: parsed.securityCriticality || { level: 'none', label: 'Security context not classified', cves: [] },
-      changelog:           Array.isArray(parsed.changelog)   ? parsed.changelog   : (update.changelog   || []),
-      knownIssues:         Array.isArray(parsed.knownIssues) ? parsed.knownIssues : (update.knownIssues || []),
+      // Structured source facts remain exactly as scraped. Generated text can
+      // never create or remove CVEs, known issues, or changelog entries.
+      securityCriticality: update.securityCriticality || { level: 'none', label: 'Security context not classified', cves: [] },
+      changelog:           update.changelog || [],
+      knownIssues:         update.knownIssues || [],
       aiGenerated:         true,
       aiModel:             MODEL,
       aiGeneratedAt:       new Date().toISOString(),
@@ -215,4 +200,4 @@ async function getAiLog({ limit = 50, updateId } = {}) {
   return rows.rows;
 }
 
-module.exports = { analyseUpdate, getAiLog, isEnabled };
+module.exports = { analyseUpdate, getAiLog, isEnabled, __test: { GroundedAnalysisSchema } };

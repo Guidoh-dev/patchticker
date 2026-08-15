@@ -25,4 +25,22 @@ describe('paid AI cost guard', () => {
     process.env.ANTHROPIC_ENABLED = 'true';
     expect(aiAnalysisService.isEnabled()).toBe(true);
   });
+
+  test('generated analysis cannot smuggle ratings or structured source facts into persistence', () => {
+    const { GroundedAnalysisSchema } = aiAnalysisService.__test;
+    expect(GroundedAnalysisSchema.safeParse({
+      verdict: 'Review the documented vendor notes.',
+      reasoning: 'The supplied evidence describes a compatibility change.',
+    }).success).toBe(true);
+    expect(GroundedAnalysisSchema.safeParse({
+      score: 9.9,
+      verdict: 'Install now.',
+      reasoning: 'Unsupported generated score.',
+    }).success).toBe(false);
+    expect(GroundedAnalysisSchema.safeParse({
+      knownIssues: ['Invented issue'],
+      verdict: 'Wait.',
+      reasoning: 'Unsupported generated issue.',
+    }).success).toBe(false);
+  });
 });

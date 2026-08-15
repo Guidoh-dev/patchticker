@@ -101,6 +101,16 @@ test('successful empty DB reads stay empty instead of reviving static samples', 
   await expect(updatesService.getUpdateById('steam-apex-legends-july-2026')).resolves.toBeNull();
 });
 
+test('search shorthand expands to authoritative product-name aliases', () => {
+  expect(updatesService.__test.expandSearchTerms('cs2')).toEqual(expect.arrayContaining([
+    'cs2', 'counter-strike 2', 'counter strike 2',
+  ]));
+  expect(updatesService.__test.expandSearchTerms('SteamDeck')).toEqual(expect.arrayContaining([
+    'steamdeck', 'steam deck', 'steamos',
+  ]));
+  expect(updatesService.__test.expandSearchTerms('NARAKA')).toEqual(['naraka']);
+});
+
 test('monthly placeholders require official release metadata', () => {
   const base = { platform: 'GOG', version: '2026-08', releasedAt: '2026-08-05' };
   expect(updatesService.__test.isUpdateDisplayable({ ...base, evidence: [{ source: 'Support' }] })).toBe(false);

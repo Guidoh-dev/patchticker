@@ -91,6 +91,16 @@ describe('material Steam game update pipeline', () => {
     expect(result.eligible).toBe(true);
   });
 
+  test('restores readable boundaries in Valve-flattened release notes', () => {
+    const plain = __test.stripSteamMarkup('INTROWelcome to the update.CHANGES AND UPDATESGameplayKickoff rules changed.MATCHMAKING TESTSIn Ranked, queues changed.BUG FIXESFixed a crash.');
+    expect(plain).toContain('INTRO\nWelcome to the update.');
+    expect(plain).toContain('UPDATES\nGameplay');
+    expect(plain).toContain('BUG FIXES\nFixed a crash.');
+    expect(plain).toContain('MATCHMAKING TESTS\nIn Ranked');
+    const notes = __test.releaseNotesFromPost({ contents: plain });
+    expect(notes.changelog.some(item => item.startsWith('Welcome to the update.'))).toBe(true);
+  });
+
   test('rejects dated pre-release announcements while allowing live releases', () => {
     const material = `${list(Array.from({ length: 8 }, (_, i) => `New gameplay map and combat system ${i}`))}${' gameplay '.repeat(150)}`;
     expect(__test.classifyMaterialUpdate({

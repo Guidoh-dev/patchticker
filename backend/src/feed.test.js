@@ -55,3 +55,19 @@ test('new posts stay authenticated and never expose the account email', async ()
   expect(response.body).not.toHaveProperty('userEmail');
   expect(JSON.stringify(response.body)).not.toContain('private@example.com');
 });
+
+test('live chat uses a short-lived ticket instead of exposing the access JWT in the SSE URL', async () => {
+  const app = makeApp();
+  const ticketResponse = await request(app)
+    .post('/api/feed/stream-ticket')
+    .send({})
+    .expect(200);
+
+  expect(ticketResponse.body.ticket).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+  expect(ticketResponse.body.expiresIn).toBe(60);
+  expect(mockRequireAuth).toHaveBeenCalled();
+  expect(feedRouter.__test.consumeStreamTicket(ticketResponse.body.ticket)).toEqual(expect.objectContaining({
+    userId: 'abcd1234-0000-0000-0000-000000000000',
+  }));
+  expect(feedRouter.__test.consumeStreamTicket(ticketResponse.body.ticket)).toBeNull();
+});
