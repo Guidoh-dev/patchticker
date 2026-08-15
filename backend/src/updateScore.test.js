@@ -9,8 +9,13 @@ const {
 } = require('./utils/updateScore');
 
 describe('deterministic update scoring', () => {
-  test.each([NaN, Infinity, -Infinity, null, undefined, '', 'not-a-score', -0.1, 10.1])(
+  test.each([NaN, Infinity, -Infinity, null, undefined, '', '   ', 'not-a-score', -0.1, 10.1])(
     'rejects an invalid rating value: %p',
+    value => expect(validateScore(value).ok).toBe(false),
+  );
+
+  test.each([true, false, [], [5], {}, '0x5', '5/10', '1e1'])(
+    'rejects coercible but malformed rating input: %p',
     value => expect(validateScore(value).ok).toBe(false),
   );
 

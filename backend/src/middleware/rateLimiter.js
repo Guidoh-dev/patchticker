@@ -4,14 +4,14 @@
 //
 // TIERS
 // ──────
-//   standardLimiter       100 req / 15 min  — global API baseline (per IP)
+//   standardLimiter       300 failed req / 15 min — global API baseline (per IP)
 //   externalApiLimiter     20 req / 1 min   — routes that call third-party APIs
 //   submissionLimiter      10 req / 1 hr    — bug report submissions
 //   authLimiter            20 req / 15 min  — register, refresh, logout
 //   loginLimiter           10 req / 15 min  — login only (skipSuccessfulRequests)
 //   checkoutLimiter         5 req / 1 hr    — billing checkout (per user ID)
 //   voteLimiter            20 req / 1 hr    — vote cast/change/retract (per user ID)
-//   ratingsReadLimiter     60 req / 1 min   — GET /ratings/:id (per IP, DB-backed)
+//   ratingsReadLimiter    180 failed req / 1 min — GET /ratings/:id (per IP, DB-backed)
 //   accountMutateLimiter   10 req / 1 hr    — password change, watchlist, webhooks (per user ID)
 //   aiAnalysisLimiter       3 req / 1 hr    — AI re-analysis per update per user ID
 //
@@ -54,52 +54,52 @@
 'use strict';
 
 const rateLimit              = require('express-rate-limit');
-const { getBackoffMs, recordSignal, SIGNAL } = require('../services/ipAbuseService');
+const { getBackoffMs, getStatus, AUTO_BLACKLIST_POINTS } = require('../services/ipAbuseService');
 const logger                 = require('../utils/logger');
 
 // ── Shared handler factory ────────────────────────────────────────────────────
 
 /**
  * Build a rate limit handler that:
- *   1. Records a RATE_LIMIT_HIT signal (which feeds exponential backoff)
+ *   1. Emits one 429 for abuseDetector to record centrally
  *   2. Sets Retry-After to the IP's current backoff window
- *   3. Returns a structured 429 response
+ *   3. Returns a structured response
  *
  * @param {string} tier  — limiter name for log correlation
  * @returns {import('express-rate-limit').RateLimitExceededEventHandler}
  */
 function makeHandler(tier) {
   return (req, res, _next, options) => {
-    const ip       = req.ip;
-    const result   = recordSignal(ip, SIGNAL.RATE_LIMIT_HIT, {
-      tier,
-      path:   req.path,
-      method: req.method,
-    });
+    const ip = req.ip;
+
+    // abuseDetector owns RATE_LIMIT_HIT recording for every downstream 429.
+    // Calling res.status(429) first lets that single interception happen before
+    // we calculate the response backoff. Do not record here as well: doing both
+    // doubled each offence and could turn ten limiter responses into a 24-hour
+    // auto-blacklist.
+    res.status(429);
+    const abuseStatus = getStatus(ip);
+    const backoffMs = getBackoffMs(ip);
 
     // Retry-After: IP's current backoff window in seconds
-    const retryAfterSec = Math.ceil(result.backoffMs / 1000);
+    const retryAfterSec = Math.ceil(backoffMs / 1000);
     res.set('Retry-After', String(retryAfterSec));
 
     logger.warn(`Rate limit exceeded [${tier}]`, {
       ip,
       path:          req.path,
       method:        req.method,
-      offences:      result.offences,
-      points:        result.points,
-      backoffMs:     result.backoffMs,
+      offences:      abuseStatus?.offences || 0,
+      points:        abuseStatus?.points || 0,
+      backoffMs,
       retryAfterSec,
-      autoBlacklisted: result.autoBlacklisted,
+      autoBlacklisted: Number(abuseStatus?.points || 0) >= AUTO_BLACKLIST_POINTS,
     });
 
-    // abuseDetector's res.status wrapper has already fired by the time
-    // express-rate-limit calls this handler, because express-rate-limit
-    // calls handler(req, res, next, options) directly — not res.status().
-    // So we call the original options.message path directly.
-    res.status(429).json({
+    res.json({
       error:       options.message?.error || 'Too many requests.',
       retryAfterSec,
-      backoffOffences: result.offences,
+      backoffOffences: abuseStatus?.offences || 0,
     });
   };
 }
@@ -115,8 +115,9 @@ const SHARED_OPTIONS = {
 // ── Limiters ──────────────────────────────────────────────────────────────────
 
 /**
- * Standard limiter — 100 req / 15 min baseline for all /api/ routes.
- * Applied globally in server.js; all other limiters are additive.
+ * Standard limiter — 300 failed requests / 15 min for all /api/ routes.
+ * Successful requests are refunded. Applied globally in server.js; all other
+ * limiters are additive.
  */
 const standardLimiter = rateLimit({
   ...SHARED_OPTIONS,
@@ -219,7 +220,7 @@ const voteLimiter = rateLimit({
 });
 
 /**
- * Ratings read limiter — 60 req / 1 min per IP for GET /api/ratings/:id.
+ * Ratings read limiter — 180 failed requests / 1 min per IP for GET /api/ratings/:id.
  * Tighter than standardLimiter because each request hits the DB.
  * Prevents scrapers/bots from running continuous aggregation queries.
  */
@@ -273,4 +274,5 @@ module.exports = {
   ratingsReadLimiter,
   accountMutateLimiter,
   aiAnalysisLimiter,
+  __test: { makeHandler },
 };

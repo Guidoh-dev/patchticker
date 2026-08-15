@@ -21,6 +21,16 @@
 
 import { defineConfig, loadEnv } from 'vite';
 
+function assertPublicPostHogKey(env) {
+  const key = String(env.VITE_POSTHOG_KEY || '').trim();
+  if (key && !key.startsWith('phc_')) {
+    throw new Error(
+      'VITE_POSTHOG_KEY must be the browser-safe PostHog project token (phc_...). ' +
+      'Personal and project-secret API keys must remain in the backend environment.'
+    );
+  }
+}
+
 const FRONTEND_CSP = [
   "default-src 'none'",
   // hCaptcha + Google AdSense scripts
@@ -43,6 +53,7 @@ const FRONTEND_CSP = [
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  assertPublicPostHogKey(env);
 
   return {
     root:      '.',

@@ -146,6 +146,18 @@ test('verified evidence metadata is promoted for API clients without inference',
   });
 });
 
+test('invalid persisted scores are dropped with their derived status', () => {
+  const update = updatesService.__test.rowToUpdate({
+    id: 'invalid-score', platform: 'Windows', name: 'Malformed score fixture', version: '1.0',
+    released_at: '2026-08-10', status: 'stable', score: true, impact_score: null,
+    bug_count: 0, changelog: [], known_issues: [], risk_factors: [], evidence: [],
+    security_criticality: null, subreddits: [], created_at: '2026-08-10T12:00:00Z',
+  });
+
+  expect(update.score).toBeNull();
+  expect(update.status).toBeNull();
+});
+
 test('detail pages rank same-product releases before same-lane and platform releases', async () => {
   const row = (overrides = {}) => ({
     id: 'steam-current', platform: 'Steam', name: 'Marvel Rivals current patch', version: '9.5',
@@ -263,6 +275,27 @@ test('search relevance favors direct product matches over incidental patch-note 
   );
   expect(updatesService.__test.searchRelevanceScore(amdRelease, terms)).toBe(100);
   expect(updatesService.__test.searchRelevanceScore(incidentalSteamRelease, terms)).toBe(30);
+});
+
+test('exact multi-word product titles outrank the same phrase inside incidental notes', () => {
+  const directGameRelease = {
+    platform: 'Steam',
+    name: 'Battlefield 6 Update 1.2.3',
+    version: '1.2.3',
+    changelog: ['Improved progression and map balance.'],
+  };
+  const incidentalDriverRelease = {
+    platform: 'AMD',
+    name: 'AMD Software: Adrenalin Edition 26.7.1',
+    version: '26.7.1',
+    changelog: ['Battlefield 6 may experience intermittent stutter on one GPU family.'],
+  };
+
+  expect(updatesService.__test.searchRelevanceScore(directGameRelease, 'Battlefield 6')).toBe(1000);
+  expect(updatesService.__test.searchRelevanceScore(incidentalDriverRelease, 'Battlefield 6')).toBe(300);
+  expect(updatesService.__test.searchRelevanceScore(directGameRelease, 'Battlefield 6')).toBeGreaterThan(
+    updatesService.__test.searchRelevanceScore(incidentalDriverRelease, 'Battlefield 6')
+  );
 });
 
 test('monthly placeholders require official release metadata', () => {

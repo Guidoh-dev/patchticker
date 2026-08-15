@@ -307,6 +307,7 @@ function attachQuickbarScrollBehavior() {
 
   const mainScroller = document.querySelector('.dash-main');
   const scrollRoot = window.matchMedia('(max-width: 768px)').matches || !mainScroller ? window : mainScroller;
+  const collapseAtTop = window.matchMedia('(max-width: 640px)').matches;
   const getScrollY = () => scrollRoot === window ? window.scrollY : scrollRoot.scrollTop;
 
   _quickbarScrollController?.abort();
@@ -353,7 +354,7 @@ function attachQuickbarScrollBehavior() {
     if (currentY <= QUICKBAR_TOP_ZONE_PX) {
       lastDirection = 'idle';
       setHidden(false);
-      setCollapsed(false);
+      setCollapsed(collapseAtTop);
     } else if (Date.now() < manualOpenUntil) {
       setHidden(false);
     } else if (direction === 'up') {
@@ -377,7 +378,7 @@ function attachQuickbarScrollBehavior() {
       const currentY = Math.max(0, getScrollY());
       if (currentY <= QUICKBAR_TOP_ZONE_PX) {
         setHidden(false);
-        setCollapsed(false);
+        setCollapsed(collapseAtTop);
         return;
       }
       // Trackpads and browser-driven jumps can coalesce several scroll events
@@ -436,7 +437,7 @@ function attachQuickbarScrollBehavior() {
   scrollRoot.addEventListener('scroll', onScroll, { passive: true, signal });
   signal.addEventListener('abort', () => clearTimeout(settleTimer), { once: true });
 
-  setCollapsed(lastY > QUICKBAR_TOP_ZONE_PX);
+  setCollapsed(lastY > QUICKBAR_TOP_ZONE_PX || collapseAtTop);
   setHidden(lastY > QUICKBAR_TOP_ZONE_PX);
 }
 
@@ -1271,12 +1272,6 @@ function releaseLaneKey(update) {
   return `${update?.platform || 'unknown'}:${product}`;
 }
 
-function searchNeedles(raw) {
-  const q = raw.toLowerCase().trim();
-  if (!q) return [];
-  return searchTermGroups(q).flat();
-}
-
 function searchTermGroups(raw) {
   const q = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!q) return [];
@@ -1294,8 +1289,9 @@ function searchTermGroups(raw) {
 }
 
 function updateSearchRelevance(update, query) {
-  const needles = searchNeedles(query);
-  if (!needles.length) return 0;
+  const exactQuery = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const groups = searchTermGroups(exactQuery);
+  if (!groups.length) return 0;
   const fields = [
     [update?.name, 100],
     [releaseLaneLabel(update), 90],
@@ -1311,10 +1307,23 @@ function updateSearchRelevance(update, query) {
     [JSON.stringify(update?.riskFactors || []), 25],
     [JSON.stringify(update?.evidence || []), 20],
   ];
-  return fields.reduce((score, [value, weight]) => {
-    const haystack = String(value || '').toLowerCase();
-    return Math.max(score, needles.some(needle => haystack.includes(needle)) ? weight : 0);
+  const searchableFields = fields.map(([value, weight]) => ({
+    haystack: String(value || '').toLowerCase(),
+    weight,
+  }));
+  const crossFieldCoverage = groups.reduce((total, group) => {
+    const strongest = searchableFields.reduce((best, { haystack, weight }) => (
+      group.some(term => haystack.includes(term)) ? Math.max(best, weight) : best
+    ), 0);
+    return total + strongest;
   }, 0);
+  const sameFieldStrength = searchableFields.reduce((best, { haystack, weight }) => {
+    if (!haystack) return best;
+    if (exactQuery && haystack.includes(exactQuery)) return Math.max(best, weight * 10);
+    const hasEveryGroup = groups.every(group => group.some(term => haystack.includes(term)));
+    return Math.max(best, hasEveryGroup ? weight * 5 : 0);
+  }, 0);
+  return Math.max(crossFieldCoverage, sameFieldStrength);
 }
 
 function searchMatchReason(update, query) {
@@ -1427,7 +1436,11 @@ function scoreColor(score) {
 
 function validScoreOrNull(value) {
   if (value === null || value === undefined || value === '') return null;
-  const numeric = Number(value);
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  const normalized = typeof value === 'string' ? value.trim() : value;
+  if (normalized === '') return null;
+  if (typeof normalized === 'string' && !/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
+  const numeric = Number(normalized);
   return Number.isFinite(numeric) && numeric >= 0 && numeric <= 10
     ? Math.round(numeric * 10) / 10
     : null;
@@ -1846,10 +1859,13 @@ function analysisMethodMeta(update) {
 }
 
 function decisionForUpdate(u) {
-  const vote = u.userRating?.breakdown || {};
   const score = validScoreOrNull(u.score);
-  if (u.status === 'avoid' || (vote.avoid || 0) >= 35 || (score !== null && score < 4.5)) return { label: 'Avoid for now', cls: 'avoid', action: 'AVOID' };
-  if (u.status === 'caution' || (vote.wait || 0) >= 30 || (score !== null && score < 7)) return { label: 'Wait and watch', cls: 'caution', action: 'WAIT' };
+  // The install recommendation is a projection of the validated deterministic
+  // score only. Community votes remain visible as a separate user rating and
+  // generated prose can never move this badge.
+  if (score === null) return { label: 'Review official notes', cls: 'unscored', action: 'REVIEW' };
+  if (score < 5) return { label: 'Avoid for now', cls: 'avoid', action: 'AVOID' };
+  if (score < 7.5) return { label: 'Wait and watch', cls: 'caution', action: 'WAIT' };
   return { label: 'Safe to install', cls: 'stable', action: 'INSTALL' };
 }
 
@@ -2002,8 +2018,8 @@ function renderUpdateCard(u) {
             ${driverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(driverImpact.label)}</span>` : ''}
             ${steamAudience?.compactPlayers ? `<span class="steam-audience-signal" title="${H(steamAudience.detail)}"><i aria-hidden="true">◎</i>${H(steamAudience.label)}</span>` : ''}
             ${u.matchReason ? `<span class="decision-match-reason">Matched in ${H(u.matchReason)}</span>` : ''}
-            <span>${H(freshness.detail)}</span>
-            <span>${H(sourceLabel)}</span>
+            <span class="decision-card-checked">${H(freshness.detail)}</span>
+            <span class="decision-card-source-count">${H(sourceLabel)}</span>
             <span class="source-depth-signal source-depth-signal--${H(methodMeta.tone)}">${H(methodMeta.label)}</span>
           </div>
         </div>
@@ -2210,12 +2226,28 @@ function renderGroupedUpdateSections(updates, watchedSet = new Set()) {
     });
     const platformSections = meta.platforms
       .filter(platform => byPlatform.has(platform))
-      .map(platform => `
-        <section class="platform-feed-block">
-          ${renderPlatformHeader(platform, byPlatform.get(platform), watchedSet)}
-          <div class="platform-feed-cards">${byPlatform.get(platform).map(renderUpdateCard).join('')}</div>
-        </section>
-      `).join('');
+      .map(platform => {
+        const platformUpdates = byPlatform.get(platform);
+        // Lead with the newest decision for each ecosystem. Steam keeps a few
+        // more because desktop, SteamOS, and followed-game lanes share it.
+        const initialCount = platform === 'Steam' ? 4 : 1;
+        const visibleUpdates = platformUpdates.slice(0, initialCount);
+        const earlierUpdates = platformUpdates.slice(initialCount);
+        const suffix = platformSuffix(platform);
+        return `
+          <section class="platform-feed-block">
+            ${renderPlatformHeader(platform, platformUpdates, watchedSet)}
+            <div class="platform-feed-cards">${visibleUpdates.map(renderUpdateCard).join('')}</div>
+            ${earlierUpdates.length ? `
+              <div class="platform-feed-more" id="platform-more-${H(suffix)}" hidden>
+                ${earlierUpdates.map(renderUpdateCard).join('')}
+              </div>
+              <button class="platform-more-toggle" type="button" data-expand-platform-releases="platform-more-${H(suffix)}" data-platform-label="${H(platformLabel(platform))}" data-hidden-count="${H(String(earlierUpdates.length))}" aria-expanded="false" aria-controls="platform-more-${H(suffix)}">
+                Show ${H(String(earlierUpdates.length))} earlier ${H(platformLabel(platform))} ${earlierUpdates.length === 1 ? 'release' : 'releases'}
+              </button>` : ''}
+          </section>
+        `;
+      }).join('');
     return `
       <section class="category-feed-section" id="category-${H(categoryKey)}">
         <div class="category-section-header">
@@ -2322,6 +2354,7 @@ function renderSubscriptionBanner(billingData) {
 async function renderDashboard({ focusId = null } = {}) {
   const user = getUser();
   const isAuthed = !!user;
+  const canChat = isAuthed && user?.emailVerified === true;
 
   setHTML(`
     ${renderNav(user)}
@@ -2522,14 +2555,14 @@ async function renderDashboard({ focusId = null } = {}) {
         <aside class="dash-aside" aria-label="Live signals and service list">
           <section class="dash-panel dash-live-feed">
             <div class="dash-panel-head dash-panel-head--compact">
-              <div><p class="dash-section-kicker">Community</p><h2>PatchTicker live chat</h2></div>
-              <span class="feed-status"><span class="feed-dot" id="feed-dot"></span><span id="feed-status-text">${isAuthed ? 'Connecting' : 'Recent'}</span></span>
+              <div><p class="dash-section-kicker">Live feed</p><h2>Release wire + chat</h2></div>
+              <span class="feed-status"><span class="feed-dot" id="feed-dot"></span><span id="feed-status-text">${canChat ? 'Connecting' : 'Recent'}</span></span>
             </div>
-            <p class="feed-privacy-note">Native community chat · no third-party tracker</p>
+            <p class="feed-privacy-note">First-party release events and member chat · no third-party tracker</p>
             <div class="feed-messages" id="feed-messages" aria-live="polite">
               <div class="feed-empty">Checking recent community activity…</div>
             </div>
-            ${isAuthed ? `
+            ${canChat ? `
               <div class="feed-compose">
                 <select class="feed-platform-select" id="feed-platform" aria-label="Chat platform">
                   <option value="">General</option>
@@ -2541,7 +2574,7 @@ async function renderDashboard({ focusId = null } = {}) {
                 </div>
                 <button class="feed-send" id="feed-send" type="button">Send</button>
               </div>
-            ` : `<p class="dash-side-copy">Public reading stays open. <a href="#/login">Sign in</a> to join the chat.</p>`}
+            ` : `<p class="dash-side-copy">Public reading stays open. ${isAuthed ? '<a href="#/verify-email">Verify your email</a>' : '<a href="#/login">Sign in</a>'} to join the chat.</p>`}
           </section>
 
           <section class="dash-panel topic-section" id="section-services">
@@ -2729,12 +2762,10 @@ async function renderDashboard({ focusId = null } = {}) {
     if (platform) filtered = filtered.filter(u => u.platform === platform);
     if (status)   filtered = filtered.filter(u => u.status   === status);
     if (search) {
-      const needles = _filterState.searchMode === 'local'
-        ? search.toLowerCase().split(/\s+/).filter(Boolean)
-        : searchNeedles(search);
+      const groups = searchTermGroups(search);
       filtered = filtered.filter(u => {
         const haystack = searchableTextForUpdate(u);
-        return needles.some(q => haystack.includes(q));
+        return groups.every(group => group.some(term => haystack.includes(term)));
       });
     }
 
@@ -2944,6 +2975,21 @@ async function renderDashboard({ focusId = null } = {}) {
       return;
     }
 
+    const expandReleases = e.target.closest('[data-expand-platform-releases]');
+    if (expandReleases) {
+      const target = document.getElementById(expandReleases.dataset.expandPlatformReleases || '');
+      if (!target) return;
+      const willOpen = expandReleases.getAttribute('aria-expanded') !== 'true';
+      target.hidden = !willOpen;
+      expandReleases.setAttribute('aria-expanded', String(willOpen));
+      const count = Number(expandReleases.dataset.hiddenCount || 0);
+      const label = expandReleases.dataset.platformLabel || 'platform';
+      expandReleases.textContent = willOpen
+        ? `Show fewer ${label} releases`
+        : `Show ${count} earlier ${label} ${count === 1 ? 'release' : 'releases'}`;
+      return;
+    }
+
     const filterBtn = e.target.closest('[data-filter-platform]');
     if (filterBtn) {
       setPlatformFilter(filterBtn.dataset.filterPlatform || '');
@@ -3013,7 +3059,8 @@ async function renderDashboard({ focusId = null } = {}) {
 
     const featureGrid = document.getElementById('dash-feature-grid');
     if (featureGrid) {
-      featureGrid.innerHTML = newest.slice(0, 6).map(renderMiniUpdateCard).join('') || `<p class="dash-empty-copy">${H(message)}</p>`;
+      // These are an editorial preview, not a second copy of the full feed.
+      featureGrid.innerHTML = newest.slice(0, 3).map(renderMiniUpdateCard).join('') || `<p class="dash-empty-copy">${H(message)}</p>`;
       refreshMotionEffects(featureGrid);
     }
     refreshMotionEffects(document.getElementById('section-tape') || document);
@@ -3301,6 +3348,30 @@ async function renderDashboard({ focusId = null } = {}) {
     let   _disposed = false;
     let   _autoScroll  = true;   // pause scroll when user scrolls up
     const MAX_MESSAGES = 80;     // cap DOM nodes to keep it light
+    const _releaseRefreshes = new Set();
+
+    async function refreshReleaseFromWire(updateId) {
+      const id = String(updateId || '');
+      if (_disposed || !/^[a-z0-9-]{1,64}$/.test(id) || _releaseRefreshes.has(id)) return;
+      _releaseRefreshes.add(id);
+      try {
+        const update = await fetchUpdateById(id);
+        if (_disposed || !update?.id || !isUpdateWithinDisplayWindow(update)) return;
+        _allUpdates = annotateReleasePositions([
+          update,
+          ..._allUpdates.filter(candidate => candidate.id !== update.id),
+        ]);
+        updateReturnBrief(_allUpdates);
+        renderTapeAndLatest(_allUpdates);
+        renderSourceHeartbeats(_allUpdates);
+        applyFilters();
+      } catch {
+        // The release event remains useful even if this hydration request races
+        // the database transaction or the connection briefly drops.
+      } finally {
+        _releaseRefreshes.delete(id);
+      }
+    }
 
     // Detect scroll intent to pause auto-scroll
     messagesEl.addEventListener('scroll', () => {
@@ -3333,9 +3404,10 @@ async function renderDashboard({ focusId = null } = {}) {
       messagesEl.querySelector('.feed-verified-list')?.remove();
       const userLabel = post.userLabel || post.userEmail?.split('@')[0] || 'Member';
       const isOwn    = Boolean(post.isOwn);
+      const isRelease = post.eventType === 'release' && /^[a-z0-9-]{1,64}$/.test(String(post.updateId || ''));
       const letter   = avatarLetter(userLabel);
       const el       = document.createElement('div');
-      el.className   = `feed-msg${animate ? ' feed-msg--in' : ''}${isOwn ? ' feed-msg--own' : ''}`;
+      el.className   = `feed-msg${animate ? ' feed-msg--in' : ''}${isOwn ? ' feed-msg--own' : ''}${isRelease ? ' feed-msg--release' : ''}`;
       el.dataset.id  = post.id;
       el.innerHTML   = `
         <div class="feed-msg-avatar">${H(letter)}</div>
@@ -3345,7 +3417,9 @@ async function renderDashboard({ focusId = null } = {}) {
             ${platformBadge(post.platform)}
             <span class="feed-msg-time">${formatTime(post.createdAt)}</span>
           </div>
-          <div class="feed-msg-body">${H(post.body)}</div>
+          <div class="feed-msg-body">${isRelease
+            ? `<a href="#/updates/${H(encodeURIComponent(post.updateId))}">${H(post.body)} <span>Open release →</span></a>`
+            : H(post.body)}</div>
         </div>
       `;
       messagesEl.appendChild(el);
@@ -3384,7 +3458,7 @@ async function renderDashboard({ focusId = null } = {}) {
 
     // Open SSE stream
     async function connectSSE() {
-      if (_disposed || !isAuthed) {
+      if (_disposed || !canChat) {
         setStatus('recent');
         return;
       }
@@ -3400,6 +3474,7 @@ async function renderDashboard({ focusId = null } = {}) {
           ticket,
           post => {
             appendMessage(post, true);
+            if (post?.eventType === 'release') void refreshReleaseFromWire(post.updateId);
             setStatus('live');
           },
           () => {

@@ -254,7 +254,10 @@ function knownIssuesFromNotes(changelog) {
 }
 
 function releaseTitle(gameName, postTitle) {
-  const cleanTitle = stripSteamMarkup(postTitle || 'Major update');
+  // Card/detail headings are single-line data even when a publisher decorates
+  // its Steam title with BBCode or hard line breaks. Preserve those boundaries
+  // in the changelog parser, but collapse them for the release identity.
+  const cleanTitle = stripSteamMarkup(postTitle || 'Major update').replace(/\s+/g, ' ').trim();
   const comparable = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   return comparable(cleanTitle).startsWith(comparable(gameName))
     ? cleanTitle

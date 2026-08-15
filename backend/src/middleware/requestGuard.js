@@ -36,6 +36,21 @@ const MAX_QUERY_VALUE_LEN   = 200;             // max length of any single query
 const ALLOWED_METHODS       = new Set(['GET', 'POST', 'OPTIONS', 'HEAD']);
 
 /**
+ * Keep query values out of security logs. Authentication hand-off values and
+ * other credentials can legitimately arrive in a URL, but must never be
+ * copied into Render logs when the request is rejected.
+ *
+ * @param {import('express').Request} req
+ * @returns {string}
+ */
+function safeLogUrl(req) {
+  const raw = String(req.originalUrl || req.path || '');
+  const queryAt = raw.indexOf('?');
+  const path = (queryAt === -1 ? raw : raw.slice(0, queryAt)).slice(0, 200);
+  return queryAt === -1 ? path : `${path}?[query-redacted]`;
+}
+
+/**
  * Log, record an abuse signal, and reject a suspicious request.
  * @param {import('express').Response} res
  * @param {number} status
@@ -43,16 +58,17 @@ const ALLOWED_METHODS       = new Set(['GET', 'POST', 'OPTIONS', 'HEAD']);
  * @param {import('express').Request} req
  */
 function reject(res, status, reason, req) {
+  const url = safeLogUrl(req);
   logger.warn(`requestGuard: ${reason}`, {
     ip:     req.ip,
     method: req.method,
-    url:    req.originalUrl.slice(0, 200), // truncate for log safety
+    url,
   });
   // Every guard rejection is an abuse signal — feeds exponential backoff
   recordSignal(req.ip, SIGNAL.GUARD_REJECTION, {
     reason,
     method: req.method,
-    url:    req.originalUrl.slice(0, 200),
+    url,
   });
   return res.status(status).json({ error: reason });
 }
@@ -61,7 +77,7 @@ function reject(res, status, reason, req) {
  * @type {import('express').RequestHandler}
  */
 function requestGuard(req, res, next) {
-  const { method, path: urlPath } = req;
+  const { method } = req;
 
   // ── 1. HTTP method allowlist ────────────────────────────────────────────────
   if (!ALLOWED_METHODS.has(method)) {

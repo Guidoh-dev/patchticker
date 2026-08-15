@@ -101,6 +101,8 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /q === 'switch oled' \|\| q === 'switch lite'/);
   assert.match(mainSource, /const exactAlias = Object\.entries\(SEARCH_ALIASES\)\.find/);
   assert.match(mainSource, /function updateSearchRelevance\(update, query\)/);
+  assert.match(mainSource, /exactQuery && haystack\.includes\(exactQuery\)[\s\S]*?weight \* 10/);
+  assert.match(mainSource, /const crossFieldCoverage = groups\.reduce/);
   assert.match(mainSource, /function searchMatchReason\(update, query\)/);
   assert.match(mainSource, /<option value="relevance">Best match<\/option>/);
   assert.match(mainSource, /relevance:\s+\(a, b\) => updateSearchRelevance\(b, search\) - updateSearchRelevance\(a, search\)/);
@@ -113,6 +115,7 @@ test('multi-part searches use strict all-term matching without phrase-order fail
   assert.match(mainSource, /function searchTermGroups\(raw\)/);
   assert.match(mainSource, /tokens\.length > 1[\s\S]*?map\(token => \[token\]\)/);
   assert.match(mainSource, /groups\.every\(group => group\.some\(needle => haystack\.includes\(needle\)\)\)/);
+  assert.match(mainSource, /filtered = filtered\.filter\(u => \{[\s\S]*?groups\.every\(group => group\.some\(term => haystack\.includes\(term\)\)\)/);
   assert.match(mainSource, /return 'Across update details'/);
   assert.match(mainSource, /All \$\{H\(String\(matchedTermCount\)\)\} search terms matched/);
 });
@@ -146,7 +149,8 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(mainSource, /const QUICKBAR_TOP_ZONE_PX = 120/);
   assert.match(mainSource, /direction === 'down'[\s\S]*?setCollapsed\(true\)[\s\S]*?setHidden\(true\)/);
   assert.match(mainSource, /direction === 'up'[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(true\)/);
-  assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(false\)/);
+  assert.match(mainSource, /const collapseAtTop = window\.matchMedia\('\(max-width: 640px\)'\)\.matches/);
+  assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(collapseAtTop\)/);
   assert.match(mainSource, /const scrollRoot = window\.matchMedia\('\(max-width: 768px\)'\)\.matches/);
   assert.match(mainSource, /scrollRoot\.addEventListener\('wheel', onWheel/);
   assert.match(mainSource, /scrollRoot\.addEventListener\('touchmove', onTouchMove/);
@@ -164,6 +168,27 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(cssSource, /\.dash-quickbar\.is-scroll-hidden\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*transform:\s*translateY\(calc\(-100% - 16px\)\)/s);
   assert.match(cssSource, /\.dash-quickbar-toggle\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /@media \(max-width: 760px\)[\s\S]*?html, body, #app\s*\{[^}]*overflow-x:\s*clip/s);
+});
+
+test('default platform sections reveal deep history on demand instead of flooding the page', () => {
+  assert.match(mainSource, /const initialCount = platform === 'Steam' \? 4 : 1/);
+  assert.match(mainSource, /class="platform-feed-more"[^>]*hidden/);
+  assert.match(mainSource, /data-expand-platform-releases=/);
+  assert.match(mainSource, /target\.hidden = !willOpen/);
+  assert.match(cssSource, /\.platform-more-toggle\s*\{[^}]*min-height:\s*44px/s);
+});
+
+test('featured decisions remain an editorial preview instead of duplicating the full feed', () => {
+  assert.match(mainSource, /newest\.slice\(0, 3\)\.map\(renderMiniUpdateCard\)/);
+  assert.match(cssSource, /\.latest-decisions-grid\s*\{[^}]*grid-auto-flow:\s*column/s);
+});
+
+test('mobile cards prioritize the decision and collapse low-value repetition', () => {
+  assert.match(mainSource, /class="decision-card-checked"/);
+  assert.match(mainSource, /class="decision-card-source-count"/);
+  assert.match(cssSource, /@media \(max-width: 480px\)[\s\S]*?\.decision-card-facts > \.is-unavailable\s*\{\s*display:\s*none;/s);
+  assert.match(cssSource, /\.decision-card-source-count,[\s\S]*?\.source-depth-signal\s*\{\s*display:\s*none;/s);
+  assert.match(cssSource, /\.decision-card-rating\s*\{[^}]*grid-template-areas:\s*"action label value"/s);
 });
 
 test('the client applies the same 240-day update display ceiling as the API', () => {
@@ -209,8 +234,8 @@ test('an empty community feed becomes a verified-release activity rail', () => {
 test('public community reads use privacy-safe display labels', () => {
   assert.match(apiSource, /request\('\/feed\/recent', \{ skipAuth: true \}\)/);
   assert.match(mainSource, /post\.userLabel \|\| post\.userEmail\?\.split/);
-  assert.match(mainSource, /PatchTicker live chat/);
-  assert.match(mainSource, /Native community chat · no third-party tracker/);
+  assert.match(mainSource, /Release wire \+ chat/);
+  assert.match(mainSource, /First-party release events and member chat · no third-party tracker/);
 });
 
 test('filter controls stage draft state and only update the feed through Apply', () => {
@@ -223,7 +248,7 @@ test('filter controls stage draft state and only update the feed through Apply',
   assert.match(mainSource, /button\.addEventListener\('click', applyDraftFilters\)/);
   assert.match(mainSource, /if \(platform\) filtered = filtered\.filter/);
   assert.match(mainSource, /if \(status\)\s+filtered = filtered\.filter/);
-  assert.match(mainSource, /needles\.some\(q => haystack\.includes\(q\)\)/);
+  assert.match(mainSource, /groups\.every\(group => group\.some\(term => haystack\.includes\(term\)\)\)/);
   assert.doesNotMatch(mainSource, /setTimeout\(\(\) => runAuthoritativeSearch/);
 });
 
@@ -247,14 +272,26 @@ test('native live chat uses one-time SSE tickets and completes the composer', ()
   assert.match(mainSource, /id="feed-platform"/);
   assert.match(mainSource, /id="feed-char-count">0\/280/);
   assert.match(mainSource, /appendMessage\(\{ \.\.\.created, isOwn: true \}, true\)/);
+  assert.match(mainSource, /post\.eventType === 'release'/);
+  assert.match(mainSource, /async function refreshReleaseFromWire\(updateId\)/);
+  assert.match(mainSource, /await fetchUpdateById\(id\)/);
+  assert.match(mainSource, /_allUpdates = annotateReleasePositions\(\[/);
+  assert.match(mainSource, /post\?\.eventType === 'release'[\s\S]*?refreshReleaseFromWire\(post\.updateId\)/);
+  assert.match(mainSource, /Open release →/);
+  assert.match(cssSource, /\.feed-msg--release/);
+  assert.match(mainSource, /const canChat = isAuthed && user\?\.emailVerified === true/);
+  assert.match(mainSource, /Verify your email/);
   assert.match(mainSource, /_liveFeedCleanup = \(\) =>/);
 });
 
 test('invalid update scores are dropped rather than coerced to zero or five', () => {
   assert.match(mainSource, /function validScoreOrNull\(value\)/);
+  assert.match(mainSource, /typeof value !== 'number' && typeof value !== 'string'/);
   assert.match(mainSource, /Number\.isFinite\(numeric\) && numeric >= 0 && numeric <= 10/);
   assert.match(mainSource, /score: validScoreOrNull\(update\?\.score\)/);
   assert.match(mainSource, /return score === null \? 'Not scored'/);
+  assert.match(mainSource, /if \(score === null\) return \{ label: 'Review official notes', cls: 'unscored', action: 'REVIEW' \}/);
+  assert.doesNotMatch(mainSource, /vote\.avoid.*decisionForUpdate|decisionForUpdate[\s\S]{0,500}vote\.wait/);
   assert.doesNotMatch(mainSource, /Number\(latest\.score\) \|\| 0/);
 });
 

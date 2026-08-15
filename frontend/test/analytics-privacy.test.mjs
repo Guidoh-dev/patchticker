@@ -7,6 +7,7 @@ const root = resolve(import.meta.dirname, '..');
 const analytics = await readFile(resolve(root, 'src/analytics.js'), 'utf8');
 const main = await readFile(resolve(root, 'src/main.js'), 'utf8');
 const router = await readFile(resolve(root, 'src/router.js'), 'utf8');
+const viteConfig = await readFile(resolve(root, 'vite.config.js'), 'utf8');
 
 test('analytics vendors require an explicit granted consent state', () => {
   assert.match(analytics, /readConsent\(\) !== 'granted'/);
@@ -17,7 +18,15 @@ test('analytics vendors require an explicit granted consent state', () => {
 
 test('PostHog billing requires a separate explicit production opt-in', () => {
   assert.match(analytics, /VITE_POSTHOG_ENABLED === 'true'/);
-  assert.match(analytics, /!POSTHOG_ENABLED \|\| !POSTHOG_KEY/);
+  assert.match(analytics, /POSTHOG_PROJECT_KEY_VALID = POSTHOG_KEY\.startsWith\('phc_'\)/);
+  assert.match(analytics, /!POSTHOG_ENABLED \|\| !POSTHOG_PROJECT_KEY_VALID/);
+});
+
+test('frontend builds reject PostHog personal and project-secret API keys', () => {
+  assert.match(viteConfig, /function assertPublicPostHogKey\(env\)/);
+  assert.match(viteConfig, /key && !key\.startsWith\('phc_'\)/);
+  assert.match(viteConfig, /Personal and project-secret API keys must remain in the backend environment/);
+  assert.match(viteConfig, /assertPublicPostHogKey\(env\)/);
 });
 
 test('session replay and automatic PostHog capture are disabled at the SDK boundary', () => {
@@ -43,6 +52,15 @@ test('application events use an allowlist and never expose raw preference conten
   assert.doesNotMatch(main, /captureAnalytics\([^\n]+\{[^}]*\b(?:email|search|query|token|webhook_url|watchlist)\s*:/s);
   assert.match(main, /watchlist_type: 'platform'/);
   assert.match(main, /item_count:/);
+});
+
+test('every emitted application event survives the privacy allowlist', () => {
+  const emittedEvents = [...main.matchAll(/captureAnalytics\('([a-z0-9_]+)'/g)]
+    .map(match => match[1]);
+  for (const eventName of new Set(emittedEvents)) {
+    assert.match(analytics, new RegExp(`'${eventName}'`), `${eventName} is emitted but not allowlisted`);
+  }
+  assert.match(analytics, /'has_search'/);
 });
 
 test('routes are normalized before analytics receives them', () => {

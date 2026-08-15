@@ -278,6 +278,37 @@ describe('scraper accuracy guards', () => {
     });
   });
 
+  test('Steam Deck detector accepts stable SteamOS releases and rejects beta posts', () => {
+    const stable = __test.steamDeckReleaseFromPost({
+      gid: '1838407329258215',
+      title: 'SteamOS 3.8.16',
+      date: Math.floor(new Date('2026-07-17T01:04:09.000Z').getTime() / 1000),
+      url: 'https://steamstore-a.akamaihd.net/news/externalpost/steam_community_announcements/1838407329258215',
+      contents: "SteamOS 3.8.16 has just been released for all users with the following changes:GeneralReverted a blank-screen regression. The HDR fix will be available in Beta while the root cause is investigated.",
+    });
+
+    expect(stable).toMatchObject({
+      platform: 'Steam',
+      name: 'SteamOS 3.8.16',
+      version: '3.8.16',
+      sourceKind: 'steamos-news',
+      sourceRef: 'steamos:1838407329258215',
+      productId: '1675200',
+      releasedAt: '2026-07-17',
+    });
+    expect(stable.affects).toMatch(/Steam Deck \/ SteamOS/);
+    expect(stable.changelog).toContain("General: Reverted a blank-screen regression. The HDR fix will be available in Beta while the root cause is investigated.");
+
+    expect(__test.steamDeckReleaseFromPost({
+      ...stable,
+      gid: '1840310314346837',
+      title: 'SteamOS 3.8.25 Beta',
+      date: Math.floor(new Date('2026-08-08T04:52:36.000Z').getTime() / 1000),
+      url: 'https://steamstore-a.akamaihd.net/news/externalpost/steam_community_announcements/1840310314346837',
+      contents: 'Beta channel release.',
+    })).toBeNull();
+  });
+
   test('Xbox parser reads the newest worldwide OS release from structured support content', () => {
     const parsed = __test.parseXboxContentApi({
       ContentList: [{

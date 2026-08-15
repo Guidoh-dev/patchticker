@@ -5,6 +5,7 @@
 import posthog from 'posthog-js/dist/module.no-external';
 
 const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY || '';
+const POSTHOG_PROJECT_KEY_VALID = POSTHOG_KEY.startsWith('phc_');
 const POSTHOG_HOST = import.meta.env.VITE_POSTHOG_HOST || 'https://us.i.posthog.com';
 // PostHog is an explicit cost opt-in. A stored project key alone must never
 // activate billable analytics traffic after a deploy or account-plan change.
@@ -16,7 +17,7 @@ const CONSENT_VERSION = 1;
 const ALLOWED_EVENTS = new Set([
   'route_viewed', 'update_opened', 'official_source_clicked',
   'platform_filter_selected', 'status_filter_selected', 'sort_changed',
-  'search_completed', 'watchlist_item_added', 'watchlist_item_removed',
+  'filters_applied', 'search_completed', 'watchlist_item_added', 'watchlist_item_removed',
   'notification_preference_changed', 'update_feedback_submitted',
   'signup_completed', 'login_completed', 'subscription_checkout_started',
 ]);
@@ -24,7 +25,7 @@ const ALLOWED_EVENTS = new Set([
 const SAFE_PROPERTY_KEYS = new Set([
   'route', 'update_id', 'platform', 'status', 'sort', 'vote', 'source_type',
   'query_length', 'result_count', 'has_results', 'item_count', 'watchlist_type',
-  'enabled', 'plan', 'billing_period',
+  'enabled', 'has_search', 'plan', 'billing_period',
 ]);
 const BLOCKED_VENDOR_PROPERTY = /(url|uri|href|referrer|pathname|search|query|string|token|secret|password|email|name|watchlist|webhook|endpoint|content|text)/i;
 const EMAIL_VALUE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
@@ -36,7 +37,7 @@ let currentUserId = null;
 let maskObserver = null;
 
 function configured() {
-  return Boolean((POSTHOG_ENABLED && POSTHOG_KEY) || CLARITY_PROJECT_ID);
+  return Boolean((POSTHOG_ENABLED && POSTHOG_PROJECT_KEY_VALID) || CLARITY_PROJECT_ID);
 }
 
 function readConsent() {
@@ -102,7 +103,7 @@ function sanitizePostHogEvent(event) {
 }
 
 function initPostHog() {
-  if (!POSTHOG_ENABLED || !POSTHOG_KEY || posthogReady) return;
+  if (!POSTHOG_ENABLED || !POSTHOG_PROJECT_KEY_VALID || posthogReady) return;
   posthog.init(POSTHOG_KEY, {
     api_host: POSTHOG_HOST,
     defaults: '2026-05-30',

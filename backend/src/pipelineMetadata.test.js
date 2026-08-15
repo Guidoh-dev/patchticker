@@ -11,10 +11,12 @@ jest.mock('./services/scraperService', () => ({
 }));
 jest.mock('./services/aiAnalysisService', () => ({ isEnabled: jest.fn(() => false), analyseUpdate: jest.fn() }));
 jest.mock('./services/watchlistService', () => ({ notifySubscribers: jest.fn() }));
+jest.mock('./services/liveFeedService', () => ({ publishRelease: jest.fn() }));
 
 const db = require('./config/db');
 const scraperService = require('./services/scraperService');
 const watchlistService = require('./services/watchlistService');
+const liveFeedService = require('./services/liveFeedService');
 const { processPlatform, __test } = require('./services/pipelineService');
 
 describe('pipeline source metadata preservation', () => {
@@ -165,6 +167,54 @@ describe('pipeline source metadata preservation', () => {
     for (const [sql] of db.query.mock.calls) {
       expect(sql).toContain("source_kind IS DISTINCT FROM 'steam-game-news'");
     }
+  });
+
+  test('SteamOS freshness is isolated from desktop client and game-news releases', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+    const detected = { sourceKind: 'steamos-news' };
+
+    await __test.getLatestKnownRelease('Steam', detected);
+    await __test.getKnownReleaseByVersion('Steam', '3.8.16', detected);
+
+    expect(db.query.mock.calls[0][0]).toContain('source_kind = $2');
+    expect(db.query.mock.calls[0][1]).toEqual(['Steam', 'steamos-news']);
+    expect(db.query.mock.calls[1][0]).toContain('source_kind = $3');
+    expect(db.query.mock.calls[1][1]).toEqual(['Steam', '3.8.16', 'steamos-news']);
+  });
+
+  test('internal Steam Deck detection persists and notifies as public Steam', async () => {
+    scraperService.detectPlatformDetailed.mockResolvedValue({
+      ok: true,
+      attempts: 1,
+      latencyMs: 25,
+      result: {
+        platform: 'Steam',
+        name: 'SteamOS 3.8.16',
+        version: '3.8.16',
+        sourceKind: 'steamos-news',
+        sourceRef: 'steamos:1838407329258215',
+        productId: '1675200',
+        releasedAt: '2026-07-17',
+        changelog: ['Improved dock compatibility and display stability.'],
+        knownIssues: [],
+        evidence: [{ source: 'Steam Deck News', url: 'https://store.steampowered.com/news/app/1675200/view/1838407329258215' }],
+      },
+    });
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'steam-3-8-16' }] });
+
+    const result = await processPlatform('SteamDeck');
+
+    expect(scraperService.detectPlatformDetailed).toHaveBeenCalledWith('SteamDeck');
+    expect(result).toMatchObject({ platform: 'Steam', status: 'new_update', id: 'steam-3-8-16' });
+    const insertParams = db.query.mock.calls[2][1];
+    expect(insertParams[0]).toBe('steam-3-8-16');
+    expect(insertParams[1]).toBe('Steam');
+    expect(insertParams[5]).toBe('steamos-news');
+    expect(watchlistService.notifySubscribers).toHaveBeenCalledWith('Steam', expect.any(Object));
+    expect(liveFeedService.publishRelease).toHaveBeenCalledWith(expect.objectContaining({ platform: 'Steam' }));
   });
 
   test('a cached historical version refreshes metadata without sending a new-update alert', async () => {

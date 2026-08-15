@@ -17,7 +17,24 @@ function validateScore(value, { allowNull = false } = {}) {
       : { ok: false, value: null, reason: 'missing' };
   }
 
-  const numeric = Number(value);
+  // node-postgres returns NUMERIC columns as decimal strings, so bounded
+  // decimal strings are intentionally accepted. Everything else is rejected
+  // before coercion: Number(true), Number([]), and Number('   ') are all valid
+  // JavaScript numbers, but none is a valid persisted PatchTicker rating.
+  if (typeof value !== 'number' && typeof value !== 'string') {
+    return { ok: false, value: null, reason: 'invalid_type' };
+  }
+  const normalized = typeof value === 'string' ? value.trim() : value;
+  if (normalized === '') {
+    return allowNull
+      ? { ok: true, value: null, reason: null }
+      : { ok: false, value: null, reason: 'missing' };
+  }
+  if (typeof normalized === 'string' && !/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) {
+    return { ok: false, value: null, reason: 'invalid_format' };
+  }
+
+  const numeric = Number(normalized);
   if (!Number.isFinite(numeric)) {
     return { ok: false, value: null, reason: 'not_finite' };
   }

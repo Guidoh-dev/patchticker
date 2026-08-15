@@ -689,16 +689,128 @@ function parseSteamReleaseNotes(html) {
   };
 }
 
-function steamClientReleaseIdentity(sourceUrl, publishedAt) {
+function parsePlainSteamReleaseNotes(value) {
+  const text = cleanText(value, 3600);
+  if (!text) return { changelog: [], knownIssues: [] };
+  const body = text.replace(/^.*?following changes:\s*/i, '');
+  const headings = [
+    'Security and stability improvements', 'Known Issues', 'Desktop Mode',
+    'Gaming Mode', 'Docked Mode', 'Steam Input', 'Display', 'Graphics',
+    'Audio', 'Bluetooth', 'Wi-Fi', 'Network', 'General',
+  ];
+  const pattern = new RegExp(`(${headings.map(heading => heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?=[A-Z])`, 'g');
+  const matches = [...body.matchAll(pattern)];
+  if (!matches.length) return { changelog: [text], knownIssues: [] };
+
+  const changelog = [];
+  const knownIssues = [];
+  matches.forEach((match, index) => {
+    const heading = match[1];
+    const start = match.index + heading.length;
+    const end = matches[index + 1]?.index ?? body.length;
+    const detail = cleanText(body.slice(start, end), 900);
+    if (!detail) return;
+    if (/known issues?/i.test(heading)) knownIssues.push(detail);
+    else changelog.push(`${heading}: ${detail}`);
+  });
+  return {
+    changelog: unique(changelog, 920).slice(0, 12),
+    knownIssues: unique(knownIssues, 650).slice(0, 8),
+  };
+}
+
+function isSteamPreviewRelease(title, contents) {
+  if (/\b(?:beta|preview|experimental)\b/i.test(String(title || ''))) return true;
+  // Stable posts sometimes explain that one reverted fix remains available in
+  // Beta. Reject only an explicit channel declaration, not every incidental
+  // mention of a prerelease channel inside otherwise stable release notes.
+  const opening = cleanText(contents, 500);
+  return /(?:this update is for|have just shipped|has just shipped)[^.!]{0,220}\b(?:beta|preview|experimental)\b[^.!]{0,80}\bchannels?\b/i.test(opening);
+}
+
+function steamClientReleaseIdentity(sourceUrl, publishedAt, productIdOverride = null) {
   const releasedAt = toIsoDate(publishedAt);
   const articleId = String(sourceUrl || '').match(/\/view\/(\d+)/i)?.[1] || null;
   const displayVersion = releasedAt ? releasedAt.replace(/-/g, '.') : null;
+  const productId = String(productIdOverride || '').trim()
+    || String(sourceUrl || '').match(/\/news\/app\/(\d+)/i)?.[1]
+    || '593110';
+  const isDeckLane = productId === '1675200';
   return {
-    version: articleId ? `client-${articleId}` : (displayVersion ? `client-${displayVersion}` : null),
+    version: articleId
+      ? `${isDeckLane ? 'deck-client' : 'client'}-${articleId}`
+      : (displayVersion ? `${isDeckLane ? 'deck-client' : 'client'}-${displayVersion}` : null),
     displayVersion,
-    sourceKind: 'steam-client-news',
-    sourceRef: articleId ? `steam-client:${articleId}` : (displayVersion ? `steam-client:${displayVersion}` : null),
-    productId: String(sourceUrl || '').match(/\/news\/app\/(\d+)/i)?.[1] || '593110',
+    sourceKind: isDeckLane ? 'steam-deck-news' : 'steam-client-news',
+    sourceRef: articleId
+      ? `${isDeckLane ? 'steam-deck' : 'steam-client'}:${articleId}`
+      : (displayVersion ? `${isDeckLane ? 'steam-deck' : 'steam-client'}:${displayVersion}` : null),
+    productId,
+  };
+}
+
+function steamDeckReleaseFromPost(post) {
+  const title = cleanText(post?.title, 160);
+  if (!/(?:\bSteamOS\s+\d|Steam Deck.+Update)/i.test(title)) return null;
+  if (isSteamPreviewRelease(title, post?.contents)) return null;
+
+  const publishedMs = Number(post?.date) * 1000;
+  const releasedAt = Number.isFinite(publishedMs) && publishedMs > 0
+    ? toIsoDate(new Date(publishedMs).toISOString())
+    : null;
+  const sourceUrl = String(post?.url || '').trim();
+  if (!releasedAt || !/^https:\/\/(?:store\.steampowered\.com|steamstore-a\.akamaihd\.net)\//i.test(sourceUrl)) return null;
+
+  const rawContents = String(post?.contents || '');
+  const notes = /<\/?[a-z][^>]*>/i.test(rawContents)
+    ? parseSteamReleaseNotes(rawContents)
+    : parsePlainSteamReleaseNotes(rawContents);
+  const description = cleanText(post?.contents, 900);
+  const explicitVersion = firstVersion(title);
+  const articleId = String(post?.gid || '').replace(/\D/g, '')
+    || sourceUrl.match(/\/(?:view|steam_community_announcements)\/(\d+)/i)?.[1]
+    || null;
+  const isSteamOs = /\bSteamOS\b/i.test(title);
+  const identity = steamClientReleaseIdentity(
+    articleId ? `https://store.steampowered.com/news/app/1675200/view/${articleId}` : sourceUrl,
+    releasedAt,
+    '1675200',
+  );
+  const sourceKind = isSteamOs ? 'steamos-news' : identity.sourceKind;
+  const sourceRef = articleId
+    ? `${isSteamOs ? 'steamos' : 'steam-deck'}:${articleId}`
+    : identity.sourceRef;
+
+  return {
+    platform: 'Steam',
+    name: title,
+    version: explicitVersion || identity.version,
+    displayVersion: explicitVersion || identity.displayVersion,
+    sourceKind,
+    sourceRef,
+    productId: '1675200',
+    releasedAt,
+    affects: isSteamOs
+      ? 'Steam Deck / SteamOS / handheld compatibility / system firmware / desktop mode'
+      : 'Steam Deck client / controller input / library / downloads / handheld interface',
+    changelog: notes.changelog.length ? notes.changelog : [description].filter(Boolean),
+    knownIssues: notes.knownIssues,
+    riskFactors: notes.knownIssues.length
+      ? [{ level: 'medium', text: notes.knownIssues[0] }]
+      : [],
+    verdict: isSteamOs
+      ? 'Install if the listed stable SteamOS fixes apply to your Steam Deck; review hardware and dock changes before updating a travel-critical device.'
+      : 'Allow the stable Steam Deck client update when its controller, library, or download fixes apply to your setup.',
+    reasoning: isSteamOs
+      ? 'PatchTicker tracks Valve’s stable SteamOS lane separately from Beta and desktop-client releases, so a newer PC client post cannot hide the latest Steam Deck system update.'
+      : 'PatchTicker tracks Valve’s stable Steam Deck client lane separately from desktop Steam and excludes Beta or Preview releases.',
+    evidence: sourceEvidence('Steam Deck News', sourceUrl, `${title}. ${description}`, {
+      dateBasis: 'published',
+      releaseType: 'official-release',
+      publishedAt: releasedAt,
+      steamAppId: '1675200',
+    }),
+    sourceUrl,
   };
 }
 
@@ -1212,16 +1324,13 @@ async function detectMacos() {
  */
 async function detectSteam() {
   try {
-    const feeds = await Promise.allSettled([
-      // 593110 is Valve's official Steam Client news app. Game feeds are
-      // intentionally handled by steamGamePipelineService instead of being
-      // mixed into this platform/client detector.
-      fetchXml('https://store.steampowered.com/feeds/news/app/593110/?cc=US&l=english'),
-      fetchXml('https://store.steampowered.com/feeds/news/app/1675200/?cc=US&l=english'),
-    ]);
-    const items = feeds
-      .filter(r => r.status === 'fulfilled')
-      .flatMap(r => parseRssItems(r.value, 10))
+    // 593110 is Valve's official desktop Steam Client news app. SteamOS and
+    // Steam Deck use a separate internal detector so neither lane can mask the
+    // other merely by publishing a newer article.
+    const items = parseRssItems(
+      await fetchXml('https://store.steampowered.com/feeds/news/app/593110/?cc=US&l=english'),
+      10,
+    )
       .sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
     const update = items.find(i =>
       /(?:Steam Client Update|SteamOS\s+\d|Steam Deck.+Update)/i.test(i.title)
@@ -1270,6 +1379,26 @@ async function detectSteam() {
     };
   } catch (err) {
     logger.warn('[scraper] Steam detection failed', { error: err.message });
+    return null;
+  }
+}
+
+/**
+ * Steam Deck / SteamOS — latest stable Valve release from app 1675200.
+ * This detector is scheduled as an internal lane but persists platform=Steam.
+ */
+async function detectSteamDeck() {
+  try {
+    const payload = await fetchJson(
+      'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=1675200&count=50&maxlength=12000&feeds=steam_community_announcements&format=json',
+    );
+    const releases = (payload?.appnews?.newsitems || [])
+      .map(steamDeckReleaseFromPost)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt));
+    return releases[0] || null;
+  } catch (err) {
+    logger.warn('[scraper] Steam Deck detection failed', { error: err.message });
     return null;
   }
 }
@@ -1604,6 +1733,7 @@ const DETECTORS = {
   Apple:   detectAppleIos,
   macOS:   detectMacos,
   Steam:   detectSteam,
+  SteamDeck: detectSteamDeck,
   Xbox:    detectXbox,
   PS5:     detectPs5,
   Intel:   detectIntel,
@@ -1722,5 +1852,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, steamClientReleaseIdentity, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
 };

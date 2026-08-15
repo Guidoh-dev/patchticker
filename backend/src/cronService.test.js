@@ -91,7 +91,8 @@ describe('pipeline scheduler', () => {
     cronService.start();
     await mockScheduledJobs[1].handler();
 
-    expect(mockProcessPlatform).toHaveBeenCalledTimes(HIGH_VELOCITY_PLATFORM_KEYS.length);
+    expect(mockProcessPlatform).toHaveBeenCalledTimes(HIGH_VELOCITY_PLATFORM_KEYS.length + 1);
+    expect(mockProcessPlatform).toHaveBeenCalledWith('SteamDeck');
     expect(peak).toBe(2);
   });
 

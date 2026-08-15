@@ -138,4 +138,19 @@ describe('material Steam game update pipeline', () => {
     expect(__test.displayVersion({ title: 'Rocket League Patch Notes v2.72' }, releasedAt)).toBe('2.72');
     expect(__test.explicitReleaseDateFromTitle('NARAKA Update – August 13th, 2026').toISOString().slice(0, 10)).toBe('2026-08-13');
   });
+
+  test('collapses publisher line breaks in release headings without flattening patch notes', () => {
+    const update = __test.toDatabaseUpdate(
+      { appId: '1203220', name: 'NARAKA: BLADEPOINT', averagePlayers: 20000 },
+      {
+        gid: '123456789',
+        date: Math.floor(new Date('2026-08-13T12:00:00.000Z').getTime() / 1000),
+        title: 'NARAKA: BLADEPOINT \nUpdate – August 13th, 2026',
+      },
+      { changelog: ['A substantial gameplay system was reworked for this release.'], signals: ['gameplay'], packageSizeBytes: null },
+    );
+
+    expect(update.name).toBe('NARAKA: BLADEPOINT Update – August 13th, 2026');
+    expect(update.name).not.toMatch(/[\r\n]/);
+  });
 });

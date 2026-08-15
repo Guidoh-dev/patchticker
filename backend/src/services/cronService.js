@@ -32,7 +32,11 @@ let _lastManualRun    = null;
 
 // ── Security-priority platforms — scanned hourly ──────────────────────────────
 const SECURITY_PLATFORMS = SECURITY_PLATFORM_KEYS;
-const HIGH_VELOCITY_PLATFORMS = HIGH_VELOCITY_PLATFORM_KEYS;
+// SteamDeck is an internal detector key that persists and displays as Steam.
+const HIGH_VELOCITY_PLATFORMS = Object.freeze([
+  ...HIGH_VELOCITY_PLATFORM_KEYS,
+  'SteamDeck',
+]);
 
 async function runTargetedScan(label, platforms) {
   if (_isRunning) {

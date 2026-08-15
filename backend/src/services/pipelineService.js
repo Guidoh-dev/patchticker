@@ -22,6 +22,7 @@ const logger           = require('../utils/logger');
 const scraperService   = require('./scraperService');
 const aiAnalysisService= require('./aiAnalysisService');
 const watchlistService = require('./watchlistService');
+const liveFeedService  = require('./liveFeedService');
 const { PLATFORM_KEYS } = require('../config/platformRegistry');
 const {
   deriveDeterministicScore,
@@ -46,6 +47,10 @@ function makeUpdateId(platform, version) {
 
 const SOURCE_REGRESSION_TOLERANCE_MS = 36 * 60 * 60 * 1000;
 const MONTH_PLACEHOLDER_PLATFORMS = new Set(['BattleNet', 'GOG', 'Xbox']);
+// Internal ingestion lanes can share a public platform without becoming a
+// second filter, watchlist key, or database platform. Steam Deck/SteamOS is
+// intentionally presented as Steam throughout the public product.
+const INTERNAL_PIPELINE_KEYS = Object.freeze(['SteamDeck']);
 
 function isCanonicalPipelineRelease(release) {
   const platform = String(release?.platform || '');
@@ -57,33 +62,42 @@ function isCanonicalPipelineRelease(release) {
   return true;
 }
 
-async function getLatestKnownRelease(platform) {
+function sourceLaneScope(platform, detected, parameterIndex) {
+  const sourceKind = String(detected?.sourceKind || '').trim();
+  if (platform !== 'Steam') return { sql: '', params: [] };
+  if (sourceKind) {
+    return {
+      sql: `AND source_kind = $${parameterIndex}`,
+      params: [sourceKind],
+    };
+  }
+  // Preserve the legacy Steam-client lookup while excluding game releases.
+  return { sql: "AND source_kind IS DISTINCT FROM 'steam-game-news'", params: [] };
+}
+
+async function getLatestKnownRelease(platform, detected = null) {
   if (!db.isAvailable()) return null;
-  const sourceScope = platform === 'Steam'
-    ? "AND source_kind IS DISTINCT FROM 'steam-game-news'"
-    : '';
+  const sourceScope = sourceLaneScope(platform, detected, 2);
   const result = await (db.queryRead || db.query)(
     `SELECT id, platform, version, released_at FROM software_updates
      WHERE platform = $1
-     ${sourceScope}
+     ${sourceScope.sql}
      ORDER BY released_at DESC, created_at DESC
      LIMIT 20`,
-    [platform]
+    [platform, ...sourceScope.params]
   );
   return result.rows.find(isCanonicalPipelineRelease) || null;
 }
 
-async function getKnownReleaseByVersion(platform, version) {
+async function getKnownReleaseByVersion(platform, version, detected = null) {
   if (!db.isAvailable()) return null;
-  const sourceScope = platform === 'Steam'
-    ? "AND source_kind IS DISTINCT FROM 'steam-game-news'"
-    : '';
+  const sourceScope = sourceLaneScope(platform, detected, 3);
   const row = await (db.queryRead || db.query)(
     `SELECT id, version, released_at FROM software_updates
      WHERE platform = $1 AND version = $2
-     ${sourceScope}
+     ${sourceScope.sql}
      LIMIT 1`,
-    [platform, version]
+    [platform, version, ...sourceScope.params]
   );
   return row.rows[0] || null;
 }
@@ -356,15 +370,15 @@ const PLATFORM_SUBREDDITS = {
 
 // ── Main: process a single platform ──────────────────────────────────────────
 
-async function processPlatform(platform) {
-  const logCtx = { platform };
+async function processPlatform(detectorKey) {
+  const logCtx = { detectorKey };
 
   // 1. Detect latest version from vendor source
-  const detection = await scraperService.detectPlatformDetailed(platform);
+  const detection = await scraperService.detectPlatformDetailed(detectorKey);
   if (!detection.ok) {
     logger.warn('[pipeline] Source unavailable', { ...logCtx, attempts: detection.attempts, error: detection.error });
     return {
-      platform,
+      platform: detectorKey,
       status: 'source_unavailable',
       version: null,
       attempts: detection.attempts,
@@ -373,7 +387,9 @@ async function processPlatform(platform) {
     };
   }
   const detected = detection.result;
+  const platform = detected.platform || detectorKey;
 
+  logCtx.platform = platform;
   logCtx.version = detected.version;
 
   // 2. Compare to latest known version in DB
@@ -382,7 +398,7 @@ async function processPlatform(platform) {
     return { platform, status: 'db_unavailable', version: detected.version, latencyMs: detection.latencyMs };
   }
 
-  const latestKnown = await getLatestKnownRelease(platform);
+  const latestKnown = await getLatestKnownRelease(platform, detected);
   const knownVersion = latestKnown?.version || null;
   if (knownVersion === detected.version) {
     await updateExistingMetadata(platform, detected.version, detected);
@@ -394,7 +410,7 @@ async function processPlatform(platform) {
   // known history without alerting, and reject unknown releases whose source
   // date materially predates the current release. This keeps a source wobble
   // from becoming a false "new update" notification.
-  const historicalRelease = await getKnownReleaseByVersion(platform, detected.version);
+  const historicalRelease = await getKnownReleaseByVersion(platform, detected.version, detected);
   if (historicalRelease) {
     await updateExistingMetadata(platform, detected.version, detected);
     logger.warn('[pipeline] Historical source version refreshed without alerting', {
@@ -504,6 +520,11 @@ async function processPlatform(platform) {
     }
   }
 
+  // Keep signed-in dashboard sessions current without exposing internal logs.
+  // The public event contains only the same release identity already available
+  // through the update API; source payloads and server diagnostics stay private.
+  liveFeedService.publishRelease(initialUpdate);
+
   // 6. Fire watchlist alerts to subscribed Pro users
   try {
     await watchlistService.notifySubscribers(platform, {
@@ -533,7 +554,10 @@ async function processPlatform(platform) {
 // ── Run all platforms ─────────────────────────────────────────────────────────
 
 async function runAll() {
-  const platforms = PLATFORM_KEYS.filter(platform => scraperService.DETECTORS[platform]);
+  const platforms = [
+    ...PLATFORM_KEYS,
+    ...INTERNAL_PIPELINE_KEYS,
+  ].filter(platform => scraperService.DETECTORS[platform]);
   logger.info('[pipeline] Starting full run', { platforms: platforms.length });
 
   // Keep database work below the Supabase transaction-pooler ceiling while
@@ -602,5 +626,7 @@ module.exports = {
     deriveInitialStatus,
     isCanonicalPipelineRelease,
     isSourceVersionRegression,
+    sourceLaneScope,
+    INTERNAL_PIPELINE_KEYS,
   },
 };

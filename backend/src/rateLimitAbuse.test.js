@@ -26,11 +26,12 @@ process.env.HTTPS_REDIRECT     = 'false';
 process.env.TRUST_PROXY        = '1';
 
 const request = require('supertest');
+const express = require('express');
 const app     = require('./server');
 
 beforeEach(() => {
-  try { require('./services/ipAbuseService')._resetAll(); } catch {}
-  try { require('./services/ipBlacklist')._resetAll(); } catch {}
+  try { require('./services/ipAbuseService')._resetAll(); } catch { /* module may not be loaded yet */ }
+  try { require('./services/ipBlacklist')._resetAll(); } catch { /* module may not be loaded yet */ }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -449,6 +450,34 @@ describe('Rate limiter (integration)', () => {
     const expectedRetryAfterSec = Math.ceil(backoffMs / 1000);
     // Should be 3600 seconds (60 min)
     expect(expectedRetryAfterSec).toBe(60 * 60);
+  });
+
+  it('records exactly one abuse offence for one limiter response', async () => {
+    const { __test } = require('./middleware/rateLimiter');
+    const { getStatus } = require('./services/ipAbuseService');
+    const limiterIp = '10.20.30.41';
+    const limiterApp = express();
+    limiterApp.set('trust proxy', 1);
+    limiterApp.use(require('./middleware/abuseDetector'));
+    limiterApp.get('/limited', (req, res, next) => __test.makeHandler('test')(
+      req,
+      res,
+      next,
+      { message: { error: 'Test limit reached.' } }
+    ));
+
+    const response = await request(limiterApp)
+      .get('/limited')
+      .set('X-Forwarded-For', limiterIp);
+
+    expect(response.status).toBe(429);
+    expect(response.body.error).toBe('Test limit reached.');
+    expect(response.body.backoffOffences).toBe(1);
+    expect(getStatus(limiterIp)).toMatchObject({
+      offences: 1,
+      points: 1,
+      signals: ['RATE_LIMIT_HIT'],
+    });
   });
 });
 

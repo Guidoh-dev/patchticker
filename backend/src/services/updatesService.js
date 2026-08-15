@@ -5,7 +5,7 @@ const axios   = require('axios');
 const { URL } = require('node:url');
 const logger  = require('../utils/logger');
 const secrets = require('../config/secrets');
-const { validateScore } = require('../utils/updateScore');
+const { validateScore, statusForScore } = require('../utils/updateScore');
 const { getFreshnessSlaHours } = require('../config/platformRegistry');
 
 const MAX_UPDATE_AGE_DAYS = 240;
@@ -112,9 +112,13 @@ function scoreOrNull(value, context = {}) {
 }
 
 function sanitizeUpdateScores(update) {
+  const score = scoreOrNull(update?.score, { updateId: update?.id, field: 'score' });
   return {
     ...update,
-    score: scoreOrNull(update?.score, { updateId: update?.id, field: 'score' }),
+    // Status is a deterministic projection of the validated score. Never let
+    // a stale or hand-edited status badge survive after its score was rejected.
+    status: score === null ? null : statusForScore(score),
+    score,
     impactScore: scoreOrNull(update?.impactScore, { updateId: update?.id, field: 'impact_score', allowNull: true }),
   };
 }
@@ -127,9 +131,7 @@ function compareScores(direction = 'desc') {
   };
 }
 
-function searchRelevanceScore(update, terms = []) {
-  const needles = terms.map(term => String(term || '').toLowerCase()).filter(Boolean);
-  if (!needles.length) return 0;
+function searchRelevanceScore(update, queryOrTerms = []) {
   const fields = [
     [update?.name, 100],
     [update?.platform, 85],
@@ -144,10 +146,43 @@ function searchRelevanceScore(update, terms = []) {
     [JSON.stringify(update?.riskFactors || []), 25],
     [JSON.stringify(update?.evidence || []), 20],
   ];
-  return fields.reduce((score, [value, weight]) => {
-    const haystack = String(value || '').toLowerCase();
-    return Math.max(score, needles.some(term => haystack.includes(term)) ? weight : 0);
+  const searchableFields = fields.map(([value, weight]) => ({
+    haystack: String(value || '').toLowerCase(),
+    weight,
+  }));
+
+  // Preserve the original helper contract for internal callers/tests that pass
+  // a pre-expanded flat term list. User searches use the richer path below.
+  if (Array.isArray(queryOrTerms)) {
+    const needles = queryOrTerms.map(term => String(term || '').toLowerCase()).filter(Boolean);
+    if (!needles.length) return 0;
+    return searchableFields.reduce((score, { haystack, weight }) => (
+      Math.max(score, needles.some(term => haystack.includes(term)) ? weight : 0)
+    ), 0);
+  }
+
+  const exactQuery = String(queryOrTerms || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const groups = buildSearchTermGroups(exactQuery);
+  if (!groups.length) return 0;
+
+  // Sum each semantic term group's strongest field. A product token in the
+  // title plus a version token in the version field should outrank both terms
+  // appearing incidentally inside a long changelog.
+  const crossFieldCoverage = groups.reduce((total, group) => {
+    const strongest = searchableFields.reduce((best, { haystack, weight }) => (
+      group.some(term => haystack.includes(term)) ? Math.max(best, weight) : best
+    ), 0);
+    return total + strongest;
   }, 0);
+
+  const sameFieldStrength = searchableFields.reduce((best, { haystack, weight }) => {
+    if (!haystack) return best;
+    if (exactQuery && haystack.includes(exactQuery)) return Math.max(best, weight * 10);
+    const hasEveryGroup = groups.every(group => group.some(term => haystack.includes(term)));
+    return Math.max(best, hasEveryGroup ? weight * 5 : 0);
+  }, 0);
+
+  return Math.max(crossFieldCoverage, sameFieldStrength);
 }
 
 function isUpdateWithinDisplayWindow(update) {
@@ -898,6 +933,7 @@ function rowToUpdate(row) {
   const whql = evidence.some(item => item?.whql === true)
     ? true
     : evidence.some(item => item?.whql === false) ? false : null;
+  const score = scoreOrNull(row.score, { updateId: row.id, field: 'score' });
   return {
     id:                   row.id,
     platform:             row.platform,
@@ -915,8 +951,8 @@ function rowToUpdate(row) {
     averagePlayersObservedAt,
     whql,
     releasedAt:           row.released_at,
-    status:               row.status,
-    score:                scoreOrNull(row.score, { updateId: row.id, field: 'score' }),
+    status:               score === null ? null : statusForScore(score),
+    score,
     impactScore:          scoreOrNull(row.impact_score, { updateId: row.id, field: 'impact_score', allowNull: true }),
     bugCount:             row.bug_count || 0,
     affects:              row.affects || null,
@@ -1071,7 +1107,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
         score_desc: compareScores('desc'),
         score_asc:  compareScores('asc'),
-        relevance:  (a, b) => searchRelevanceScore(b, buildSearchTermGroups(search).flat()) - searchRelevanceScore(a, buildSearchTermGroups(search).flat()),
+        relevance:  (a, b) => searchRelevanceScore(b, search) - searchRelevanceScore(a, search),
       };
       if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
       return hydrateLiveRatings(updates);
@@ -1097,13 +1133,12 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       return groups.every(group => group.some(term => document.includes(term)));
     });
   }
-  const fallbackRelevanceTerms = buildSearchTermGroups(search).flat();
   const sorters = {
     date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
     date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
     score_desc: compareScores('desc'),
     score_asc:  compareScores('asc'),
-    relevance:  (a, b) => searchRelevanceScore(b, fallbackRelevanceTerms) - searchRelevanceScore(a, fallbackRelevanceTerms),
+    relevance:  (a, b) => searchRelevanceScore(b, search) - searchRelevanceScore(a, search),
   };
   if (sort && sorters[sort]) updates = [...updates].sort(sorters[sort]);
   return hydrateLiveRatings(updates);
@@ -1243,14 +1278,15 @@ async function getUpdateHistory(platform, limit = 20) {
     const updates = rows.rows.map(r => {
       const evidence = jsonArray(r.evidence);
       const officialEvidence = evidence.find(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`));
+      const score = scoreOrNull(r.score, { updateId: r.id, field: 'score' });
       return {
         id:          r.id,
         platform:    r.platform,
         name:        r.name,
         version:     r.version,
         releasedAt:  r.released_at,
-        status:      r.status,
-        score:       scoreOrNull(r.score, { updateId: r.id, field: 'score' }),
+        status:      score === null ? null : statusForScore(score),
+        score,
         bugCount:    r.bug_count,
         aiGenerated: r.ai_generated,
         evidence,

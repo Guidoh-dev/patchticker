@@ -1,9 +1,9 @@
 // src/routes/feed.js
 // ─────────────────────────────────────────────────────────────────────────────
-// COMMUNITY FEED — live post stream + post submission
+// LIVE FEED — verified release events + community post stream
 //
 // GET  /api/feed/stream   — SSE stream of recent + live posts (auth required)
-// GET  /api/feed/recent   — last 40 posts as JSON (for initial render)
+// GET  /api/feed/recent   — last 60 posts as JSON (for initial render)
 // POST /api/feed/post     — submit a post (auth required, rate limited)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -11,10 +11,10 @@
 
 const express     = require('express');
 const rateLimit   = require('express-rate-limit');
-const crypto      = require('node:crypto');
 const requireAuth = require('../middleware/requireAuth');
 const db          = require('../config/db');
 const logger      = require('../utils/logger');
+const liveFeed    = require('../services/liveFeedService');
 const { z }       = require('zod');
 
 const router = express.Router();
@@ -39,6 +39,15 @@ const streamTicketLimiter = rateLimit({
   message: { error: 'Too many live-chat connection attempts. Please wait a moment.' },
 });
 
+const postQuotaLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => `feed-quota:${req.user?.id ?? req.ip}`,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Live-chat limit reached. Maximum 30 posts per hour.' },
+});
+
 const PostSchema = z.object({
   body:     z.string().min(1).max(280).trim(),
   platform: z.enum(['AMD','NVIDIA','Apple','PS5','Windows','Steam','macOS','Intel','Xbox','Switch','Discord','BattleNet','GOG']).optional(),
@@ -48,50 +57,14 @@ function feedUserLabel(userId) {
   return `Member ${String(userId || '').slice(0, 4).toUpperCase() || 'USER'}`;
 }
 
-// ── In-process SSE client registry ───────────────────────────────────────────
-// Map<userId, Set<res>>  — multiple tabs per user supported
-const _clients = new Map();
-const _streamTickets = new Map();
-const STREAM_TICKET_TTL_MS = 60_000;
-
-function issueStreamTicket(userId) {
-  const now = Date.now();
-  for (const [ticket, record] of _streamTickets) {
-    if (record.expiresAt <= now) _streamTickets.delete(ticket);
+function requireVerifiedMember(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
-  const ticket = crypto.randomBytes(32).toString('base64url');
-  _streamTickets.set(ticket, { userId, expiresAt: now + STREAM_TICKET_TTL_MS });
-  return ticket;
-}
-
-function consumeStreamTicket(ticket) {
-  const record = _streamTickets.get(String(ticket || ''));
-  _streamTickets.delete(String(ticket || ''));
-  if (!record || record.expiresAt <= Date.now()) return null;
-  return record;
-}
-
-function broadcast(post) {
-  const payload = `data: ${JSON.stringify(post)}\n\n`;
-  for (const clientSet of _clients.values()) {
-    for (const res of clientSet) {
-      try { res.write(payload); } catch { /* client disconnected */ }
-    }
+  if (!req.user.emailVerified) {
+    return res.status(403).json({ error: 'Verify your email before joining live chat.' });
   }
-}
-
-function register(userId, res) {
-  if (!_clients.has(userId)) {
-    _clients.set(userId, new Set());
-  }
-  _clients.get(userId).add(res);
-}
-
-function unregister(userId, res) {
-  _clients.get(userId)?.delete(res);
-  if (_clients.get(userId)?.size === 0) {
-    _clients.delete(userId);
-  }
+  next();
 }
 
 // ── GET /api/feed/recent — initial payload ────────────────────────────────────
@@ -118,14 +91,19 @@ router.get('/recent', async (req, res, next) => {
 
 // Exchange the normal Authorization header for a single-use, short-lived SSE
 // ticket. This keeps access JWTs out of URLs, proxy logs, and browser history.
-router.post('/stream-ticket', requireAuth, streamTicketLimiter, (req, res) => {
-  res.json({ ticket: issueStreamTicket(req.user.id), expiresIn: Math.floor(STREAM_TICKET_TTL_MS / 1000) });
+router.post('/stream-ticket', requireAuth, requireVerifiedMember, streamTicketLimiter, (req, res) => {
+  res.json({
+    ticket: liveFeed.issueStreamTicket(req.user.id),
+    expiresIn: Math.floor(liveFeed.STREAM_TICKET_TTL_MS / 1000),
+  });
 });
 
 // ── GET /api/feed/stream — SSE ────────────────────────────────────────────────
 router.get('/stream', (req, res) => {
-  const session = consumeStreamTicket(req.query.ticket);
-  if (!session) return res.status(401).json({ error: 'Invalid or expired live-chat ticket' });
+  const session = liveFeed.consumeStreamTicket(req.query.ticket);
+  if (!session) {
+    return res.status(401).json({ error: 'Invalid or expired live-chat ticket' });
+  }
 
   res.setHeader('Content-Type',  'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -134,7 +112,7 @@ router.get('/stream', (req, res) => {
   res.flushHeaders();
 
   const userId = session.userId;
-  register(userId, res);
+  liveFeed.register(userId, res);
 
   // Heartbeat every 25s to prevent proxy timeouts
   const heartbeat = setInterval(() => {
@@ -143,12 +121,12 @@ router.get('/stream', (req, res) => {
 
   req.on('close', () => {
     clearInterval(heartbeat);
-    unregister(userId, res);
+    liveFeed.unregister(userId, res);
   });
 });
 
 // ── POST /api/feed/post ───────────────────────────────────────────────────────
-router.post('/post', requireAuth, postLimiter, async (req, res, next) => {
+router.post('/post', requireAuth, requireVerifiedMember, postLimiter, postQuotaLimiter, async (req, res, next) => {
   const parse = PostSchema.safeParse(req.body);
   if (!parse.success) {
     return res.status(400).json({ error: parse.error.issues[0]?.message ?? 'Invalid input' });
@@ -169,7 +147,7 @@ router.post('/post', requireAuth, postLimiter, async (req, res, next) => {
       userLabel: feedUserLabel(userId),
     };
 
-    broadcast(post);
+    liveFeed.publish(post);
     logger.info('Feed post created', { userId, postId: post.id });
     res.status(201).json(post);
   } catch (err) {
@@ -177,5 +155,11 @@ router.post('/post', requireAuth, postLimiter, async (req, res, next) => {
   }
 });
 
-router.__test = { issueStreamTicket, consumeStreamTicket };
+router.__test = {
+  issueStreamTicket: liveFeed.issueStreamTicket,
+  consumeStreamTicket: liveFeed.consumeStreamTicket,
+  register: liveFeed.register,
+  unregister: liveFeed.unregister,
+  publishRelease: liveFeed.publishRelease,
+};
 module.exports = router;
