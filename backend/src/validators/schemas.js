@@ -229,7 +229,7 @@ const SafeDescription = hardened(
  *
  * Both fields are optional. When present, exact enum match required.
  */
-const SortEnum = z.enum(['date_desc', 'date_asc', 'score_desc', 'score_asc']);
+const SortEnum = z.enum(['relevance', 'date_desc', 'date_asc', 'score_desc', 'score_asc']);
 
 const GetUpdatesQuerySchema = z
   .object({

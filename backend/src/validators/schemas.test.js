@@ -222,6 +222,9 @@ describe('GetUpdatesQuerySchema', () => {
         expect(passes(GetUpdatesQuerySchema, { status: s })).toBe(true);
       }
     });
+    it('accepts deterministic relevance sorting for searches', () => {
+      expect(passes(GetUpdatesQuerySchema, { search: 'radeon', sort: 'relevance' })).toBe(true);
+    });
   });
 
   describe('enum enforcement', () => {

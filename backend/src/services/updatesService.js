@@ -17,7 +17,8 @@ const SEARCH_ALIAS_GROUPS = [
   ['steamdeck', 'steam deck', 'steamos', 'steam os'],
   ['battlenet', 'battle.net', 'blizzard'],
   ['gog', 'gog galaxy', 'galaxy client'],
-  ['macbook', 'macbook pro', 'macbook air'],
+  ['macbook', 'macbook pro', 'macbook air', 'macos', 'mac os'],
+  ['m1', 'm2', 'm3', 'm4', 'apple silicon', 'macos'],
   ['radeon', 'amd adrenalin', 'adrenalin'],
   ['geforce', 'nvidia game ready', 'game ready driver'],
   ['switch', 'nintendo switch', 'switch oled', 'switch lite'],
@@ -26,10 +27,21 @@ const SEARCH_ALIAS_GROUPS = [
 function expandSearchTerms(rawSearch) {
   const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!query) return [];
+  // Device variants are exact setup filters, not synonyms for every product in
+  // the wider family. This keeps "Switch OLED" from returning base-Switch game
+  // notes that never mention the OLED model.
+  if (query === 'switch oled' || query === 'switch lite') return [query];
   const terms = new Set([query]);
+  const queryWordCount = query.split(/\s+/).length;
   for (const group of SEARCH_ALIAS_GROUPS) {
     if (group.some(alias => query === alias || query.includes(alias) || alias.includes(query))) {
-      group.forEach(alias => terms.add(alias));
+      group.forEach(alias => {
+        // A precise multi-word query must not be broadened to a generic
+        // one-word fragment (for example, "Switch OLED" -> "switch"), which
+        // otherwise matches unrelated prose such as "switching modes".
+        if (queryWordCount > 1 && alias.split(/\s+/).length < queryWordCount) return;
+        terms.add(alias);
+      });
     }
   }
   return [...terms].slice(0, 12);
@@ -87,6 +99,29 @@ function compareScores(direction = 'desc') {
     const bScore = b.score === null ? (direction === 'desc' ? -1 : 11) : b.score;
     return direction === 'desc' ? bScore - aScore : aScore - bScore;
   };
+}
+
+function searchRelevanceScore(update, terms = []) {
+  const needles = terms.map(term => String(term || '').toLowerCase()).filter(Boolean);
+  if (!needles.length) return 0;
+  const fields = [
+    [update?.name, 100],
+    [update?.platform, 85],
+    [update?.version, 80],
+    [update?.internalVersion, 80],
+    [update?.productId, 80],
+    [update?.affects, 60],
+    [update?.verdict, 40],
+    [update?.reasoning, 35],
+    [JSON.stringify(update?.changelog || []), 30],
+    [JSON.stringify(update?.knownIssues || []), 30],
+    [JSON.stringify(update?.riskFactors || []), 25],
+    [JSON.stringify(update?.evidence || []), 20],
+  ];
+  return fields.reduce((score, [value, weight]) => {
+    const haystack = String(value || '').toLowerCase();
+    return score + (needles.some(term => haystack.includes(term)) ? weight : 0);
+  }, 0);
 }
 
 function isUpdateWithinDisplayWindow(update) {
@@ -893,6 +928,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         WHERE released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
       `;
       const params = [];
+      let relevanceOrder = '';
 
       if (platform) {
         params.push(platform);
@@ -903,11 +939,13 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         query += ` AND status = $${params.length}`;
       }
       if (search) {
-        const patterns = expandSearchTerms(search).map(term => `%${term}%`);
+        const searchTerms = expandSearchTerms(search);
+        const patterns = searchTerms.map(term => `%${term}%`);
         params.push(patterns);
+        const patternParam = `$${params.length}`;
         query += ` AND EXISTS (
           SELECT 1
-          FROM unnest($${params.length}::text[]) AS search_pattern(pattern)
+          FROM unnest(${patternParam}::text[]) AS search_pattern(pattern)
           WHERE LOWER(CONCAT_WS(' ',
             name, platform, version, COALESCE(display_version, ''),
             COALESCE(product_id, ''), COALESCE(affects, ''),
@@ -915,9 +953,22 @@ async function getUpdates({ platform, status, sort, search } = {}) {
             changelog::text, known_issues::text, risk_factors::text, evidence::text
           )) LIKE search_pattern.pattern
         )`;
+        relevanceOrder = `(
+          CASE WHEN LOWER(name) LIKE ANY(${patternParam}::text[]) THEN 100 ELSE 0 END +
+          CASE WHEN LOWER(platform) LIKE ANY(${patternParam}::text[]) THEN 85 ELSE 0 END +
+          CASE WHEN LOWER(version) LIKE ANY(${patternParam}::text[]) OR LOWER(COALESCE(display_version, '')) LIKE ANY(${patternParam}::text[]) THEN 80 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(product_id, '')) LIKE ANY(${patternParam}::text[]) THEN 80 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(affects, '')) LIKE ANY(${patternParam}::text[]) THEN 60 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(verdict, '')) LIKE ANY(${patternParam}::text[]) THEN 40 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(reasoning, '')) LIKE ANY(${patternParam}::text[]) THEN 35 ELSE 0 END +
+          CASE WHEN LOWER(changelog::text) LIKE ANY(${patternParam}::text[]) THEN 30 ELSE 0 END +
+          CASE WHEN LOWER(known_issues::text) LIKE ANY(${patternParam}::text[]) THEN 30 ELSE 0 END +
+          CASE WHEN LOWER(risk_factors::text) LIKE ANY(${patternParam}::text[]) THEN 25 ELSE 0 END +
+          CASE WHEN LOWER(evidence::text) LIKE ANY(${patternParam}::text[]) THEN 20 ELSE 0 END
+        ) DESC, `;
       }
 
-      query += ` ORDER BY released_at DESC, created_at DESC LIMIT 100`;
+      query += ` ORDER BY ${sort === 'relevance' && relevanceOrder ? relevanceOrder : ''}released_at DESC, created_at DESC LIMIT 100`;
 
       const rows = await db.query(query, params);
       let updates = dedupeArticleReleases(rows.rows.map(rowToUpdate).filter(isUpdateDisplayable));
@@ -926,6 +977,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
         score_desc: compareScores('desc'),
         score_asc:  compareScores('asc'),
+        relevance:  (a, b) => searchRelevanceScore(b, expandSearchTerms(search)) - searchRelevanceScore(a, expandSearchTerms(search)),
       };
       if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
       return hydrateLiveRatings(updates);
@@ -961,6 +1013,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
     date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
     score_desc: compareScores('desc'),
     score_asc:  compareScores('asc'),
+    relevance:  (a, b) => searchRelevanceScore(b, expandSearchTerms(search)) - searchRelevanceScore(a, expandSearchTerms(search)),
   };
   if (sort && sorters[sort]) updates = [...updates].sort(sorters[sort]);
   return hydrateLiveRatings(updates);
@@ -1090,5 +1143,6 @@ module.exports = {
     dedupeArticleReleases,
     releaseInformationQuality,
     expandSearchTerms,
+    searchRelevanceScore,
   },
 };

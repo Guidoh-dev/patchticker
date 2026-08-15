@@ -1209,7 +1209,11 @@ const SEARCH_ALIASES = {
   discord: ['discord', 'voice chat', 'overlay', 'rtc', 'rich presence'],
   battlenet: ['battle.net', 'battlenet', 'blizzard', 'warcraft', 'diablo', 'overwatch'],
   gog: ['gog', 'gog galaxy', 'galaxy client', 'cd projekt'],
-  macbook: ['macbook', 'macbook pro', 'macbook air', 'm1', 'm2', 'm3', 'm4'],
+  macbook: ['macbook', 'macbook pro', 'macbook air', 'macos', 'mac os'],
+  m1: ['m1', 'apple silicon', 'macos'],
+  m2: ['m2', 'apple silicon', 'macos'],
+  m3: ['m3', 'apple silicon', 'macos'],
+  m4: ['m4', 'apple silicon', 'macos'],
   rtx: ['rtx', 'nvidia', 'dlss', 'game ready'],
   radeon: ['radeon', 'amd', 'rx 7900', 'adrenalin'],
 };
@@ -1272,13 +1276,60 @@ function releaseLaneKey(update) {
 function searchNeedles(raw) {
   const q = raw.toLowerCase().trim();
   if (!q) return [];
+  if (q === 'switch oled' || q === 'switch lite') return [q];
   const base = [q];
+  const queryWordCount = q.split(/\s+/).length;
   for (const [key, aliases] of Object.entries(SEARCH_ALIASES)) {
     if (q === key || aliases.some(alias => alias.includes(q) || q.includes(alias))) {
-      base.push(...aliases);
+      base.push(...aliases.filter(alias => {
+        // Keep precise searches precise. "Switch OLED" must not broaden to
+        // the generic word "switch", which also matches unrelated prose.
+        return queryWordCount === 1 || alias.split(/\s+/).length >= queryWordCount;
+      }));
     }
   }
   return [...new Set(base.map(s => s.toLowerCase().trim()).filter(Boolean))];
+}
+
+function updateSearchRelevance(update, query) {
+  const needles = searchNeedles(query);
+  if (!needles.length) return 0;
+  const fields = [
+    [update?.name, 100],
+    [releaseLaneLabel(update), 90],
+    [update?.platform, 85],
+    [update?.version, 80],
+    [update?.internalVersion, 80],
+    [update?.productId, 80],
+    [update?.affects, 60],
+    [update?.verdict, 40],
+    [update?.reasoning, 35],
+    [JSON.stringify(update?.changelog || []), 30],
+    [JSON.stringify(update?.knownIssues || []), 30],
+    [JSON.stringify(update?.riskFactors || []), 25],
+    [JSON.stringify(update?.evidence || []), 20],
+  ];
+  return fields.reduce((score, [value, weight]) => {
+    const haystack = String(value || '').toLowerCase();
+    return score + (needles.some(needle => haystack.includes(needle)) ? weight : 0);
+  }, 0);
+}
+
+function searchMatchReason(update, query) {
+  const needles = searchNeedles(query);
+  const matches = value => {
+    const haystack = String(value || '').toLowerCase();
+    return needles.some(needle => haystack.includes(needle));
+  };
+  if (!needles.length) return null;
+  if (matches(update?.name)) return 'Product name or alias';
+  if (matches(`${update?.version || ''} ${update?.internalVersion || ''} ${update?.productId || ''}`)) return 'Version or App ID';
+  if (matches(`${update?.platform || ''} ${releaseLaneLabel(update)}`)) return 'Platform match';
+  if (matches(update?.affects)) return 'Device or setup';
+  if (matches(JSON.stringify(update?.knownIssues || []))) return 'Known issue';
+  if (matches(JSON.stringify(update?.changelog || []))) return 'Release notes';
+  if (matches(JSON.stringify(update?.evidence || []))) return 'Official source';
+  return 'Patch context';
 }
 
 function peerRatingMeta(update) {
@@ -1876,6 +1927,7 @@ function renderUpdateCard(u) {
             <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
             ${securitySignal ? `<span class="security-signal security-signal--${H(securitySignal.tone)}"><i aria-hidden="true">◆</i>${H(securitySignal.label)}</span>` : ''}
             ${driverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(driverImpact.label)}</span>` : ''}
+            ${u.matchReason ? `<span class="decision-match-reason">Matched in ${H(u.matchReason)}</span>` : ''}
             <span>${H(freshness.detail)}</span>
             <span>${H(sourceLabel)}</span>
             <span>${H(methodLabel)}</span>
@@ -2094,6 +2146,7 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
   if (platform) labels.push(platformLabel(platform));
   if (status) labels.push(status[0].toUpperCase() + status.slice(1));
   if (search) labels.push(`“${search}”`);
+  if (sort === 'relevance') labels.push('Best match first');
   if (sort === 'score_desc') labels.push('Highest score first');
   if (sort === 'score_asc') labels.push('Lowest score first');
   if (sort === 'date_asc') labels.push('Oldest first');
@@ -2107,7 +2160,10 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
         </div>
         <span>${H(labels.join(' · ') || 'Newest first')}</span>
       </header>
-      <div class="filtered-update-cards">${updates.map(renderUpdateCard).join('')}</div>
+      <div class="filtered-update-cards">${updates.map(update => renderUpdateCard({
+        ...update,
+        matchReason: search ? searchMatchReason(update, search) : null,
+      })).join('')}</div>
     </section>
   `;
 }
@@ -2231,6 +2287,7 @@ async function renderDashboard({ focusId = null } = {}) {
             <label class="dash-filter-label" for="dash-sort">Sort desk</label>
             <select class="dash-sort" id="dash-sort">
               <option value="date_desc">Newest first</option>
+              <option value="relevance">Best match</option>
               <option value="date_asc">Oldest first</option>
               <option value="score_desc">Highest score</option>
               <option value="score_asc">Lowest score</option>
@@ -2247,6 +2304,7 @@ async function renderDashboard({ focusId = null } = {}) {
               </div>
               <select class="dash-top-sort" id="dash-top-sort" aria-label="Sort patch desk">
                 <option value="date_desc">Newest first</option>
+                <option value="relevance">Best match</option>
                 <option value="date_asc">Oldest first</option>
                 <option value="score_desc">Highest score</option>
                 <option value="score_asc">Lowest score</option>
@@ -2542,6 +2600,7 @@ async function renderDashboard({ focusId = null } = {}) {
       date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
       score_desc: (a, b) => (validScoreOrNull(b.score) ?? -1) - (validScoreOrNull(a.score) ?? -1),
       score_asc:  (a, b) => (validScoreOrNull(a.score) ?? 11) - (validScoreOrNull(b.score) ?? 11),
+      relevance:  (a, b) => updateSearchRelevance(b, search) - updateSearchRelevance(a, search),
     };
     if (sorters[sort]) filtered = [...filtered].sort(sorters[sort]);
 
@@ -2994,7 +3053,7 @@ async function renderDashboard({ focusId = null } = {}) {
     const filterBtn = e.target.closest('.followed-game-filter');
     if (filterBtn) {
       const query = filterBtn.dataset.game || '';
-      setDraftFilters({ search: query, searchDisplay: query, searchMode: 'server' });
+      setDraftFilters({ search: query, searchDisplay: query, searchMode: 'server', sort: 'relevance' });
       showToast('Game filter ready. Press Apply to update the patch desk.', 'info');
     }
   });
@@ -3018,16 +3077,27 @@ async function renderDashboard({ focusId = null } = {}) {
 
   topSearchEl?.addEventListener('input', (e) => {
     const val = e.target.value;
-    setDraftFilters({ search: val.trim(), searchDisplay: val, searchMode: 'server' });
+    const search = val.trim();
+    const sort = search && _draftFilterState.sort === 'date_desc'
+      ? 'relevance'
+      : !search && _draftFilterState.sort === 'relevance' ? 'date_desc' : _draftFilterState.sort;
+    setDraftFilters({ search, searchDisplay: val, searchMode: 'server', sort });
   });
 
   searchEl?.addEventListener('input', (e) => {
     const val = e.target.value;
-    setDraftFilters({ search: val.trim(), searchDisplay: val, searchMode: 'server' });
+    const search = val.trim();
+    const sort = search && _draftFilterState.sort === 'date_desc'
+      ? 'relevance'
+      : !search && _draftFilterState.sort === 'relevance' ? 'date_desc' : _draftFilterState.sort;
+    setDraftFilters({ search, searchDisplay: val, searchMode: 'server', sort });
   });
 
   clearBtn?.addEventListener('click', () => {
-    setDraftFilters({ search: '', searchDisplay: '', searchMode: 'local' });
+    setDraftFilters({
+      search: '', searchDisplay: '', searchMode: 'local',
+      sort: _draftFilterState.sort === 'relevance' ? 'date_desc' : _draftFilterState.sort,
+    });
   });
 
   // ── Clear all ─────────────────────────────────────────────────────────────

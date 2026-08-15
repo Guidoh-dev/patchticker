@@ -81,7 +81,7 @@ test('update cards organize title, release date, package size, and rating withou
 test('non-default filters and sorting use the globally ordered result list', () => {
   assert.match(mainSource, /const keepsPlatformBrowse = sort === 'date_desc' && !status && !search/);
   assert.match(mainSource, /renderFilteredUpdateResults\(filtered, _filterState\)/);
-  assert.match(mainSource, /updates\.map\(renderUpdateCard\)\.join\(''\)/);
+  assert.match(mainSource, /updates\.map\(update => renderUpdateCard\(\{/);
 });
 
 test('typed dashboard searches query the full database with race protection', () => {
@@ -95,6 +95,17 @@ test('typed dashboard searches query the full database with race protection', ()
   assert.match(mainSource, /PatchTicker searches the last 240 days/);
   assert.match(cssSource, /\.dash-search-status\.is-loading\s*\{[^}]*var\(--cyan\)/s);
   assert.match(cssSource, /\.empty-state--search\s*\{[^}]*display:\s*grid/s);
+});
+
+test('searches preserve precise terms, rank best matches, and explain each result', () => {
+  assert.match(mainSource, /const queryWordCount = q\.split\(\/\\s\+\/\)\.length/);
+  assert.match(mainSource, /function updateSearchRelevance\(update, query\)/);
+  assert.match(mainSource, /function searchMatchReason\(update, query\)/);
+  assert.match(mainSource, /<option value="relevance">Best match<\/option>/);
+  assert.match(mainSource, /relevance:\s+\(a, b\) => updateSearchRelevance\(b, search\) - updateSearchRelevance\(a, search\)/);
+  assert.match(mainSource, /Matched in \$\{H\(u\.matchReason\)\}/);
+  assert.match(mainSource, /search && _draftFilterState\.sort === 'date_desc'[\s\S]*?'relevance'/);
+  assert.match(cssSource, /\.decision-match-reason\s*\{[^}]*color:\s*var\(--cyan\)/s);
 });
 
 test('theme and tracked-game preferences use persistent local storage keys', () => {

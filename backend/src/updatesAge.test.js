@@ -110,6 +110,30 @@ test('search shorthand expands to authoritative product-name aliases', () => {
     'steamdeck', 'steam deck', 'steamos',
   ]));
   expect(updatesService.__test.expandSearchTerms('NARAKA')).toEqual(['naraka']);
+  expect(updatesService.__test.expandSearchTerms('macbook')).toEqual(expect.arrayContaining([
+    'macbook', 'macos', 'mac os',
+  ]));
+  expect(updatesService.__test.expandSearchTerms('switch oled')).toEqual(['switch oled']);
+});
+
+test('search relevance favors direct product matches over incidental patch-note mentions', () => {
+  const terms = updatesService.__test.expandSearchTerms('radeon');
+  const amdRelease = {
+    platform: 'AMD',
+    name: 'AMD Software: Adrenalin Edition 26.8.1',
+    affects: 'Radeon RX graphics',
+    changelog: [],
+  };
+  const incidentalSteamRelease = {
+    platform: 'Steam',
+    name: 'Monster Hunter Wilds update',
+    affects: 'PC players',
+    changelog: ['Fixed an issue seen on some Radeon systems'],
+  };
+
+  expect(updatesService.__test.searchRelevanceScore(amdRelease, terms)).toBeGreaterThan(
+    updatesService.__test.searchRelevanceScore(incidentalSteamRelease, terms)
+  );
 });
 
 test('monthly placeholders require official release metadata', () => {
