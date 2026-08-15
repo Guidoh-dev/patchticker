@@ -872,6 +872,32 @@ function rowToUpdate(row) {
   const evidence = jsonArray(row.evidence);
   const subreddits = jsonArray(row.subreddits);
   const officialEvidence = evidence.find(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`));
+  const evidenceSizeBytes = evidence
+    .map(item => Number(item?.sizeBytes))
+    .find(value => Number.isFinite(value) && value > 0) || null;
+  const persistedSizeBytes = Number(row.release_size_bytes);
+  const releaseSizeBytes = Number.isFinite(persistedSizeBytes) && persistedSizeBytes > 0
+    ? persistedSizeBytes
+    : evidenceSizeBytes;
+  const packageSize = evidence.find(item => typeof item?.packageSize === 'string' && item.packageSize.trim())?.packageSize?.trim() || null;
+  const steamEvidence = row.platform === 'Steam'
+    ? evidence.find(item => item?.steamAppId || item?.averagePlayersSnapshot)
+    : null;
+  const steamAppId = row.platform === 'Steam'
+    ? String(row.product_id || steamEvidence?.steamAppId || '').trim() || null
+    : null;
+  const averagePlayersSnapshot = row.platform === 'Steam'
+    ? evidence.reduce((highest, item) => {
+      const value = Number(item?.averagePlayersSnapshot);
+      return Number.isFinite(value) && value > highest ? value : highest;
+    }, 0) || null
+    : null;
+  const averagePlayersObservedAt = row.platform === 'Steam'
+    ? evidence.find(item => item?.averagePlayersObservedAt)?.averagePlayersObservedAt || null
+    : null;
+  const whql = evidence.some(item => item?.whql === true)
+    ? true
+    : evidence.some(item => item?.whql === false) ? false : null;
   return {
     id:                   row.id,
     platform:             row.platform,
@@ -881,12 +907,13 @@ function rowToUpdate(row) {
     productId:            row.product_id || null,
     sourceKind:           row.source_kind || null,
     sourceRef:            row.source_ref || null,
-    releaseSizeBytes:     row.release_size_bytes === null || row.release_size_bytes === undefined
-      ? null
-      : Number(row.release_size_bytes),
-    sizeBytes:            row.release_size_bytes === null || row.release_size_bytes === undefined
-      ? null
-      : Number(row.release_size_bytes),
+    releaseSizeBytes,
+    sizeBytes:            releaseSizeBytes,
+    packageSize,
+    steamAppId,
+    averagePlayersSnapshot,
+    averagePlayersObservedAt,
+    whql,
     releasedAt:           row.released_at,
     status:               row.status,
     score:                scoreOrNull(row.score, { updateId: row.id, field: 'score' }),

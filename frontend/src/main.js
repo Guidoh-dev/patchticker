@@ -1693,6 +1693,50 @@ function driverImpactMeta(update) {
   return { label: parts.join(' · '), knownIssueCount };
 }
 
+function compactAudienceCount(value) {
+  const count = Number(value);
+  if (!Number.isFinite(count) || count <= 0) return null;
+  if (count < 1000) return Math.round(count).toLocaleString();
+  const divisor = count >= 1000000 ? 1000000 : 1000;
+  const suffix = divisor === 1000000 ? 'M' : 'K';
+  const scaled = count / divisor;
+  const decimals = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
+  return `${scaled.toFixed(decimals).replace(/\.0+$/, '')}${suffix}`;
+}
+
+function steamAudienceMeta(update) {
+  if (update?.platform !== 'Steam') return null;
+  const evidence = Array.isArray(update?.evidence) ? update.evidence : [];
+  const evidencePlayers = evidence.reduce((highest, item) => {
+    const value = Number(item?.averagePlayersSnapshot);
+    return Number.isFinite(value) && value > highest ? value : highest;
+  }, 0);
+  const players = Math.max(Number(update?.averagePlayersSnapshot) || 0, evidencePlayers) || null;
+  const appId = String(
+    update?.steamAppId
+      || update?.productId
+      || evidence.find(item => item?.steamAppId)?.steamAppId
+      || ''
+  ).trim() || null;
+  const observedAt = update?.averagePlayersObservedAt
+    || evidence.find(item => item?.averagePlayersObservedAt)?.averagePlayersObservedAt
+    || null;
+  const compactPlayers = compactAudienceCount(players);
+  if (!compactPlayers && !appId) return null;
+  return {
+    appId,
+    players,
+    compactPlayers,
+    observedAt,
+    label: compactPlayers ? `${compactPlayers} avg players` : `Steam App ${appId}`,
+    detail: [
+      compactPlayers ? `${Number(players).toLocaleString()} average players at scan` : null,
+      observedAt ? `observed ${formatReleaseDate(observedAt)}` : null,
+      appId ? `Steam App ${appId}` : null,
+    ].filter(Boolean).join(' · '),
+  };
+}
+
 function decisionPanelFacts(update, freshness) {
   const evidence = Array.isArray(update?.evidence) ? update.evidence : [];
   const knownIssueCount = Array.isArray(update?.knownIssues) ? update.knownIssues.length : 0;
@@ -1707,6 +1751,7 @@ function decisionPanelFacts(update, freshness) {
   const identity = `${update?.name || ''} ${update?.version || ''} ${(update?.riskFactors || []).map(item => `${item?.label || ''} ${item?.text || ''}`).join(' ')}`.toLowerCase();
   const hasWhql = evidence.some(item => item?.whql === true);
   const hasNonWhql = evidence.some(item => item?.whql === false) || /non-whql/.test(identity);
+  const steamAudience = steamAudienceMeta(update);
   let contextFact;
   if (securitySignal) {
     contextFact = { value: String(securitySignal.total), label: `Documented CVE${securitySignal.total === 1 ? '' : 's'}`, tone: securitySignal.tone };
@@ -1722,6 +1767,8 @@ function decisionPanelFacts(update, freshness) {
     contextFact = { value: 'Test build', label: 'Release channel', tone: 'warning' };
   } else if (hasWhql) {
     contextFact = { value: 'WHQL', label: 'Driver certification', tone: 'good' };
+  } else if (steamAudience?.compactPlayers) {
+    contextFact = { value: steamAudience.compactPlayers, label: 'Avg players at scan', tone: 'info' };
   } else {
     contextFact = { value: 'Vendor', label: 'Release channel', tone: 'neutral' };
   }
@@ -1909,6 +1956,7 @@ function renderUpdateCard(u) {
   const freshness = freshnessMeta(u);
   const securitySignal = securitySignalMeta(u);
   const driverImpact = driverImpactMeta(u);
+  const steamAudience = steamAudienceMeta(u);
   const packageSize = packageSizeMeta(u);
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const methodMeta = analysisMethodMeta(u);
@@ -1952,6 +2000,7 @@ function renderUpdateCard(u) {
             <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
             ${securitySignal ? `<span class="security-signal security-signal--${H(securitySignal.tone)}"><i aria-hidden="true">◆</i>${H(securitySignal.label)}</span>` : ''}
             ${driverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(driverImpact.label)}</span>` : ''}
+            ${steamAudience?.compactPlayers ? `<span class="steam-audience-signal" title="${H(steamAudience.detail)}"><i aria-hidden="true">◎</i>${H(steamAudience.label)}</span>` : ''}
             ${u.matchReason ? `<span class="decision-match-reason">Matched in ${H(u.matchReason)}</span>` : ''}
             <span>${H(freshness.detail)}</span>
             <span>${H(sourceLabel)}</span>
@@ -2015,6 +2064,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const tone    = variant === 'compact' ? ' mini-update-card--compact' : '';
   const freshness = freshnessMeta(u);
   const packageSize = packageSizeMeta(u);
+  const steamAudience = steamAudienceMeta(u);
   const rating = peerRatingMeta(u);
   const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
@@ -2030,6 +2080,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
       <div class="mini-update-meta">
         <span class="text-platform--${pSuffix}">${H(releaseLaneLabel(u))}</span>
         ${u.version ? `<span>Version ${H(u.version)}</span>` : ''}
+        ${steamAudience?.compactPlayers ? `<span>${H(steamAudience.label)}</span>` : ''}
       </div>
       <dl class="mini-update-facts" aria-label="Update facts">
         <div><dt>Released</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
@@ -3491,6 +3542,7 @@ async function renderUpdateDetail(id) {
   const updateScoreDisplay = scoreDisplay(updateScore);
   const color     = scoreColor(updateScore);
   const packageSize = packageSizeMeta(u);
+  const steamAudience = steamAudienceMeta(u);
 
   const riskLevelIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵' };
 
@@ -3633,12 +3685,15 @@ async function renderUpdateDetail(id) {
               <div><span>Version</span><strong>${H(u.version || 'Current release')}</strong></div>
               <div><span>${H(updateDateLabel(u))}</span><strong>${H(formatReleaseDate(u.releasedAt))}</strong></div>
               <div class="${packageSize.available ? '' : 'is-unavailable'}"><span>Package size</span><strong>${H(packageSize.value)}</strong></div>
+              ${steamAudience?.appId ? `<div><span>Steam App ID</span><strong>${H(steamAudience.appId)}</strong></div>` : ''}
+              ${steamAudience?.compactPlayers ? `<div><span>Audience at scan</span><strong>${H(steamAudience.compactPlayers)} avg players</strong></div>` : ''}
               <div><span>Applies to</span><strong>${H(u.affects || platformLabel(u.platform))}</strong></div>
             </div>
             <div class="detail-source-health" aria-label="Source health">
               <span class="freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)}</span>
               ${detailSecuritySignal ? `<span class="security-signal security-signal--${H(detailSecuritySignal.tone)}"><i aria-hidden="true">◆</i>${H(detailSecuritySignal.label)}</span>` : ''}
               ${detailDriverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(detailDriverImpact.label)}</span>` : ''}
+              ${steamAudience?.compactPlayers ? `<span class="steam-audience-signal" title="${H(steamAudience.detail)}"><i aria-hidden="true">◎</i>${H(steamAudience.label)}</span>` : ''}
               <strong>${H(freshness.detail)}</strong>
               <span>${H(detailSourceLabel)}</span>
               <span class="source-depth-signal source-depth-signal--${H(detailMethodMeta.tone)}">${H(detailMethodMeta.label)}</span>

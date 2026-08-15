@@ -7036,6 +7036,24 @@ body { overflow-x: hidden; }
   font-style: normal;
   filter: drop-shadow(0 0 7px currentColor);
 }
+.steam-audience-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 42%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cyan) 8%, transparent);
+  color: var(--cyan);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.steam-audience-signal i {
+  font-size: 9px;
+  font-style: normal;
+  filter: drop-shadow(0 0 7px currentColor);
+}
 .mini-update-freshness {
   margin-top: 9px;
   font-family: var(--font-mono);
@@ -7323,7 +7341,8 @@ body { overflow-x: hidden; }
   .decision-one-line { -webkit-line-clamp: 3; }
   .decision-card-trust { gap: 6px 10px; }
   .decision-card-trust > span + span::before { margin-right: 10px; }
-  .decision-card-trust .driver-impact-signal {
+  .decision-card-trust .driver-impact-signal,
+  .decision-card-trust .steam-audience-signal {
     max-width: 100%;
     white-space: normal;
     line-height: 1.35;

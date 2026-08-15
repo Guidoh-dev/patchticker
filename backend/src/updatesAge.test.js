@@ -105,6 +105,47 @@ test('source scope distinguishes full notes, security advisories, and version-on
   expect(classify([])).toBe('source-and-issue-signals');
 });
 
+test('verified evidence metadata is promoted for API clients without inference', () => {
+  const baseRow = {
+    id: 'steam-game-release', platform: 'Steam', name: 'Verified game update', version: '1.2.3',
+    product_id: '2807960', released_at: '2026-08-10', status: 'caution', score: '7.2', impact_score: null,
+    bug_count: 0, affects: 'Steam players', verdict: 'Review notes', reasoning: 'Official notes loaded.',
+    changelog: [], known_issues: [], risk_factors: [], security_criticality: null, subreddits: [],
+    release_size_bytes: null, created_at: '2026-08-10T12:00:00Z', updated_at: '2026-08-11T11:00:00Z',
+  };
+  const steam = updatesService.__test.rowToUpdate({
+    ...baseRow,
+    evidence: [{
+      source: 'Steam', url: 'https://store.steampowered.com/news/app/2807960/view/1',
+      releaseType: 'official-game-update', steamAppId: 2807960,
+      averagePlayersSnapshot: 44566, averagePlayersObservedAt: '2026-08-15',
+    }],
+  });
+  expect(steam).toMatchObject({
+    steamAppId: '2807960',
+    averagePlayersSnapshot: 44566,
+    averagePlayersObservedAt: '2026-08-15',
+    packageSize: null,
+    whql: null,
+  });
+
+  const driver = updatesService.__test.rowToUpdate({
+    ...baseRow,
+    id: 'intel-driver-release', platform: 'Intel', product_id: null,
+    evidence: [{
+      source: 'Intel', url: 'https://intel.example/driver', releaseType: 'official-release-notes',
+      packageSize: '872.2 MB', sizeBytes: 914568192, whql: true,
+    }],
+  });
+  expect(driver).toMatchObject({
+    releaseSizeBytes: 914568192,
+    sizeBytes: 914568192,
+    packageSize: '872.2 MB',
+    whql: true,
+    steamAppId: null,
+  });
+});
+
 test('successful empty DB reads stay empty instead of reviving static samples', async () => {
   mockIsAvailable.mockReturnValue(true);
   mockQuery.mockResolvedValue({ rows: [] });

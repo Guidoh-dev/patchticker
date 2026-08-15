@@ -357,6 +357,17 @@ test('hardware driver cards expose compact game support, fix, and issue counts',
   assert.match(cssSource, /\.driver-impact-signal\s*\{[^}]*display:\s*inline-flex;[^}]*border-radius:\s*999px/s);
 });
 
+test('Steam game cards explain tracking relevance with verified audience evidence', () => {
+  assert.match(mainSource, /function steamAudienceMeta\(update\)/);
+  assert.match(mainSource, /averagePlayersSnapshot/);
+  assert.match(mainSource, /averagePlayersObservedAt/);
+  assert.match(mainSource, /Steam App ID/);
+  assert.match(mainSource, /Audience at scan/);
+  assert.match(mainSource, /Avg players at scan/);
+  assert.match(mainSource, /class="steam-audience-signal"/);
+  assert.match(cssSource, /\.steam-audience-signal\s*\{[^}]*min-height:\s*24px;[^}]*var\(--cyan\)/s);
+});
+
 test('source heartbeat makes per-platform check recency visible and filterable', () => {
   assert.match(mainSource, /id="coverage-heartbeats"/);
   assert.match(mainSource, /function renderSourceHeartbeats\(updates = \[\]\)/);
