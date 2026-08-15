@@ -280,6 +280,8 @@ test('feed metadata reports freshness and source coverage', () => {
     platformsTracked: 2,
     fresh24h: 1,
     stale96h: 1,
+    withinCadence: 1,
+    overdueCadence: 1,
     lastCheckedAt: '2026-08-11T10:00:00Z',
   });
 });

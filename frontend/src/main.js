@@ -1593,11 +1593,12 @@ function freshnessMeta(update) {
     || null;
   const checkedMs = checkedAt ? new Date(checkedAt).getTime() : NaN;
   const hours = Number.isFinite(checkedMs) ? Math.max(0, (Date.now() - checkedMs) / 3600000) : null;
+  const cadenceHours = Math.max(1, Number(update?.sourceCheckSlaHours) || 8);
 
   if (hours === null) return { label: 'Source snapshot', tone: 'snapshot', detail: 'Refresh pending', officialSources };
-  if (hours <= 8) return { label: 'Fresh', tone: 'fresh', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
-  if (hours <= 36) return { label: 'Recent', tone: 'recent', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
-  if (hours <= 96) return { label: 'Aging', tone: 'aging', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
+  if (hours <= cadenceHours) return { label: 'Fresh', tone: 'fresh', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
+  if (hours <= cadenceHours * 2) return { label: 'Recent', tone: 'recent', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
+  if (hours <= Math.max(24, cadenceHours * 4)) return { label: 'Aging', tone: 'aging', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
   return { label: 'Recheck due', tone: 'stale', detail: `Checked ${timeAgo(checkedAt)}`, officialSources };
 }
 
@@ -2171,6 +2172,27 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
   if (sort === 'score_desc') labels.push('Highest score first');
   if (sort === 'score_asc') labels.push('Lowest score first');
   if (sort === 'date_asc') labels.push('Oldest first');
+  const platformCounts = [...updates.reduce((counts, update) => {
+    counts.set(update.platform, (counts.get(update.platform) || 0) + 1);
+    return counts;
+  }, new Map())].sort((a, b) => b[1] - a[1] || platformLabel(a[0]).localeCompare(platformLabel(b[0])));
+  const latestCheck = updates
+    .map(update => update.lastCheckedAt || update.updatedAt)
+    .filter(Boolean)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
+  const facets = search ? `
+    <div class="search-result-facets" aria-label="Narrow search results by platform">
+      <span>Results by platform</span>
+      <button class="search-result-facet ${platform ? '' : 'active'}" type="button" data-result-platform="">
+        All platforms${platform ? '' : ` <b>${H(String(updates.length))}</b>`}
+      </button>
+      ${platformCounts.map(([resultPlatform, count]) => `
+        <button class="search-result-facet ${platform === resultPlatform ? 'active' : ''}" type="button" data-result-platform="${H(resultPlatform)}">
+          ${H(platformLabel(resultPlatform))} <b>${H(String(count))}</b>
+        </button>
+      `).join('')}
+      <button class="search-result-apply" id="search-result-apply" type="button" data-apply-result-facets disabled>Apply view</button>
+    </div>` : '';
 
   return `
     <section class="filtered-feed-section" aria-label="Filtered update results">
@@ -2181,6 +2203,11 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
         </div>
         <span>${H(labels.join(' · ') || 'Newest first')}</span>
       </header>
+      <div class="filtered-feed-context">
+        <span>${search ? 'Verified database matches' : 'Filtered verified releases'}</span>
+        <time>${latestCheck ? `Sources checked ${H(timeAgo(latestCheck))}` : 'Verification time unavailable'}</time>
+      </div>
+      ${facets}
       <div class="filtered-update-cards">${updates.map(update => renderUpdateCard({
         ...update,
         matchReason: search ? searchMatchReason(update, search) : null,
@@ -2564,6 +2591,9 @@ async function renderDashboard({ focusId = null } = {}) {
     document.querySelectorAll('[data-source-platform]').forEach(button =>
       button.classList.toggle('active', button.dataset.sourcePlatform === _draftFilterState.platform)
     );
+    document.querySelectorAll('[data-result-platform]').forEach(button =>
+      button.classList.toggle('active', button.dataset.resultPlatform === _draftFilterState.platform)
+    );
     document.querySelectorAll('.setup-lens').forEach(button =>
       button.classList.toggle('active', button.dataset.lens === _draftFilterState.search && _draftFilterState.searchMode === 'local')
     );
@@ -2581,7 +2611,7 @@ async function renderDashboard({ focusId = null } = {}) {
     if (topSortEl) topSortEl.value = _draftFilterState.sort;
 
     const dirty = filtersAreDirty();
-    document.querySelectorAll('#dash-apply-filters, #dash-top-apply-filters').forEach(button => {
+    document.querySelectorAll('#dash-apply-filters, #dash-top-apply-filters, #search-result-apply').forEach(button => {
       button.disabled = !dirty;
       button.classList.toggle('has-pending', dirty);
     });
@@ -2596,6 +2626,26 @@ async function renderDashboard({ focusId = null } = {}) {
   function setDraftFilters(patch) {
     _draftFilterState = { ..._draftFilterState, ...patch };
     syncDraftFilterControls();
+  }
+
+  function suggestedPlatformForSearch(query) {
+    const q = String(query || '').toLowerCase();
+    const suggestions = [
+      ['Steam', /steam|deck|steamos|app\s?id|^[0-9]{5,}$/],
+      ['NVIDIA', /nvidia|geforce|game ready|rtx|dlss/],
+      ['AMD', /amd|radeon|adrenalin|rx\s?\d/],
+      ['Intel', /intel|arc|iris|core ultra/],
+      ['macOS', /macbook|macos|mac os|apple silicon|\bm[1-4]\b/],
+      ['Apple', /iphone|ipad|ios|ipados/],
+      ['Windows', /windows|\bkb\d+/],
+      ['Switch', /switch|joy-?con|nintendo/],
+      ['Xbox', /xbox/],
+      ['PS5', /ps5|playstation/],
+      ['Discord', /discord/],
+      ['BattleNet', /battle\.?net|blizzard/],
+      ['GOG', /gog|galaxy/],
+    ];
+    return suggestions.find(([, pattern]) => pattern.test(q))?.[0] || '';
   }
 
   function applyFilters() {
@@ -2632,7 +2682,10 @@ async function renderDashboard({ focusId = null } = {}) {
       const hasFilters = platform || status || search;
       listEl.innerHTML = hasFilters
         ? (search
-          ? `<div class="empty-state empty-state--search"><strong>No verified updates found for “${H(search)}”.</strong><span>Try a full game name, version number, Steam App ID, device, or platform. PatchTicker searches the last 240 days.</span><button class="link-btn" id="clear-inline">Clear filters</button></div>`
+          ? (() => {
+            const browsePlatform = platform || suggestedPlatformForSearch(search);
+            return `<div class="empty-state empty-state--search"><strong>No verified updates found for “${H(search)}”.</strong><span>That usually means no matching official release is inside PatchTicker’s 240-day window—not that a patch exists without details.</span><div class="empty-search-actions">${browsePlatform ? `<button class="link-btn" type="button" data-empty-platform="${H(browsePlatform)}">Browse ${H(platformLabel(browsePlatform))} releases</button>` : ''}<button class="link-btn" id="clear-inline" type="button">Clear filters</button></div></div>`;
+          })()
           : '<p class="empty-state">No updates match your filters. <button class="link-btn" id="clear-inline">Clear filters</button></p>')
         : '<p class="empty-state">No updates found.</p>';
       document.getElementById('clear-inline')?.addEventListener('click', clearAllFilters);
@@ -2795,6 +2848,30 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   document.getElementById('updates-list')?.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-apply-result-facets]')) {
+      await applyDraftFilters();
+      return;
+    }
+
+    const resultFacet = e.target.closest('[data-result-platform]');
+    if (resultFacet) {
+      const nextPlatform = resultFacet.dataset.resultPlatform || '';
+      setDraftFilters({ platform: nextPlatform });
+      showToast(`${nextPlatform ? platformLabel(nextPlatform) : 'All-platform'} search ready. Press Apply to update results.`, 'info');
+      return;
+    }
+
+    const emptyPlatform = e.target.closest('[data-empty-platform]');
+    if (emptyPlatform) {
+      const nextPlatform = emptyPlatform.dataset.emptyPlatform || '';
+      setDraftFilters({
+        platform: nextPlatform,
+        search: '', searchDisplay: '', searchMode: 'local', sort: 'date_desc',
+      });
+      showToast(`${platformLabel(nextPlatform)} browse ready. Press Apply to update the patch desk.`, 'info');
+      return;
+    }
+
     const filterBtn = e.target.closest('[data-filter-platform]');
     if (filterBtn) {
       setPlatformFilter(filterBtn.dataset.filterPlatform || '');
@@ -2910,7 +2987,8 @@ async function renderDashboard({ focusId = null } = {}) {
     track.innerHTML = TRACKED_PLATFORMS.map(platform => {
       const latest = latestByPlatform.get(platform);
       const ageHours = latest ? Math.max(0, (Date.now() - latest.timestamp) / 3600000) : Infinity;
-      const tone = ageHours <= 24 ? 'fresh' : ageHours <= 96 ? 'aging' : 'stale';
+      const cadenceHours = Math.max(1, Number(latest?.update?.sourceCheckSlaHours) || 8);
+      const tone = ageHours <= cadenceHours ? 'fresh' : ageHours <= cadenceHours * 2 ? 'aging' : 'stale';
       const detail = latest ? `checked ${timeAgo(latest.checkedAt)}` : 'check unavailable';
       return `<button class="dash-source-heartbeat dash-source-heartbeat--${tone} platform--${H(platformSuffix(platform))}" type="button" data-source-platform="${H(platform)}" aria-label="Filter to ${H(platformLabel(platform))}; ${H(detail)}" title="${H(platformLabel(platform))} · ${H(detail)}">
         ${renderPlatformLogo(platform, 'dash-source-heartbeat-logo')}
@@ -2965,7 +3043,9 @@ async function renderDashboard({ focusId = null } = {}) {
     if (caution) caution.textContent = d.caution ?? '—';
     if (avoid)   avoid.textContent   = d.avoid   ?? '—';
     const unavailable = d.dataMode === 'unavailable';
-    const degraded = !unavailable && Number(d.stale96h || 0) > 0;
+    const cadenceKnown = Number.isFinite(Number(d.withinCadence)) && Number.isFinite(Number(d.overdueCadence));
+    const overdue = cadenceKnown ? Number(d.overdueCadence) : Number(d.stale96h || 0);
+    const degraded = !unavailable && overdue > 0;
     if (coveragePulse) coveragePulse.classList.toggle('is-unavailable', unavailable);
     if (coveragePulse) coveragePulse.classList.toggle('is-degraded', degraded);
     if (coverageMode) {
@@ -2977,12 +3057,14 @@ async function renderDashboard({ focusId = null } = {}) {
       : `${d.sourceBacked ?? 0} verified update${d.sourceBacked === 1 ? '' : 's'} across ${d.platformsTracked ?? 0} platform${d.platformsTracked === 1 ? '' : 's'}`;
     if (coverageFresh) coverageFresh.textContent = unavailable
       ? 'Waiting for verified data'
-      : `${d.fresh24h ?? 0}/${d.platformsTracked ?? 0} lanes checked in 24h`;
+      : cadenceKnown
+        ? `${d.withinCadence}/${d.platformsTracked ?? 0} lanes within check schedule`
+        : `${d.fresh24h ?? 0}/${d.platformsTracked ?? 0} lanes checked in 24h`;
     if (coverageHealth) coverageHealth.textContent = unavailable
       ? 'Coverage unavailable'
-      : (d.stale96h > 0
-        ? `${d.stale96h} lane${d.stale96h === 1 ? '' : 's'} overdue`
-        : 'All live lanes current');
+      : (overdue > 0
+        ? `${overdue} lane${overdue === 1 ? '' : 's'} behind schedule`
+        : 'All live lanes on schedule');
     if (coverageLast) coverageLast.textContent = d.lastCheckedAt
       ? `Latest check ${timeAgo(d.lastCheckedAt)}`
       : 'Latest check pending';

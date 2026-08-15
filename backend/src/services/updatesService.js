@@ -6,6 +6,7 @@ const { URL } = require('node:url');
 const logger  = require('../utils/logger');
 const secrets = require('../config/secrets');
 const { validateScore } = require('../utils/updateScore');
+const { getFreshnessSlaHours } = require('../config/platformRegistry');
 
 const MAX_UPDATE_AGE_DAYS = 240;
 
@@ -233,7 +234,12 @@ function buildFeedMeta(updates = []) {
     const checkedMs = Date.parse(checkedAt || '');
     const previous = latestPlatformChecks.get(platform);
     if (!previous || (Number.isFinite(checkedMs) && checkedMs > previous.checkedMs)) {
-      latestPlatformChecks.set(platform, { checkedAt, checkedMs });
+      latestPlatformChecks.set(platform, {
+        platform,
+        checkedAt,
+        checkedMs,
+        freshnessSlaHours: Number(update.sourceCheckSlaHours || getFreshnessSlaHours(platform)),
+      });
     }
   }
   const platformChecks = [...latestPlatformChecks.values()];
@@ -243,6 +249,10 @@ function buildFeedMeta(updates = []) {
   const stale96h = platformChecks.filter(({ checkedMs }) =>
     !Number.isFinite(checkedMs) || now - checkedMs > 96 * 60 * 60 * 1000
   ).length;
+  const withinCadence = platformChecks.filter(({ checkedMs, freshnessSlaHours }) =>
+    Number.isFinite(checkedMs) && now - checkedMs <= freshnessSlaHours * 60 * 60 * 1000
+  ).length;
+  const overdueCadence = platformChecks.length - withinCadence;
   const lastCheckedAt = platformChecks
     .filter(({ checkedMs }) => Number.isFinite(checkedMs))
     .sort((a, b) => b.checkedMs - a.checkedMs)[0]?.checkedAt || null;
@@ -253,6 +263,8 @@ function buildFeedMeta(updates = []) {
     platformsTracked: latestPlatformChecks.size,
     fresh24h,
     stale96h,
+    withinCadence,
+    overdueCadence,
     lastCheckedAt,
   };
 }
@@ -867,6 +879,7 @@ function rowToUpdate(row) {
     dateBasis:            officialEvidence?.dateBasis || 'released',
     lastCheckedAt:        row.updated_at || officialEvidence?.checkedAt || row.created_at || null,
     officialSourceCount:  evidence.filter(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`)).length,
+    sourceCheckSlaHours:  getFreshnessSlaHours(row.platform),
     securityCriticality:  row.security_criticality
       ? (typeof row.security_criticality === 'string' ? JSON.parse(row.security_criticality) : row.security_criticality)
       : { level: 'none', label: 'Security context not classified', cves: [] },

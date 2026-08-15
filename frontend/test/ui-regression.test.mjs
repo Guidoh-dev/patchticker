@@ -92,7 +92,7 @@ test('typed dashboard searches query the full database with race protection', ()
   assert.match(mainSource, /fetchUpdates\(\{[\s\S]*?platform: _filterState\.platform,[\s\S]*?status: _filterState\.status,[\s\S]*?search: query,[\s\S]*?sort: _filterState\.sort,[\s\S]*?signal: controller\.signal/);
   assert.match(mainSource, /Searching every verified release/);
   assert.match(mainSource, /Database search ·/);
-  assert.match(mainSource, /PatchTicker searches the last 240 days/);
+  assert.match(mainSource, /PatchTicker’s 240-day window/);
   assert.match(cssSource, /\.dash-search-status\.is-loading\s*\{[^}]*var\(--cyan\)/s);
   assert.match(cssSource, /\.empty-state--search\s*\{[^}]*display:\s*grid/s);
 });
@@ -106,6 +106,23 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /Matched in \$\{H\(u\.matchReason\)\}/);
   assert.match(mainSource, /search && _draftFilterState\.sort === 'date_desc'[\s\S]*?'relevance'/);
   assert.match(cssSource, /\.decision-match-reason\s*\{[^}]*color:\s*var\(--cyan\)/s);
+});
+
+test('search results expose staged platform facets, verification timing, and honest recovery actions', () => {
+  assert.match(mainSource, /class="search-result-facets" aria-label="Narrow search results by platform"/);
+  assert.match(mainSource, /data-result-platform="\$\{H\(resultPlatform\)\}"/);
+  assert.match(mainSource, /Sources checked \$\{H\(timeAgo\(latestCheck\)\)\}/);
+  assert.match(mainSource, /function suggestedPlatformForSearch\(query\)/);
+  assert.match(mainSource, /no matching official release is inside PatchTicker’s 240-day window/);
+  assert.match(mainSource, /data-empty-platform="\$\{H\(browsePlatform\)\}"/);
+  assert.match(mainSource, /setDraftFilters\(\{ platform: nextPlatform \}\)/);
+  assert.match(mainSource, /Press Apply to update results/);
+  assert.match(mainSource, /data-apply-result-facets disabled>Apply view/);
+  assert.match(mainSource, /#dash-apply-filters, #dash-top-apply-filters, #search-result-apply/);
+  assert.match(mainSource, /await applyDraftFilters\(\)/);
+  assert.match(cssSource, /\.search-result-facet\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.search-result-apply\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.search-result-facets\s*\{[^}]*overflow-x:\s*auto/s);
 });
 
 test('theme and tracked-game preferences use persistent local storage keys', () => {
@@ -251,7 +268,7 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /No demo records shown/);
   assert.match(mainSource, /verified update[\s\S]*?platform/);
   assert.match(mainSource, /lanes checked in 24h/);
-  assert.match(mainSource, /All live lanes current/);
+  assert.match(mainSource, /All live lanes on schedule/);
   assert.match(cssSource, /\.freshness-signal--fresh\s*\{[^}]*var\(--green-primary\)/s);
   assert.match(cssSource, /\.freshness-signal--stale\s*\{[^}]*var\(--red\)/s);
   assert.match(cssSource, /\.freshness-signal--archive\s*\{[^}]*var\(--purple\)/s);
@@ -338,6 +355,9 @@ test('source heartbeat makes per-platform check recency visible and filterable',
   assert.match(mainSource, /data-source-platform="\$\{H\(platform\)\}"/);
   assert.match(mainSource, /setPlatformFilter\(button\.dataset\.sourcePlatform \|\| ''\)/);
   assert.match(mainSource, /renderSourceHeartbeats\(_allUpdates\)/);
+  assert.match(mainSource, /sourceCheckSlaHours/);
+  assert.match(mainSource, /lanes within check schedule/);
+  assert.match(mainSource, /All live lanes on schedule/);
   assert.match(cssSource, /\.dash-source-heartbeat-track\s*\{[^}]*overflow-x:\s*auto/s);
   assert.match(cssSource, /\.dash-source-heartbeat\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px/s);
   assert.match(cssSource, /\.dash-source-heartbeat--fresh > i\s*\{[^}]*var\(--green-primary\)/s);
