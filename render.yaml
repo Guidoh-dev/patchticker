@@ -2,7 +2,10 @@ services:
   - type: web
     name: patchticker
     runtime: node
-    plan: free
+    # Keep the always-on $7 service selected in Render. Declaring `free` here
+    # silently downgrades manual dashboard upgrades on the next Blueprint sync,
+    # which can put cron/scraping to sleep.
+    plan: starter
     region: ohio
     branch: main
     buildCommand: npm ci --include=dev && npm run build
