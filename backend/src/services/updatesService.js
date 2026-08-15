@@ -18,8 +18,10 @@ const SEARCH_ALIAS_GROUPS = [
   ['steamdeck', 'steam deck', 'steamos', 'steam os'],
   ['battlenet', 'battle.net', 'blizzard'],
   ['gog', 'gog galaxy', 'galaxy client'],
-  ['macbook', 'macbook pro', 'macbook air', 'macos', 'mac os'],
-  ['m1', 'm2', 'm3', 'm4', 'apple silicon', 'macos'],
+  // Generic MacBook searches may discover macOS releases. Specific MacBook
+  // models and Apple chip generations stay literal so M4 never matches an M1
+  // release (or MacBook Pro silently broadens to MacBook Air).
+  ['macbook', 'macos', 'mac os'],
   ['radeon', 'amd adrenalin', 'adrenalin'],
   ['geforce', 'nvidia game ready', 'game ready driver'],
   ['switch', 'nintendo switch', 'switch oled', 'switch lite'],
@@ -46,6 +48,29 @@ function expandSearchTerms(rawSearch) {
     }
   }
   return [...terms].slice(0, 12);
+}
+
+/**
+ * Convert a user query into semantic AND groups.
+ *
+ * Each inner array contains equivalent spellings (OR). Separate groups must
+ * all be present somewhere in the verified update record (AND). This makes a
+ * natural query such as "intel 8974" useful without weakening it into an
+ * either/or search that would return every Intel release and every unrelated
+ * mention of 8974.
+ */
+function buildSearchTermGroups(rawSearch) {
+  const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!query) return [];
+  if (query === 'switch oled' || query === 'switch lite') return [[query]];
+
+  const exactAliasGroup = SEARCH_ALIAS_GROUPS.find(group => group.includes(query));
+  if (exactAliasGroup) return [expandSearchTerms(query)];
+
+  const tokens = (query.match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [])
+    .filter(token => token.length > 1 || /^\d+$/.test(token));
+  if (tokens.length > 1) return [...new Set(tokens)].map(token => [token]);
+  return [expandSearchTerms(query)];
 }
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PLACEHOLDER_VERSION_PLATFORMS = new Set(['Xbox', 'PS5', 'BattleNet', 'GOG']);
@@ -970,33 +995,43 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         params.push(status);
         query += ` AND status = $${params.length}`;
       }
-      if (search) {
-        const searchTerms = expandSearchTerms(search);
-        const patterns = searchTerms.map(term => `%${term}%`);
-        params.push(patterns);
-        const patternParam = `$${params.length}`;
-        query += ` AND EXISTS (
+      const searchGroups = buildSearchTermGroups(search);
+      if (searchGroups.length) {
+        const searchDocument = `LOWER(CONCAT_WS(' ',
+          name, platform, version, COALESCE(display_version, ''),
+          COALESCE(product_id, ''), COALESCE(affects, ''),
+          COALESCE(verdict, ''), COALESCE(reasoning, ''),
+          changelog::text, known_issues::text, risk_factors::text, evidence::text
+        ))`;
+        const groupParams = searchGroups.map(group => {
+          params.push(group);
+          return `$${params.length}`;
+        });
+        query += ` AND ${groupParams.map((groupParam, index) => `EXISTS (
           SELECT 1
-          FROM unnest(${patternParam}::text[]) AS search_pattern(pattern)
-          WHERE LOWER(CONCAT_WS(' ',
-            name, platform, version, COALESCE(display_version, ''),
-            COALESCE(product_id, ''), COALESCE(affects, ''),
-            COALESCE(verdict, ''), COALESCE(reasoning, ''),
-            changelog::text, known_issues::text, risk_factors::text, evidence::text
-          )) LIKE search_pattern.pattern
+          FROM unnest(${groupParam}::text[]) AS search_group_${index}(term)
+          WHERE POSITION(search_group_${index}.term IN ${searchDocument}) > 0
+        )`).join(' AND ')}`;
+
+        const searchTerms = [...new Set(searchGroups.flat())];
+        params.push(searchTerms);
+        const patternParam = `$${params.length}`;
+        const fieldContainsTerm = field => `EXISTS (
+          SELECT 1 FROM unnest(${patternParam}::text[]) AS ranking_term(term)
+          WHERE POSITION(ranking_term.term IN LOWER(COALESCE(${field}, ''))) > 0
         )`;
         relevanceOrder = `GREATEST(
-          CASE WHEN LOWER(name) LIKE ANY(${patternParam}::text[]) THEN 100 ELSE 0 END,
-          CASE WHEN LOWER(platform) LIKE ANY(${patternParam}::text[]) THEN 85 ELSE 0 END,
-          CASE WHEN LOWER(version) LIKE ANY(${patternParam}::text[]) OR LOWER(COALESCE(display_version, '')) LIKE ANY(${patternParam}::text[]) THEN 80 ELSE 0 END,
-          CASE WHEN LOWER(COALESCE(product_id, '')) LIKE ANY(${patternParam}::text[]) THEN 80 ELSE 0 END,
-          CASE WHEN LOWER(COALESCE(affects, '')) LIKE ANY(${patternParam}::text[]) THEN 60 ELSE 0 END,
-          CASE WHEN LOWER(COALESCE(verdict, '')) LIKE ANY(${patternParam}::text[]) THEN 40 ELSE 0 END,
-          CASE WHEN LOWER(COALESCE(reasoning, '')) LIKE ANY(${patternParam}::text[]) THEN 35 ELSE 0 END,
-          CASE WHEN LOWER(changelog::text) LIKE ANY(${patternParam}::text[]) THEN 30 ELSE 0 END,
-          CASE WHEN LOWER(known_issues::text) LIKE ANY(${patternParam}::text[]) THEN 30 ELSE 0 END,
-          CASE WHEN LOWER(risk_factors::text) LIKE ANY(${patternParam}::text[]) THEN 25 ELSE 0 END,
-          CASE WHEN LOWER(evidence::text) LIKE ANY(${patternParam}::text[]) THEN 20 ELSE 0 END
+          CASE WHEN ${fieldContainsTerm('name')} THEN 100 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('platform')} THEN 85 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm("CONCAT_WS(' ', version, COALESCE(display_version, ''))")} THEN 80 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('product_id')} THEN 80 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('affects')} THEN 60 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('verdict')} THEN 40 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('reasoning')} THEN 35 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('changelog::text')} THEN 30 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('known_issues::text')} THEN 30 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('risk_factors::text')} THEN 25 ELSE 0 END,
+          CASE WHEN ${fieldContainsTerm('evidence::text')} THEN 20 ELSE 0 END
         ) DESC, `;
       }
 
@@ -1009,7 +1044,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
         score_desc: compareScores('desc'),
         score_asc:  compareScores('asc'),
-        relevance:  (a, b) => searchRelevanceScore(b, expandSearchTerms(search)) - searchRelevanceScore(a, expandSearchTerms(search)),
+        relevance:  (a, b) => searchRelevanceScore(b, buildSearchTermGroups(search).flat()) - searchRelevanceScore(a, buildSearchTermGroups(search).flat()),
       };
       if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
       return hydrateLiveRatings(updates);
@@ -1176,6 +1211,7 @@ module.exports = {
     releaseInformationQuality,
     analysisMethodForEvidence,
     expandSearchTerms,
+    buildSearchTermGroups,
     searchRelevanceScore,
   },
 };

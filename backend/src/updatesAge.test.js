@@ -127,6 +127,40 @@ test('search shorthand expands to authoritative product-name aliases', () => {
   expect(updatesService.__test.expandSearchTerms('switch oled')).toEqual(['switch oled']);
 });
 
+test('multi-part searches require every term while aliases remain alternatives', async () => {
+  expect(updatesService.__test.buildSearchTermGroups('intel 8974')).toEqual([
+    ['intel'],
+    ['8974'],
+  ]);
+  expect(updatesService.__test.buildSearchTermGroups('steam deck')).toEqual([
+    expect.arrayContaining(['steam deck', 'steam os']),
+  ]);
+  expect(updatesService.__test.buildSearchTermGroups('macbook pro m4')).toEqual([
+    ['macbook'],
+    ['pro'],
+    ['m4'],
+  ]);
+  expect(updatesService.__test.buildSearchTermGroups('macbook pro')).toEqual([
+    ['macbook'],
+    ['pro'],
+  ]);
+  expect(updatesService.__test.buildSearchTermGroups('m4')).toEqual([['m4']]);
+
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'intel 8974', sort: 'relevance' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toContain('search_group_0');
+  expect(sql).toContain('search_group_1');
+  expect(sql).toMatch(/search_group_0[\s\S]+AND EXISTS \([\s\S]+search_group_1/);
+  expect(params).toEqual([
+    ['intel'],
+    ['8974'],
+    ['intel', '8974'],
+  ]);
+});
+
 test('search relevance favors direct product matches over incidental patch-note mentions', () => {
   const terms = updatesService.__test.expandSearchTerms('radeon');
   const amdRelease = {

@@ -98,7 +98,8 @@ test('typed dashboard searches query the full database with race protection', ()
 });
 
 test('searches preserve precise terms, rank best matches, and explain each result', () => {
-  assert.match(mainSource, /const queryWordCount = q\.split\(\/\\s\+\/\)\.length/);
+  assert.match(mainSource, /q === 'switch oled' \|\| q === 'switch lite'/);
+  assert.match(mainSource, /const exactAlias = Object\.entries\(SEARCH_ALIASES\)\.find/);
   assert.match(mainSource, /function updateSearchRelevance\(update, query\)/);
   assert.match(mainSource, /function searchMatchReason\(update, query\)/);
   assert.match(mainSource, /<option value="relevance">Best match<\/option>/);
@@ -106,6 +107,14 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /Matched in \$\{H\(u\.matchReason\)\}/);
   assert.match(mainSource, /search && _draftFilterState\.sort === 'date_desc'[\s\S]*?'relevance'/);
   assert.match(cssSource, /\.decision-match-reason\s*\{[^}]*color:\s*var\(--cyan\)/s);
+});
+
+test('multi-part searches use strict all-term matching without phrase-order failures', () => {
+  assert.match(mainSource, /function searchTermGroups\(raw\)/);
+  assert.match(mainSource, /tokens\.length > 1[\s\S]*?map\(token => \[token\]\)/);
+  assert.match(mainSource, /groups\.every\(group => group\.some\(needle => haystack\.includes\(needle\)\)\)/);
+  assert.match(mainSource, /return 'Across update details'/);
+  assert.match(mainSource, /All \$\{H\(String\(matchedTermCount\)\)\} search terms matched/);
 });
 
 test('search results expose staged platform facets, verification timing, and honest recovery actions', () => {

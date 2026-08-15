@@ -1209,11 +1209,9 @@ const SEARCH_ALIASES = {
   discord: ['discord', 'voice chat', 'overlay', 'rtc', 'rich presence'],
   battlenet: ['battle.net', 'battlenet', 'blizzard', 'warcraft', 'diablo', 'overwatch'],
   gog: ['gog', 'gog galaxy', 'galaxy client', 'cd projekt'],
-  macbook: ['macbook', 'macbook pro', 'macbook air', 'macos', 'mac os'],
-  m1: ['m1', 'apple silicon', 'macos'],
-  m2: ['m2', 'apple silicon', 'macos'],
-  m3: ['m3', 'apple silicon', 'macos'],
-  m4: ['m4', 'apple silicon', 'macos'],
+  // Keep model and chip searches literal. The empty-state recovery can offer
+  // the macOS lane without claiming an update explicitly supports M1–M4.
+  macbook: ['macbook', 'macos', 'mac os'],
   rtx: ['rtx', 'nvidia', 'dlss', 'game ready'],
   radeon: ['radeon', 'amd', 'rx 7900', 'adrenalin'],
 };
@@ -1276,19 +1274,23 @@ function releaseLaneKey(update) {
 function searchNeedles(raw) {
   const q = raw.toLowerCase().trim();
   if (!q) return [];
-  if (q === 'switch oled' || q === 'switch lite') return [q];
-  const base = [q];
-  const queryWordCount = q.split(/\s+/).length;
-  for (const [key, aliases] of Object.entries(SEARCH_ALIASES)) {
-    if (q === key || aliases.some(alias => alias.includes(q) || q.includes(alias))) {
-      base.push(...aliases.filter(alias => {
-        // Keep precise searches precise. "Switch OLED" must not broaden to
-        // the generic word "switch", which also matches unrelated prose.
-        return queryWordCount === 1 || alias.split(/\s+/).length >= queryWordCount;
-      }));
-    }
-  }
-  return [...new Set(base.map(s => s.toLowerCase().trim()).filter(Boolean))];
+  return searchTermGroups(q).flat();
+}
+
+function searchTermGroups(raw) {
+  const q = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!q) return [];
+  if (q === 'switch oled' || q === 'switch lite') return [[q]];
+
+  const exactAlias = Object.entries(SEARCH_ALIASES).find(([key, aliases]) =>
+    q === key || aliases.includes(q)
+  );
+  if (exactAlias) return [[...new Set([q, exactAlias[0], ...exactAlias[1]])]];
+
+  const tokens = (q.match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [])
+    .filter(token => token.length > 1 || /^\d+$/.test(token));
+  if (tokens.length > 1) return [...new Set(tokens)].map(token => [token]);
+  return [[q]];
 }
 
 function updateSearchRelevance(update, query) {
@@ -1316,19 +1318,20 @@ function updateSearchRelevance(update, query) {
 }
 
 function searchMatchReason(update, query) {
-  const needles = searchNeedles(query);
-  const matches = value => {
+  const groups = searchTermGroups(query);
+  const matchesAll = value => {
     const haystack = String(value || '').toLowerCase();
-    return needles.some(needle => haystack.includes(needle));
+    return groups.every(group => group.some(needle => haystack.includes(needle)));
   };
-  if (!needles.length) return null;
-  if (matches(update?.name)) return 'Product name or alias';
-  if (matches(`${update?.version || ''} ${update?.internalVersion || ''} ${update?.productId || ''}`)) return 'Version or App ID';
-  if (matches(`${update?.platform || ''} ${releaseLaneLabel(update)}`)) return 'Platform match';
-  if (matches(update?.affects)) return 'Device or setup';
-  if (matches(JSON.stringify(update?.knownIssues || []))) return 'Known issue';
-  if (matches(JSON.stringify(update?.changelog || []))) return 'Release notes';
-  if (matches(JSON.stringify(update?.evidence || []))) return 'Official source';
+  if (!groups.length) return null;
+  if (matchesAll(update?.name)) return 'Product name or alias';
+  if (matchesAll(`${update?.version || ''} ${update?.internalVersion || ''} ${update?.productId || ''}`)) return 'Version or App ID';
+  if (matchesAll(`${update?.platform || ''} ${releaseLaneLabel(update)}`)) return 'Platform match';
+  if (matchesAll(update?.affects)) return 'Device or setup';
+  if (matchesAll(JSON.stringify(update?.knownIssues || []))) return 'Known issue';
+  if (matchesAll(JSON.stringify(update?.changelog || []))) return 'Release notes';
+  if (matchesAll(JSON.stringify(update?.evidence || []))) return 'Official source';
+  if (matchesAll(searchableTextForUpdate(update))) return 'Across update details';
   return 'Patch context';
 }
 
@@ -2180,6 +2183,7 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
     .map(update => update.lastCheckedAt || update.updatedAt)
     .filter(Boolean)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
+  const matchedTermCount = search ? searchTermGroups(search).length : 0;
   const facets = search ? `
     <div class="search-result-facets" aria-label="Narrow search results by platform">
       <span>Results by platform</span>
@@ -2204,7 +2208,9 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
         <span>${H(labels.join(' · ') || 'Newest first')}</span>
       </header>
       <div class="filtered-feed-context">
-        <span>${search ? 'Verified database matches' : 'Filtered verified releases'}</span>
+        <span>${search
+          ? (matchedTermCount > 1 ? `All ${H(String(matchedTermCount))} search terms matched` : 'Verified database matches')
+          : 'Filtered verified releases'}</span>
         <time>${latestCheck ? `Sources checked ${H(timeAgo(latestCheck))}` : 'Verification time unavailable'}</time>
       </div>
       ${facets}
