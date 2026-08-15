@@ -1765,13 +1765,34 @@ function updateReturnBrief(updates = []) {
   }
 }
 
-function analysisMethodLabel(update) {
-  if (update?.ratingsLive && update?.userRating?.totalVotes) {
-    return `${update.userRating.totalVotes.toLocaleString()} user votes`;
-  }
-  return 'Source + issue signals';
+function analysisMethodMeta(update) {
+  const methods = {
+    'official-security-advisory': {
+      label: 'Official security advisory', tone: 'security', heading: 'Documented security changes',
+      note: 'The items below come from the vendor’s published security advisory and linked vulnerability record.',
+    },
+    'official-release-notes': {
+      label: 'Official release notes', tone: 'full', heading: 'What changed',
+      note: 'The items below were extracted from the vendor or publisher’s official release notes.',
+    },
+    'official-version': {
+      label: 'Build verified · notes limited', tone: 'limited', heading: 'What the source confirms',
+      note: 'The official manifest confirms this build and source date, but the vendor does not publish a complete per-build changelog.',
+    },
+    'official-artifact': {
+      label: 'Package verified · notes limited', tone: 'limited', heading: 'What the source confirms',
+      note: 'The official package fingerprint, size, and publication date are verified; detailed per-build notes are not publicly exposed.',
+    },
+    'official-source': {
+      label: 'Official source verified', tone: 'source', heading: 'What the source confirms',
+      note: 'The items below are limited to facts confirmed by the linked official source.',
+    },
+  };
+  return methods[update?.analysisMethod] || {
+    label: 'Official source + issue signals', tone: 'source', heading: 'What changed',
+    note: 'This brief combines the checked official source with structured issue signals available for the release.',
+  };
 }
-
 
 function decisionForUpdate(u) {
   const vote = u.userRating?.breakdown || {};
@@ -1886,7 +1907,7 @@ function renderUpdateCard(u) {
   const driverImpact = driverImpactMeta(u);
   const packageSize = packageSizeMeta(u);
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
-  const methodLabel = analysisMethodLabel(u);
+  const methodMeta = analysisMethodMeta(u);
   const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
   const scoreLabel = rating.votes ? 'User rating' : 'Safety score';
@@ -1930,7 +1951,7 @@ function renderUpdateCard(u) {
             ${u.matchReason ? `<span class="decision-match-reason">Matched in ${H(u.matchReason)}</span>` : ''}
             <span>${H(freshness.detail)}</span>
             <span>${H(sourceLabel)}</span>
-            <span>${H(methodLabel)}</span>
+            <span class="source-depth-signal source-depth-signal--${H(methodMeta.tone)}">${H(methodMeta.label)}</span>
           </div>
         </div>
         <aside class="decision-card-rating" aria-label="Patch recommendation and rating">
@@ -3466,7 +3487,7 @@ async function renderUpdateDetail(id) {
   const officialSourceUrl = u.sourceUrl || officialEvidence?.url || null;
   const freshness = freshnessMeta(u);
   const detailSourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
-  const detailMethodLabel = analysisMethodLabel(u);
+  const detailMethodMeta = analysisMethodMeta(u);
   const decisionFactsHTML = decisionPanelFacts(u, freshness).map(fact => `
     <div class="detail-decision-fact detail-decision-fact--${H(fact.tone)}">
       <strong>${H(fact.value)}</strong><span>${H(fact.label)}</span>
@@ -3532,7 +3553,7 @@ async function renderUpdateDetail(id) {
               ${detailDriverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(detailDriverImpact.label)}</span>` : ''}
               <strong>${H(freshness.detail)}</strong>
               <span>${H(detailSourceLabel)}</span>
-              <span>${H(detailMethodLabel)}</span>
+              <span class="source-depth-signal source-depth-signal--${H(detailMethodMeta.tone)}">${H(detailMethodMeta.label)}</span>
             </div>
             ${renderSourceTimeline(u)}
           </div>
@@ -3581,7 +3602,8 @@ async function renderUpdateDetail(id) {
           </section>
 
           <section class="detail-section">
-            <h2 class="detail-section-title">What changed</h2>
+            <h2 class="detail-section-title">${H(detailMethodMeta.heading)}</h2>
+            <p class="detail-section-context">${H(detailMethodMeta.note)}</p>
             <ul class="detail-list">${changelogHTML || '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">—</span>No changelog available</li>'}</ul>
           </section>
 

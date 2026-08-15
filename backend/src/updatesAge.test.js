@@ -86,12 +86,23 @@ test('successful database reads never mix static samples into the live feed', as
   expect(updates).toHaveLength(1);
   expect(updates[0]).toMatchObject({
     id: 'vendor-real-1-2-3',
+    analysisMethod: 'official-release-notes',
     firstSeenAt: '2026-08-10T12:00:00Z',
     updatedAt: '2026-08-11T11:00:00Z',
     knownIssuesAuthoritative: true,
     securityCriticality: { level: 'none', label: 'Security context not classified', cves: [] },
   });
   expect(updates.some(update => update.id === 'steam-apex-legends-july-2026')).toBe(false);
+});
+
+test('source scope distinguishes full notes, security advisories, and version-only verification', () => {
+  const classify = updatesService.__test.analysisMethodForEvidence;
+  expect(classify([{ releaseType: 'official-release-notes' }])).toBe('official-release-notes');
+  expect(classify([{ releaseType: 'official-game-update' }])).toBe('official-release-notes');
+  expect(classify([{ releaseType: 'official-security-advisory' }])).toBe('official-security-advisory');
+  expect(classify([{ releaseType: 'official-version' }, { releaseType: 'official-download' }])).toBe('official-version');
+  expect(classify([{ releaseType: 'official-artifact' }])).toBe('official-artifact');
+  expect(classify([])).toBe('source-and-issue-signals');
 });
 
 test('successful empty DB reads stay empty instead of reviving static samples', async () => {

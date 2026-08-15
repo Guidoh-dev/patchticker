@@ -809,6 +809,25 @@ function getStaticUpdates() {
 
 const db = require('../config/db');
 
+function analysisMethodForEvidence(evidence = []) {
+  const releaseTypes = new Set(
+    (Array.isArray(evidence) ? evidence : [])
+      .map(item => String(item?.releaseType || '').toLowerCase())
+      .filter(Boolean)
+  );
+  if (releaseTypes.has('official-security-advisory') || releaseTypes.has('official-security-release')) {
+    return 'official-security-advisory';
+  }
+  if (releaseTypes.has('official-release-notes') || releaseTypes.has('official-game-update')) {
+    return 'official-release-notes';
+  }
+  if (releaseTypes.has('official-artifact')) return 'official-artifact';
+  if (releaseTypes.has('official-version')) return 'official-version';
+  if (releaseTypes.has('official-release')) return 'official-release-notes';
+  if (releaseTypes.size) return 'official-source';
+  return 'source-and-issue-signals';
+}
+
 function rowToUpdate(row) {
   const changelog = jsonArray(row.changelog);
   const knownIssues = jsonArray(row.known_issues);
@@ -855,7 +874,7 @@ function rowToUpdate(row) {
     aiGenerated:          row.ai_generated || false,
     aiModel:              row.ai_model || null,
     aiGeneratedAt:        row.ai_generated_at || null,
-    analysisMethod:       'source-and-issue-signals',
+    analysisMethod:       analysisMethodForEvidence(evidence),
     createdAt:            row.created_at,
     firstSeenAt:          row.created_at,
     updatedAt:            row.updated_at,
@@ -907,7 +926,7 @@ async function hydrateLiveRatings(updates) {
     return updates.map(update => {
       const liveRating = ratings.get(update.id);
       return liveRating
-        ? { ...update, userRating: liveRating, ratingsLive: true, analysisMethod: 'community-votes' }
+        ? { ...update, userRating: liveRating, ratingsLive: true }
         : { ...update, userRating: null, ratingsLive: false, analysisMethod: update.analysisMethod || 'source-and-issue-signals' };
     });
   } catch (err) {
@@ -1142,6 +1161,7 @@ module.exports = {
     canonicalArticleSourceKey,
     dedupeArticleReleases,
     releaseInformationQuality,
+    analysisMethodForEvidence,
     expandSearchTerms,
     searchRelevanceScore,
   },

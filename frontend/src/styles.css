@@ -6907,6 +6907,24 @@ body { overflow-x: hidden; }
   color: var(--cyan);
   font-weight: 900;
 }
+.source-depth-signal {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  font-weight: 900;
+}
+.source-depth-signal--full { color: var(--green-primary); }
+.source-depth-signal--security { color: var(--cyan); }
+.source-depth-signal--limited { color: var(--yellow); }
+.source-depth-signal--source { color: var(--text-2); }
+.detail-section-context {
+  margin: -4px 0 14px;
+  max-width: 72ch;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
 .freshness-signal--snapshot { color: var(--text-2); }
 .freshness-signal--archive { color: var(--purple); }
 .security-signal {

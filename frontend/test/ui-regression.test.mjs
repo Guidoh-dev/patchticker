@@ -243,7 +243,7 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /decision-card-trust/);
   assert.match(mainSource, /detail-source-health/);
   assert.match(mainSource, /official source/);
-  assert.match(mainSource, /Source \+ issue signals/);
+  assert.match(mainSource, /Official source \+ issue signals/);
   assert.match(mainSource, /scoreLabel = rating\.votes \? 'User rating' : 'Safety score'/);
   assert.match(mainSource, /ratingSource = rating\.votes \? 'Live community' : 'PatchTicker'/);
   assert.match(mainSource, /updateDateLabel\(u\)/);
@@ -257,6 +257,19 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(cssSource, /\.freshness-signal--archive\s*\{[^}]*var\(--purple\)/s);
   assert.match(cssSource, /\.dash-coverage-pulse\s*\{[^}]*border-radius:\s*999px/s);
   assert.match(cssSource, /\.dash-coverage-pulse\.is-degraded\s*\{[^}]*var\(--yellow\)/s);
+});
+
+test('source-depth labels distinguish full notes from version-only verification', () => {
+  assert.match(mainSource, /function analysisMethodMeta\(update\)/);
+  assert.match(mainSource, /Build verified · notes limited/);
+  assert.match(mainSource, /Package verified · notes limited/);
+  assert.match(mainSource, /Official security advisory/);
+  assert.match(mainSource, /Official release notes/);
+  assert.match(mainSource, /class="source-depth-signal source-depth-signal--\$\{H\(methodMeta\.tone\)\}"/);
+  assert.match(mainSource, /\$\{H\(detailMethodMeta\.heading\)\}/);
+  assert.match(mainSource, /\$\{H\(detailMethodMeta\.note\)\}/);
+  assert.match(cssSource, /\.source-depth-signal--limited\s*\{[^}]*var\(--yellow\)/s);
+  assert.match(cssSource, /\.detail-section-context\s*\{[^}]*font-family:\s*var\(--font-mono\)/s);
 });
 
 test('detail pages distinguish vendor release, first-seen, and recheck timing', () => {
