@@ -153,4 +153,15 @@ describe('material Steam game update pipeline', () => {
     expect(update.name).toBe('NARAKA: BLADEPOINT Update – August 13th, 2026');
     expect(update.name).not.toMatch(/[\r\n]/);
   });
+
+  test('keeps resolved crash fixes out of the active known-issues list', () => {
+    const issues = __test.knownIssuesFromNotes([
+      'Fixed a bug that caused the game to crash during matchmaking.',
+      'Reduced the crash rate on Nintendo Switch.',
+      'The game may crash when loading a ranked match.',
+      'Microsoft is not currently aware of any issues with this update.',
+    ]);
+
+    expect(issues).toEqual(['The game may crash when loading a ranked match.']);
+  });
 });

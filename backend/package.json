@@ -13,6 +13,8 @@
     "lint": "eslint src/",
     "test": "jest --runInBand --forceExit",
     "test:watch": "jest --watch",
+    "ratings:dry-run": "node ../scripts/regrade_live_updates.js",
+    "ratings:apply": "node ../scripts/regrade_live_updates.js --apply",
     "audit:check": "npm audit --audit-level=moderate",
     "audit:fix": "npm audit fix",
     "audit:report": "npm audit --json > audit-report.json && echo 'Audit report saved to audit-report.json'"

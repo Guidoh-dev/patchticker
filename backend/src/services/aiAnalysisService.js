@@ -1,9 +1,9 @@
 // src/services/aiAnalysisService.js
 // ─────────────────────────────────────────────────────────────────────────────
-// AI-powered analysis of software updates using Anthropic. Configure with ANTHROPIC_MODEL; defaults to Claude Sonnet 4.
+// AI-powered analysis of software updates using Anthropic. Configure with ANTHROPIC_MODEL; defaults to Claude Opus 4.6.
 //
-// Generates: verdict, reasoning, safety score, impact score, security
-// criticality assessment, changelog bullets, and known issues.
+// Generates only evidence-grounded verdict and reasoning copy. Ratings and all
+// structured release facts remain controlled by deterministic code.
 //
 // Paid calls require ANTHROPIC_ENABLED=true as well as a valid key; otherwise
 // deterministic first-party analysis remains active without provider spend.
@@ -20,7 +20,7 @@ const db      = require('../config/db');
 const logger  = require('../utils/logger');
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL             = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+const MODEL             = process.env.ANTHROPIC_MODEL || 'claude-opus-4-6';
 
 function isEnabled() {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -103,8 +103,8 @@ const GroundedAnalysisSchema = z.object({
  *
  * @param {object} update - The raw update object (id, platform, name, version,
  *                          releasedAt, changelog, knownIssues, riskFactors, evidence)
- * @returns {object} - Enriched update fields: verdict, reasoning, score,
- *                     impactScore, securityCriticality, changelog, knownIssues
+ * @returns {object} - Enriched update fields: verdict and reasoning, plus
+ *                     unchanged structured facts from the scraper.
  */
 async function analyseUpdate(update) {
   const systemPrompt = `You are PatchTicker's evidence summarizer. Summarize only facts present in the supplied vendor material.

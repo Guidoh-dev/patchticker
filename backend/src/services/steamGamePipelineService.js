@@ -22,6 +22,8 @@ const logger = require('../utils/logger');
 const {
   deriveDeterministicScore,
   deriveDeterministicImpactScore,
+  isResolvedStatement,
+  isNegativeKnownIssueStatement,
   requireValidScore,
   statusForScore,
 } = require('../utils/updateScore');
@@ -250,7 +252,11 @@ function displayVersion(post, releasedAt) {
 }
 
 function knownIssuesFromNotes(changelog) {
-  return uniqueText((changelog || []).filter(item => STABILITY_RISK_RE.test(item)), 6);
+  return uniqueText((changelog || []).filter(item => (
+    STABILITY_RISK_RE.test(item)
+    && !isResolvedStatement(item)
+    && !isNegativeKnownIssueStatement(item)
+  )), 6);
 }
 
 function releaseTitle(gameName, postTitle) {
@@ -296,6 +302,7 @@ function toDatabaseUpdate(game, post, classification) {
   const score = deriveDeterministicScore({
     name: releaseTitle(game.name, post.title),
     version,
+    sourceKind: 'steam-game-news',
     changelog: classification.changelog,
     knownIssues,
     riskFactors,
@@ -484,6 +491,7 @@ module.exports = {
     displayVersion,
     explicitReleaseDateFromTitle,
     explicitPackageSizeBytes,
+    knownIssuesFromNotes,
     releaseNotesFromPost,
     selectBestMaterialPost,
     stripSteamMarkup,

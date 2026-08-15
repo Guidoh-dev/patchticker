@@ -3,6 +3,9 @@
 const {
   validateScore,
   requireValidScore,
+  isResolvedStatement,
+  isNegativeKnownIssueStatement,
+  deriveDeterministicScoreBreakdown,
   deriveDeterministicScore,
   deriveDeterministicImpactScore,
   statusForScore,
@@ -47,6 +50,76 @@ describe('deterministic update scoring', () => {
     expect(validateScore(first).ok).toBe(true);
     expect(validateScore(deriveDeterministicImpactScore(input)).ok).toBe(true);
     expect(statusForScore(first)).toMatch(/stable|caution|avoid/);
+  });
+
+  test('returns the same bounded score through the auditable breakdown', () => {
+    const input = {
+      sourceKind: 'official-release-notes',
+      changelog: ['Added support for new hardware.', 'Fixed a crash during installation.'],
+      evidence: [{ source: 'Vendor', url: 'https://vendor.example/notes' }],
+    };
+    const breakdown = deriveDeterministicScoreBreakdown(input);
+    expect(breakdown.score).toBe(deriveDeterministicScore(input));
+    expect(validateScore(breakdown.score).ok).toBe(true);
+    expect(breakdown.signals).toMatchObject({ unresolvedIssues: 0, resolvedChanges: 1 });
+  });
+
+  test('does not treat resolved defects or negative issue acknowledgements as active defects', () => {
+    expect(isResolvedStatement('Fixed a bug that caused the game to crash.')).toBe(true);
+    expect(isResolvedStatement('Reduced the crash rate on Nintendo Switch.')).toBe(true);
+    expect(isResolvedStatement('Fixed one path, but crashes may still occur.')).toBe(false);
+    expect(isNegativeKnownIssueStatement('Microsoft is not currently aware of any issues with this update.')).toBe(true);
+
+    const base = {
+      sourceKind: 'official-release-notes',
+      changelog: ['Fixed a crash during startup.', 'Improved display compatibility.'],
+      knownIssuesAuthoritative: true,
+      evidence: [{ source: 'Vendor release notes', url: 'https://vendor.example/release' }],
+    };
+    const resolved = deriveDeterministicScore({
+      ...base,
+      knownIssues: ['Fixed a bug that caused the application to crash.'],
+      riskFactors: [{ level: 'medium', text: 'Reduced the crash rate on supported devices.' }],
+    });
+    const active = deriveDeterministicScore({
+      ...base,
+      knownIssues: ['The application may crash during startup.'],
+      riskFactors: [{ level: 'medium', text: 'A startup regression remains under investigation.' }],
+    });
+    expect(resolved).toBeGreaterThan(active);
+  });
+
+  test('adds security urgency only when official security evidence is documented', () => {
+    const base = {
+      sourceKind: 'official-release-notes',
+      changelog: ['Updates a documented system component.'],
+      evidence: [{ source: 'Vendor release notes', url: 'https://vendor.example/release' }],
+      securityCriticality: { level: 'high', cves: [] },
+    };
+    const ungrounded = deriveDeterministicScore(base);
+    const grounded = deriveDeterministicScore({
+      ...base,
+      sourceKind: 'official-security-advisory',
+      evidence: [{ source: 'Vendor security advisory', url: 'https://vendor.example/security/CVE-2026-1234' }],
+      securityCriticality: { level: 'high', cves: ['CVE-2026-1234'] },
+    });
+    expect(grounded).toBeGreaterThan(ungrounded);
+  });
+
+  test('uses documented change surface instead of collapsing official releases to one default', () => {
+    const fixture = (count, length, sourceKind = 'official-release-notes') => ({
+      sourceKind,
+      changelog: Array.from({ length: count }, (_, index) => `Documented release change ${index + 1}: ${'x'.repeat(length + index * 7)}`),
+      evidence: [{ source: 'Vendor release notes', url: 'https://vendor.example/release' }],
+    });
+    const scores = [
+      deriveDeterministicScore(fixture(3, 70)),
+      deriveDeterministicScore(fixture(8, 105)),
+      deriveDeterministicScore(fixture(14, 145, 'steam-game-news')),
+      deriveDeterministicScore(fixture(1, 30, 'official-version')),
+    ];
+    expect(new Set(scores).size).toBeGreaterThanOrEqual(3);
+    expect(scores.every(score => score !== 7.2)).toBe(true);
   });
 
   test('vendor-labelled prereleases and documented risk reduce the score', () => {

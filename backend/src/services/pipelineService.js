@@ -340,6 +340,7 @@ function deriveInitialScore(platform, detected, context) {
     platform,
     name: detected?.name,
     version: detected?.version,
+    sourceKind: detected?.sourceKind,
     releaseChannel: detected?.releaseChannel,
     changelog: context?.changelog,
     knownIssues: context?.knownIssues,
