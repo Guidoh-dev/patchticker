@@ -156,6 +156,17 @@ describe('pipeline source metadata preservation', () => {
     expect(__test.isCanonicalPipelineRelease({ platform: 'Steam', version: '3.8.25' })).toBe(true);
   });
 
+  test('Steam client freshness excludes game-news rows from the comparison lane', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+
+    await __test.getLatestKnownRelease('Steam');
+    await __test.getKnownReleaseByVersion('Steam', 'client-687512719325137168');
+
+    for (const [sql] of db.query.mock.calls) {
+      expect(sql).toContain("source_kind IS DISTINCT FROM 'steam-game-news'");
+    }
+  });
+
   test('a cached historical version refreshes metadata without sending a new-update alert', async () => {
     scraperService.detectPlatformDetailed.mockResolvedValue({
       ok: true,

@@ -59,9 +59,13 @@ function isCanonicalPipelineRelease(release) {
 
 async function getLatestKnownRelease(platform) {
   if (!db.isAvailable()) return null;
+  const sourceScope = platform === 'Steam'
+    ? "AND source_kind IS DISTINCT FROM 'steam-game-news'"
+    : '';
   const result = await (db.queryRead || db.query)(
     `SELECT id, platform, version, released_at FROM software_updates
      WHERE platform = $1
+     ${sourceScope}
      ORDER BY released_at DESC, created_at DESC
      LIMIT 20`,
     [platform]
@@ -71,9 +75,13 @@ async function getLatestKnownRelease(platform) {
 
 async function getKnownReleaseByVersion(platform, version) {
   if (!db.isAvailable()) return null;
+  const sourceScope = platform === 'Steam'
+    ? "AND source_kind IS DISTINCT FROM 'steam-game-news'"
+    : '';
   const row = await (db.queryRead || db.query)(
     `SELECT id, version, released_at FROM software_updates
      WHERE platform = $1 AND version = $2
+     ${sourceScope}
      LIMIT 1`,
     [platform, version]
   );
@@ -107,19 +115,24 @@ async function insertUpdate(update) {
   const status = statusForScore(score);
   const result = await db.query(
     `INSERT INTO software_updates
-       (id, platform, name, version, released_at, status, score,
+       (id, platform, name, version, display_version, source_kind, source_ref, product_id,
+        released_at, status, score,
         impact_score, bug_count, affects, verdict, reasoning,
         changelog, known_issues, risk_factors, evidence,
         security_criticality, subreddits,
         ai_generated, ai_model, ai_generated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
-     ON CONFLICT (id) DO NOTHING
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+     ON CONFLICT DO NOTHING
      RETURNING id`,
     [
       update.id,
       update.platform,
       update.name,
       update.version,
+      update.displayVersion || null,
+      update.sourceKind || null,
+      update.sourceRef || null,
+      update.productId || null,
       update.releasedAt,
       status,
       score,
@@ -271,6 +284,10 @@ async function updateExistingMetadata(platform, version, detected) {
        security_criticality = COALESCE($12::jsonb, security_criticality),
        score = $13,
        status = $14,
+       display_version = COALESCE($16, display_version),
+       source_kind = COALESCE($17, source_kind),
+       source_ref = COALESCE($18, source_ref),
+       product_id = COALESCE($19, product_id),
        updated_at = now()
      WHERE platform = $1 AND version = $2`,
     [
@@ -289,6 +306,10 @@ async function updateExistingMetadata(platform, version, detected) {
       fallbackScore,
       fallbackStatus,
       context.knownIssuesAuthoritative,
+      detected.displayVersion || null,
+      detected.sourceKind || null,
+      detected.sourceRef || null,
+      detected.productId || null,
     ]
   );
 }
@@ -425,6 +446,10 @@ async function processPlatform(platform) {
     platform,
     name:        detected.name,
     version:     detected.version,
+    displayVersion: detected.displayVersion || null,
+    sourceKind:  detected.sourceKind || null,
+    sourceRef:   detected.sourceRef || null,
+    productId:   detected.productId || null,
     releasedAt:  detected.releasedAt,
     status:      deriveInitialStatus(initialScore),
     score:       initialScore,
@@ -569,6 +594,8 @@ module.exports = {
   runAll,
   __test: {
     platformContext,
+    getLatestKnownRelease,
+    getKnownReleaseByVersion,
     updateExistingMetadata,
     updateWithAiResults,
     deriveInitialScore,

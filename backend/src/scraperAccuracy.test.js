@@ -265,6 +265,19 @@ describe('scraper accuracy guards', () => {
     ]);
   });
 
+  test('Steam client releases use article identity while showing a readable release date', () => {
+    expect(__test.steamClientReleaseIdentity(
+      'https://store.steampowered.com/news/app/593110/view/687512719325137168',
+      'Mon, 03 Aug 2026 22:01:29 +0000',
+    )).toEqual({
+      version: 'client-687512719325137168',
+      displayVersion: '2026.08.03',
+      sourceKind: 'steam-client-news',
+      sourceRef: 'steam-client:687512719325137168',
+      productId: '593110',
+    });
+  });
+
   test('Xbox parser reads the newest worldwide OS release from structured support content', () => {
     const parsed = __test.parseXboxContentApi({
       ContentList: [{

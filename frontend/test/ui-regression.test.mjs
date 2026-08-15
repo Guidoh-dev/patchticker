@@ -250,7 +250,10 @@ test('update cards and detail pages expose compact source freshness signals', ()
 
 test('feed distinguishes the latest release from archived platform history', () => {
   assert.match(mainSource, /function annotateReleasePositions\(updates = \[\]\)/);
-  assert.match(mainSource, /releasePosition: latestByPlatform/);
+  assert.match(mainSource, /releasePosition: latestByLane/);
+  assert.match(mainSource, /function releaseLaneKey\(update\)/);
+  assert.match(mainSource, /sourceKind === 'steam-client-news'/);
+  assert.match(mainSource, /sourceKind === 'steam-game-news'/);
   assert.match(mainSource, /Earlier release/);
   assert.match(mainSource, /Official source archived/);
   assert.match(cssSource, /\.release-position--previous/);

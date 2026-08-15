@@ -1251,9 +1251,22 @@ function searchableTextForUpdate(u) {
     ...(u.securityCriticality?.cves || []),
   ];
   return [
-    u.id, u.platform, u.name, u.version, u.affects, u.verdict, u.reasoning,
+    u.id, u.platform, u.name, u.version, u.internalVersion, u.productId,
+    u.sourceKind, releaseLaneLabel(u), u.affects, u.verdict, u.reasoning,
     ...nested,
   ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function releaseLaneLabel(update) {
+  if (update?.sourceKind === 'steam-game-news') return 'Steam game';
+  if (update?.sourceKind === 'steam-client-news') return 'Steam client';
+  if (update?.platform === 'Steam' && /steam(?:os| deck)/i.test(`${update?.name || ''} ${update?.affects || ''}`)) return 'SteamOS / Steam Deck';
+  return platformLabel(update?.platform);
+}
+
+function releaseLaneKey(update) {
+  const product = update?.productId || update?.sourceKind || 'platform';
+  return `${update?.platform || 'unknown'}:${product}`;
 }
 
 function searchNeedles(raw) {
@@ -1787,7 +1800,7 @@ function renderUpdateCard(u) {
             ${renderPlatformLogo(u.platform, 'update-platform-icon decision-platform-icon')}
             <div class="decision-card-heading-copy">
               <div class="decision-card-kicker">
-                <span class="decision-card-platform text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
+                <span class="decision-card-platform text-platform--${pSuffix}">${H(releaseLaneLabel(u))}</span>
                 ${u.version ? `<span class="decision-card-version">Version ${H(u.version)}</span>` : ''}
                 <span class="release-position release-position--${H(u.releasePosition || 'current')}">${u.releasePosition === 'previous' ? 'Earlier release' : 'Latest release'}</span>
               </div>
@@ -1838,21 +1851,22 @@ function normaliseUpdatesResponse(res) {
 }
 
 function annotateReleasePositions(updates = []) {
-  const latestByPlatform = new Map();
+  const latestByLane = new Map();
   for (const update of updates) {
     const parsedReleaseMs = Date.parse(update?.releasedAt || '');
     const releasedMs = Number.isFinite(parsedReleaseMs) ? parsedReleaseMs : 0;
     const tieBreakMs = Date.parse(update?.createdAt || update?.updatedAt || '') || 0;
-    const current = latestByPlatform.get(update?.platform);
+    const laneKey = releaseLaneKey(update);
+    const current = latestByLane.get(laneKey);
     if (!current
       || releasedMs > current.releasedMs
       || (releasedMs === current.releasedMs && tieBreakMs > current.tieBreakMs)) {
-      latestByPlatform.set(update?.platform, { id: update.id, releasedMs, tieBreakMs });
+      latestByLane.set(laneKey, { id: update.id, releasedMs, tieBreakMs });
     }
   }
   return updates.map(update => ({
     ...update,
-    releasePosition: latestByPlatform.get(update?.platform)?.id === update.id ? 'current' : 'previous',
+    releasePosition: latestByLane.get(releaseLaneKey(update))?.id === update.id ? 'current' : 'previous',
   }));
 }
 
@@ -1885,7 +1899,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
       </div>
       <div class="mini-update-title">${H(u.name)}</div>
       <div class="mini-update-meta">
-        <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
+        <span class="text-platform--${pSuffix}">${H(releaseLaneLabel(u))}</span>
         ${u.version ? `<span>Version ${H(u.version)}</span>` : ''}
       </div>
       <dl class="mini-update-facts" aria-label="Update facts">

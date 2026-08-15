@@ -422,11 +422,6 @@ function absoluteUrl(url, base) {
   catch { return base; }
 }
 
-function versionFromDate(value, fallback = null) {
-  const iso = toIsoDate(value, fallback);
-  return iso ? iso.slice(0, 7) : null;
-}
-
 function safeDecode(value) {
   try { return decodeURIComponent(String(value || '').replace(/\+/g, ' ')); }
   catch { return String(value || ''); }
@@ -691,6 +686,19 @@ function parseSteamReleaseNotes(html) {
   return {
     changelog: unique(changelog, 520).slice(0, 12),
     knownIssues: unique(knownIssues, 650).slice(0, 8),
+  };
+}
+
+function steamClientReleaseIdentity(sourceUrl, publishedAt) {
+  const releasedAt = toIsoDate(publishedAt);
+  const articleId = String(sourceUrl || '').match(/\/view\/(\d+)/i)?.[1] || null;
+  const displayVersion = releasedAt ? releasedAt.replace(/-/g, '.') : null;
+  return {
+    version: articleId ? `client-${articleId}` : (displayVersion ? `client-${displayVersion}` : null),
+    displayVersion,
+    sourceKind: 'steam-client-news',
+    sourceRef: articleId ? `steam-client:${articleId}` : (displayVersion ? `steam-client:${displayVersion}` : null),
+    productId: String(sourceUrl || '').match(/\/news\/app\/(\d+)/i)?.[1] || '593110',
   };
 }
 
@@ -1221,10 +1229,13 @@ async function detectSteam() {
     );
     if (!update) return null;
     const sourceUrl = update.link || 'https://store.steampowered.com/news/';
-    const version = firstVersion(`${update.title} ${update.description}`) || versionFromDate(update.pubDate);
+    const explicitVersion = firstVersion(`${update.title} ${update.description}`);
+    const identity = steamClientReleaseIdentity(sourceUrl, update.pubDate);
+    const version = explicitVersion || identity.version;
     const description = cleanText(update.description, 900);
     const notes = parseSteamReleaseNotes(update.descriptionHtml || update.description);
     const isPreview = /\b(?:beta|preview)\b/i.test(`${update.title} ${description}`);
+    const isSteamOs = /\bSteamOS\b|Steam Deck/i.test(update.title);
     const riskFactors = [];
     if (isPreview) riskFactors.push({ level: 'medium', text: 'This release is on a Beta or Preview channel and is intended for users testing changes before stable rollout.' });
     if (notes.knownIssues.length) riskFactors.push({ level: 'medium', text: notes.knownIssues[0] });
@@ -1233,16 +1244,27 @@ async function detectSteam() {
       platform:   'Steam',
       name:       update.title.slice(0, 100),
       version,
+      displayVersion: explicitVersion || identity.displayVersion,
+      sourceKind: identity.sourceKind,
+      sourceRef: identity.sourceRef,
+      productId: identity.productId,
       releasedAt: toIsoDate(update.pubDate),
+      affects: isSteamOs
+        ? 'Steam Deck / SteamOS / handheld compatibility and system software'
+        : 'Steam desktop client / login / library / downloads / local network transfers',
       changelog:  notes.changelog.length ? notes.changelog : [description].filter(Boolean),
       knownIssues: notes.knownIssues,
       riskFactors,
       verdict: isPreview
         ? 'Use the stable channel unless you need these fixes for testing; this build has an acknowledged performance regression.'
-        : 'Install if the listed SteamOS or Steam Deck fixes apply to your setup; otherwise wait for normal rollout confidence.',
+        : isSteamOs
+          ? 'Install if the listed SteamOS or Steam Deck fixes apply to your setup; otherwise wait for the normal rollout.'
+          : 'Allow the normal Steam client rollout if the listed login, library, download, or transfer fixes apply to your setup.',
       reasoning: isPreview
         ? 'This SteamOS build is explicitly marked Beta/Preview by Valve. PatchTicker separates its acknowledged issues from the full change list so stable-channel users can avoid treating a test build as a routine update.'
-        : 'PatchTicker reads Valve’s official Steam news feed and separates release changes from known issues before scoring the update.',
+        : isSteamOs
+          ? 'PatchTicker reads Valve’s official Steam Deck feed and separates SteamOS release changes from known issues before scoring the update.'
+          : 'PatchTicker reads Valve’s official Steam Client feed and separates desktop client changes from known issues before scoring the update.',
       evidence: sourceEvidence('Steam News', sourceUrl, `${update.title}. ${description}`, { dateBasis: 'published', releaseType: 'official-release' }),
       sourceUrl,
     };
@@ -1700,5 +1722,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, steamClientReleaseIdentity, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
 };
