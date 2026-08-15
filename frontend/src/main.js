@@ -193,13 +193,30 @@ const H = (s) => String(s).replace(/[&<>"']/g,
 );
 
 // ── Render helpers ────────────────────────────────────────────────────────────
+function resetPageScroll() {
+  const root = document.scrollingElement || document.documentElement;
+  const previousBehavior = root.style.scrollBehavior;
+  root.style.scrollBehavior = 'auto';
+  root.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  root.scrollTop = 0;
+  root.scrollLeft = 0;
+  document.body.scrollTop = 0;
+  document.body.scrollLeft = 0;
+  app.scrollTop = 0;
+  app.scrollLeft = 0;
+  root.style.scrollBehavior = previousBehavior;
+}
+
 function setHTML(html) {
   _quickbarScrollController?.abort();
   _quickbarScrollController = null;
   _liveFeedCleanup?.();
   _liveFeedCleanup = null;
   document.body.classList.remove('dashboard-shell-active');
+  resetPageScroll();
   app.innerHTML = html;
+  resetPageScroll();
+  requestAnimationFrame(resetPageScroll);
   applyAnalyticsPrivacyMasks(app);
   document.getElementById('analytics-privacy-choices')?.addEventListener('click', openAnalyticsPreferences);
 }

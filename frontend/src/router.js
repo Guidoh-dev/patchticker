@@ -16,6 +16,10 @@ const _routes = new Map();
 let _current  = null;
 let _fallback = null;
 
+if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
+  window.history.scrollRestoration = 'manual';
+}
+
 export function route(path, handler) {
   _routes.set(path, handler);
 }

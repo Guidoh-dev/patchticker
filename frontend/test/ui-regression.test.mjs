@@ -8,6 +8,7 @@ const root = resolve(import.meta.dirname, '..');
 const mainSource = await readFile(resolve(root, 'src/main.js'), 'utf8');
 const cssSource = await readFile(resolve(root, 'src/styles.css'), 'utf8');
 const apiSource = await readFile(resolve(root, 'src/api.js'), 'utf8');
+const routerSource = await readFile(resolve(root, 'src/router.js'), 'utf8');
 
 test('router resolves exact and dynamic update directories', () => {
   const updatesHandler = () => 'updates';
@@ -31,6 +32,12 @@ test('application registers canonical navigation directories and aliases', () =>
     assert.match(mainSource, new RegExp(`route\\('${path.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}'`));
   }
   assert.match(mainSource, /fallback\(\(\{ path \}\) => renderNotFound\(path\)\)/);
+});
+
+test('route renders reset stale page scroll before showing the next screen', () => {
+  assert.match(mainSource, /function resetPageScroll\(\)\s*\{[\s\S]*?document\.scrollingElement \|\| document\.documentElement[\s\S]*?root\.style\.scrollBehavior = 'auto';[\s\S]*?root\.scrollTo\(\{ top: 0, left: 0, behavior: 'auto' \}\);[\s\S]*?app\.scrollTop = 0;/);
+  assert.match(mainSource, /function setHTML\(html\)\s*\{[\s\S]*?document\.body\.classList\.remove\('dashboard-shell-active'\);[\s\S]*?resetPageScroll\(\);[\s\S]*?app\.innerHTML = html;[\s\S]*?resetPageScroll\(\);[\s\S]*?requestAnimationFrame\(resetPageScroll\);/);
+  assert.match(routerSource, /typeof window !== 'undefined'[\s\S]*?window\.history\.scrollRestoration = 'manual'/);
 });
 
 test('dashboard section links remain inside the hash router', () => {
@@ -62,6 +69,8 @@ test('update detail columns cannot force horizontal page overflow', () => {
   assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
   assert.match(cssSource, /\.detail-meta-grid > div:last-child\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
   assert.match(cssSource, /\.detail-meta-grid > div:nth-child\(2\) strong\s*\{[^}]*white-space:\s*nowrap;/s);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-hero-left\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*56px minmax\(0, 1fr\);[^}]*width:\s*100%/s);
+  assert.match(cssSource, /\.detail-meta-grid,[\s\S]*?\.detail-source-timeline-wrap\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%/s);
 });
 
 test('update cards organize title, release date, package size, and rating without fabricated size data', () => {
@@ -280,7 +289,11 @@ test('homepage narrative is centered without fixed horizontal offsets', () => {
 
 test('newest movement heading is centered across viewports', () => {
   assert.match(mainSource, /class="dash-panel-head update-tape-heading"/);
-  assert.match(cssSource, /\.update-tape-heading\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;[^}]*text-align:\s*center/s);
+  assert.match(cssSource, /\.update-tape-panel\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*align-items:\s*stretch/s);
+  assert.match(cssSource, /\.update-tape-heading\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(116px, 1fr\) auto minmax\(116px, 1fr\);[^}]*text-align:\s*center/s);
+  assert.match(cssSource, /\.update-tape-heading > div\s*\{[^}]*grid-column:\s*2/s);
+  assert.match(cssSource, /\.update-tape-heading \.dash-panel-badge\s*\{[^}]*position:\s*static;[^}]*grid-column:\s*3;[^}]*justify-self:\s*end/s);
+  assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*?\.update-tape-heading\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
 });
 
 test('native live chat uses one-time SSE tickets and completes the composer', () => {
