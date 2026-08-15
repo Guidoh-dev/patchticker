@@ -8139,3 +8139,160 @@ html[data-theme="light"] .dash-side-copy { color: var(--text-2); }
     -webkit-line-clamp: 2;
   }
 }
+
+/* Layout integrity pass: one spacing contract, contained desktop scrolling,
+   and content-safe wrapping for vendor-supplied release text. */
+.landing-intro {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+}
+
+.landing-kicker,
+.landing-title,
+.landing-subtitle,
+.landing-grid article,
+.landing-band {
+  text-align: center;
+}
+
+.landing-title,
+.landing-subtitle {
+  margin-inline: auto;
+  overflow-wrap: anywhere;
+}
+
+.landing-actions,
+.landing-proof,
+.landing-scroll-map {
+  justify-content: center;
+  width: 100%;
+}
+
+.landing-grid article {
+  align-items: center;
+  gap: 12px;
+}
+
+.landing-grid article h2,
+.landing-grid article p,
+.landing-band h2,
+.landing-band p {
+  max-width: 100%;
+  margin-inline: auto;
+  overflow-wrap: anywhere;
+}
+
+.landing-bento-tag {
+  align-self: center;
+}
+
+.landing-band {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+}
+
+.landing-band > div {
+  width: 100%;
+  max-width: 760px;
+}
+
+@media (min-width: 981px) {
+  .landing-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+  }
+}
+
+.dash-wrap--triad .dash-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.dash-wrap--triad .dash-main > .dash-quickbar,
+.dash-wrap--triad .dash-main > .dash-command-hero,
+.dash-wrap--triad .dash-main > .dash-panel {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.updates-list--desk,
+.platform-feed-cards,
+.filtered-update-cards,
+.platform-feed-more,
+.platform-feed-block,
+.category-feed-section {
+  gap: 14px;
+}
+
+.decision-card,
+.decision-card-link,
+.decision-card-content,
+.decision-card-heading,
+.decision-card-heading-copy,
+.decision-card-kicker,
+.decision-card-version,
+.decision-card-facts dd,
+.decision-card-facts small,
+.decision-one-line,
+.mini-update-title,
+.mini-update-copy,
+.platform-header,
+.platform-header h3,
+.platform-header-meta,
+.category-section-header,
+.category-section-header h2,
+.category-section-header span,
+.feed-msg-body,
+.detail-reasoning,
+.detail-section-context,
+.detail-list li,
+.detail-risk-item,
+.detail-evidence-item,
+.detail-requirement-grid strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (min-width: 769px) {
+  body.dashboard-shell-active .dash-layout,
+  body.dashboard-shell-active .dash-sidebar,
+  body.dashboard-shell-active .dash-main,
+  body.dashboard-shell-active .dash-aside {
+    max-height: 100%;
+  }
+
+  body.dashboard-shell-active .dash-main {
+    position: relative;
+    isolation: isolate;
+    scroll-padding-top: 80px;
+  }
+
+  body.dashboard-shell-active .dash-main .dash-quickbar {
+    top: 0;
+    z-index: 50;
+    background: var(--bg);
+    backdrop-filter: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .dash-wrap--triad .dash-main { gap: 14px; }
+  .dash-quickbar {
+    z-index: 50;
+    background: var(--bg);
+    backdrop-filter: none;
+  }
+}

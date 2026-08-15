@@ -46,8 +46,9 @@ test('user-facing setup filters no longer use stack terminology', () => {
   assert.match(mainSource, />Apple devices</);
 });
 
-test('triad dashboard resets legacy nested grid and uses horizontal metadata rows', () => {
-  assert.match(cssSource, /\.dash-wrap--triad \.dash-main\s*\{[^}]*display:\s*block/s);
+test('triad dashboard uses one separated column flow and horizontal metadata rows', () => {
+  assert.match(cssSource, /\.dash-wrap--triad \.dash-main\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*18px/s);
+  assert.match(cssSource, /\.dash-wrap--triad \.dash-main > \.dash-quickbar,[\s\S]*?\.dash-wrap--triad \.dash-main > \.dash-panel\s*\{[^}]*margin-bottom:\s*0/s);
   assert.match(cssSource, /\.decision-card-link\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 148px/s);
   assert.match(cssSource, /\.decision-card-rating\s*\{[^}]*justify-items:\s*center/s);
   assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
@@ -258,6 +259,23 @@ test('dashboard uses independent desktop scrollers and native mobile page scroll
   assert.match(cssSource, /body\.dashboard-shell-active \.dash-sidebar,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*overflow-y:\s*auto/s);
   assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*?body\.dashboard-shell-active \.dash-main,[\s\S]*?overflow-y:\s*visible/s);
   assert.match(cssSource, /body\.dashboard-shell-active \.dash-sidebar\s*\{\s*display:\s*none;/s);
+});
+
+test('sticky filters are opaque, isolated, and cannot bleed into the patch feed', () => {
+  assert.match(cssSource, /@media \(min-width: 769px\)[\s\S]*?body\.dashboard-shell-active \.dash-main\s*\{[^}]*position:\s*relative;[^}]*isolation:\s*isolate;[^}]*scroll-padding-top:\s*80px/s);
+  assert.match(cssSource, /body\.dashboard-shell-active \.dash-main \.dash-quickbar\s*\{[^}]*z-index:\s*50;[^}]*background:\s*var\(--bg\);[^}]*backdrop-filter:\s*none/s);
+  assert.match(cssSource, /body\.dashboard-shell-active \.dash-layout,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*max-height:\s*100%/s);
+});
+
+test('release cards contain hostile text and keep a consistent visual gap', () => {
+  assert.match(cssSource, /\.updates-list--desk,[\s\S]*?\.category-feed-section\s*\{[^}]*gap:\s*14px/s);
+  assert.match(cssSource, /\.decision-card,[\s\S]*?\.detail-requirement-grid strong\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*word-break:\s*break-word/s);
+});
+
+test('homepage narrative is centered without fixed horizontal offsets', () => {
+  assert.match(cssSource, /\.landing-intro\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*justify-content:\s*center;[^}]*align-items:\s*center;[^}]*width:\s*100%;[^}]*text-align:\s*center/s);
+  assert.match(cssSource, /\.landing-actions,[\s\S]*?\.landing-scroll-map\s*\{[^}]*justify-content:\s*center;[^}]*width:\s*100%/s);
+  assert.match(cssSource, /\.landing-band\s*\{[^}]*flex-direction:\s*column;[^}]*justify-content:\s*center;[^}]*align-items:\s*center/s);
 });
 
 test('newest movement heading is centered across viewports', () => {
