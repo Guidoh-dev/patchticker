@@ -36,6 +36,20 @@ test('session replay and automatic PostHog capture are disabled at the SDK bound
   assert.match(analytics, /disable_external_dependency_loading: true/);
 });
 
+test('the privacy scrubber preserves only PostHog transport data required for ingestion', () => {
+  assert.match(analytics, /if \(key === 'token'\)/);
+  assert.match(analytics, /if \(value === POSTHOG_KEY\) properties\.token = POSTHOG_KEY/);
+  assert.match(analytics, /POSTHOG_INTERNAL_EVENTS = new Set\(\['\$identify', '\$pageview', '\$pageleave'\]\)/);
+});
+
+test('SPA page views use normalized routes without enabling invasive autocapture', () => {
+  assert.match(analytics, /captureWebEvent\('\$pageview', nextRoute\)/);
+  assert.match(analytics, /captureWebEvent\('\$pageleave', activeRoute/);
+  assert.match(analytics, /\$current_url: canonicalRouteUrl\(normalizedRoute\)/);
+  assert.match(analytics, /\$pathname: normalizedRoute/);
+  assert.match(analytics, /autocapture: false/);
+});
+
 test('sensitive fields and free text receive both vendor mask directives', () => {
   for (const selector of ['input', 'textarea', 'form', 'email', 'search', 'token', 'webhook']) {
     assert.match(analytics, new RegExp(selector));
@@ -72,6 +86,7 @@ test('routes are normalized before analytics receives them', () => {
 test('signed-in analytics identity is the internal user id without profile PII', () => {
   assert.match(analytics, /currentUserId = user\?\.id \? String\(user\.id\) : null/);
   assert.match(analytics, /posthog\.identify\(currentUserId\)/);
+  assert.match(analytics, /else if \(previousUserId\)/);
   assert.doesNotMatch(analytics, /posthog\.identify\([^\n]*(?:email|name)/i);
 });
 

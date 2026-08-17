@@ -21,6 +21,7 @@ const ALLOWED_EVENTS = new Set([
   'notification_preference_changed', 'update_feedback_submitted',
   'signup_completed', 'login_completed', 'subscription_checkout_started',
 ]);
+const POSTHOG_INTERNAL_EVENTS = new Set(['$identify', '$pageview', '$pageleave']);
 
 const SAFE_PROPERTY_KEYS = new Set([
   'route', 'update_id', 'platform', 'status', 'sort', 'vote', 'source_type',
@@ -34,6 +35,7 @@ const URL_VALUE = /^(?:https?:\/\/|\/\/)/i;
 let posthogReady = false;
 let clarityReady = false;
 let currentUserId = null;
+let activeRoute = null;
 let maskObserver = null;
 
 function configured() {
@@ -70,6 +72,14 @@ function normalizeRoute(rawPath = '/') {
   return routes.has(path) ? path : '/not-found';
 }
 
+function currentRoute() {
+  return normalizeRoute(window.location.hash.slice(1) || '/');
+}
+
+function canonicalRouteUrl(route) {
+  return `${window.location.origin}${normalizeRoute(route)}`;
+}
+
 function sanitizeValue(value) {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -90,9 +100,25 @@ function safeAppProperties(properties = {}) {
 }
 
 function sanitizePostHogEvent(event) {
-  if (!event || (!ALLOWED_EVENTS.has(event.event) && event.event !== '$identify')) return null;
+  if (!event || (!ALLOWED_EVENTS.has(event.event) && !POSTHOG_INTERNAL_EVENTS.has(event.event))) return null;
+  const isWebEvent = event.event === '$pageview' || event.event === '$pageleave';
   const properties = {};
   for (const [key, value] of Object.entries(event.properties || {})) {
+    // `token` is the browser-safe project token PostHog itself adds to every
+    // event. Removing it makes ingestion reject the event. Preserve only the
+    // exact configured token so similarly named application fields stay out.
+    if (key === 'token') {
+      if (value === POSTHOG_KEY) properties.token = POSTHOG_KEY;
+      continue;
+    }
+    if (isWebEvent && key === '$pathname') {
+      properties.$pathname = normalizeRoute(value);
+      continue;
+    }
+    if (isWebEvent && key === '$current_url') {
+      properties.$current_url = canonicalRouteUrl(new URL(String(value), window.location.origin).pathname);
+      continue;
+    }
     if (BLOCKED_VENDOR_PROPERTY.test(key) && key !== 'query_length') continue;
     if (!['string', 'number', 'boolean'].includes(typeof value)) continue;
     if (EMAIL_VALUE.test(String(value ?? '')) || URL_VALUE.test(String(value ?? ''))) continue;
@@ -147,6 +173,7 @@ function initClarity() {
 function startVendors() {
   if (readConsent() !== 'granted') return;
   initPostHog();
+  if (posthogReady) posthog.opt_in_capturing();
   initClarity();
 }
 
@@ -210,6 +237,7 @@ function renderConsentPanel({ preferences = false } = {}) {
   allow.addEventListener('click', () => {
     writeConsent('granted');
     startVendors();
+    captureWebEvent('$pageview', activeRoute || currentRoute());
     removeConsentPanel();
   });
   allow.focus();
@@ -247,7 +275,14 @@ export function initializeAnalyticsConsent() {
     maskObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
   window.addEventListener('app:route', (event) => {
-    captureAnalytics('route_viewed', { route: normalizeRoute(event.detail?.path) });
+    const nextRoute = normalizeRoute(event.detail?.path);
+    if (activeRoute && activeRoute !== nextRoute) captureWebEvent('$pageleave', activeRoute);
+    activeRoute = nextRoute;
+    captureAnalytics('route_viewed', { route: nextRoute });
+    captureWebEvent('$pageview', nextRoute);
+  });
+  window.addEventListener('pagehide', () => {
+    if (activeRoute) captureWebEvent('$pageleave', activeRoute, { transport: 'sendBeacon', send_instantly: true });
   });
   if (readConsent() === 'granted') startVendors();
   else if (readConsent() === null) renderConsentPanel();
@@ -258,15 +293,29 @@ export function openAnalyticsPreferences() {
 }
 
 export function syncAnalyticsIdentity(user) {
+  const previousUserId = currentUserId;
   currentUserId = user?.id ? String(user.id) : null;
   if (!posthogReady) return;
   if (currentUserId) {
     posthog.opt_in_capturing();
-    posthog.identify(currentUserId);
-  } else {
+    if (currentUserId !== previousUserId) posthog.identify(currentUserId);
+  } else if (previousUserId) {
+    // Reset only on an actual logout. Resetting every anonymous page load
+    // fragments visitors and clears the consent state before events can send.
     posthog.reset(true);
     if (readConsent() === 'granted') posthog.opt_in_capturing();
   }
+}
+
+function captureWebEvent(eventName, route, options) {
+  if (!POSTHOG_INTERNAL_EVENTS.has(eventName) || readConsent() !== 'granted') return;
+  if (!posthogReady) initPostHog();
+  if (!posthogReady) return;
+  const normalizedRoute = normalizeRoute(route);
+  posthog.capture(eventName, {
+    $current_url: canonicalRouteUrl(normalizedRoute),
+    $pathname: normalizedRoute,
+  }, options);
 }
 
 export function captureAnalytics(eventName, properties = {}) {
