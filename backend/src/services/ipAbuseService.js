@@ -22,15 +22,16 @@
 //
 // SIGNALS THAT INCREMENT THE OFFENCE COUNTER
 // ────────────────────────────────────────────
-//   RATE_LIMIT_HIT    — any 429 from any of the rate limiters
+//   RATE_LIMIT_HIT    — any 429 from a limiter; affects backoff only and never
+//                       counts as proof for an automatic blacklist
 //   GUARD_REJECTION   — requestGuard rejected the request (malformed/hostile)
 //   SUSPICIOUS        — suspiciousActivityDetector matched a pattern
 //   AUTH_ABUSE        — repeated failed logins from this IP (cross-reported
 //                        by lockoutService when many accounts targeted)
 //
-//  Each signal type carries a weight. Minor signals (a single 429) add 1 point.
-//  Severe signals (scanner fingerprint, injection attempt) add more. When the
-//  accumulated points cross AUTO_BLACKLIST_THRESHOLD the IP is auto-blacklisted.
+//  Each signal type carries a diagnostic weight. Concrete security signals
+//  also carry blacklist points. Only those security points can cross the
+//  AUTO_BLACKLIST_THRESHOLD; ordinary 429 responses cannot blacklist users.
 //
 // RELATION TO OTHER MODULES
 // ──────────────────────────
@@ -60,14 +61,17 @@ const BACKOFF_MAX_MS        = parseInt(process.env.BACKOFF_MAX_MS        || Stri
 const AUTO_BLACKLIST_POINTS = parseInt(process.env.AUTO_BLACKLIST_POINTS || '20', 10);
 const DECAY_WINDOW_MS       = parseInt(process.env.ABUSE_DECAY_MS        || String(24 * 60 * 60 * 1000), 10); // 24 hr
 
-// Signal types and their point weights.
-// Higher weight = faster path to auto-blacklist.
+// Signal types and their point weights. `points` drive diagnostics/backoff;
+// `blacklistPoints` require concrete hostile behavior before a full block.
 const SIGNAL = Object.freeze({
-  RATE_LIMIT_HIT:  { name: 'RATE_LIMIT_HIT',  points: 1 },
-  GUARD_REJECTION: { name: 'GUARD_REJECTION',  points: 3 },
-  SUSPICIOUS:      { name: 'SUSPICIOUS',       points: 5 },
-  AUTH_ABUSE:      { name: 'AUTH_ABUSE',       points: 4 },
-  SCANNER:         { name: 'SCANNER',          points: 8 },
+  // A 429 is already enforced by express-rate-limit. Shared networks, stale
+  // tabs, and temporary retry loops can create repeated 429s without being an
+  // attack, so rate-limit responses alone must never trigger a 24-hour block.
+  RATE_LIMIT_HIT:  { name: 'RATE_LIMIT_HIT',  points: 1, blacklistPoints: 0 },
+  GUARD_REJECTION: { name: 'GUARD_REJECTION', points: 3, blacklistPoints: 3 },
+  SUSPICIOUS:      { name: 'SUSPICIOUS',      points: 5, blacklistPoints: 5 },
+  AUTH_ABUSE:      { name: 'AUTH_ABUSE',      points: 4, blacklistPoints: 4 },
+  SCANNER:         { name: 'SCANNER',         points: 8, blacklistPoints: 8 },
 });
 
 // ── In-memory store ───────────────────────────────────────────────────────────
@@ -76,6 +80,7 @@ const SIGNAL = Object.freeze({
 // AbuseRecord: {
 //   offences:     number   — total discrete penalisation events
 //   points:       number   — weighted sum of signal weights
+//   blacklistPoints: number — concrete hostile-signal weight only
 //   firstSeenAt:  number   — ms timestamp of first recorded signal
 //   lastSignalAt: number   — ms timestamp of most recent signal
 //   signals:      string[] — ring buffer of last 20 signal names (for diagnostics)
@@ -120,11 +125,16 @@ function _getOrCreate(ip) {
     record = {
       offences:     0,
       points:       0,
+      blacklistPoints: 0,
       firstSeenAt:  Date.now(),
       lastSignalAt: Date.now(),
       signals:      [],
     };
     _records.set(ip, record);
+  } else if (!Number.isFinite(record.blacklistPoints)) {
+    // Conservative migration for a long-lived development process created by
+    // the pre-v2 record shape. Never reinterpret historical 429s as attacks.
+    record.blacklistPoints = 0;
   }
   return record;
 }
@@ -137,7 +147,7 @@ function _getOrCreate(ip) {
  * @param {string} ip
  * @param {typeof SIGNAL[keyof typeof SIGNAL]} signal
  * @param {object} [meta]  — extra context for logging (path, reason, etc.)
- * @returns {{ offences: number, points: number, backoffMs: number, autoBlacklisted: boolean }}
+ * @returns {{ offences: number, points: number, blacklistPoints: number, backoffMs: number, autoBlacklisted: boolean }}
  */
 function recordSignal(ip, signal, meta = {}) {
   const normIp  = normaliseIp(ip);
@@ -146,6 +156,7 @@ function recordSignal(ip, signal, meta = {}) {
 
   record.offences++;
   record.points       += signal.points;
+  record.blacklistPoints += Number(signal.blacklistPoints ?? signal.points);
   record.lastSignalAt  = now;
 
   // Ring buffer — keep last 20 signal names for diagnostics
@@ -159,21 +170,29 @@ function recordSignal(ip, signal, meta = {}) {
     signal:   signal.name,
     offences: record.offences,
     points:   record.points,
+    blacklistPoints: record.blacklistPoints,
     backoffMs,
     ...meta,
   });
 
-  // Cross-module: trigger auto-blacklist if points threshold crossed
+  // Cross-module: trigger auto-blacklist only when concrete security signals
+  // cross the threshold. Backoff-only 429 signals deliberately do not count.
   let autoBlacklisted = false;
-  if (record.points >= AUTO_BLACKLIST_POINTS) {
+  if (record.blacklistPoints >= AUTO_BLACKLIST_POINTS) {
     // Lazy import to break circular dependency: ipBlacklist → ipAbuseService
     const { autoBlacklist } = require('./ipBlacklist');
-    const reason = `Auto-blacklisted: ${record.points} abuse points (threshold ${AUTO_BLACKLIST_POINTS})`;
+    const reason = `Auto-blacklisted: ${record.blacklistPoints} security points (threshold ${AUTO_BLACKLIST_POINTS})`;
     autoBlacklist(normIp, reason, record.signals);
     autoBlacklisted = true;
   }
 
-  return { offences: record.offences, points: record.points, backoffMs, autoBlacklisted };
+  return {
+    offences: record.offences,
+    points: record.points,
+    blacklistPoints: record.blacklistPoints,
+    backoffMs,
+    autoBlacklisted,
+  };
 }
 
 /**
@@ -204,6 +223,7 @@ function getStatus(ip) {
     ip:           normIp,
     offences:     record.offences,
     points:       record.points,
+    blacklistPoints: record.blacklistPoints,
     backoffMs:    computeBackoffMs(record.offences),
     firstSeenAt:  new Date(record.firstSeenAt).toISOString(),
     lastSignalAt: new Date(record.lastSignalAt).toISOString(),

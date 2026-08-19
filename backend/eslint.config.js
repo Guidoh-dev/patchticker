@@ -26,6 +26,9 @@ module.exports = [
         setInterval:'readonly',
         clearInterval:'readonly',
         Promise:   'readonly',
+        URL:       'readonly',
+        fetch:     'readonly',
+        AbortSignal:'readonly',
         // Jest globals
         describe:  'readonly',
         it:        'readonly',

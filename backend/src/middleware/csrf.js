@@ -91,7 +91,7 @@ const {
 function csrfProtection(req, res, next) {
   try {
     doubleCsrfProtection(req, res, next);
-  } catch (err) {
+  } catch {
     logger.warn('CSRF validation failed', { ip: req.ip, path: req.path });
     res.status(403).json({ error: 'Invalid CSRF token' });
   }

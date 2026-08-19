@@ -15,7 +15,6 @@ const {
 } = require('../validators/schemas');
 const { createReport, getReportsByUpdateId } = require('../services/bugReportService');
 const { escapeOutput } = require('../utils/sanitize');
-const logger = require('../utils/logger');
 
 // POST /api/bug-reports — submit a new bug report
 router.post(

@@ -362,7 +362,7 @@ describe('authSchemas', () => {
         expect(fails(RegisterBodySchema, { ...validRegister, email: long })).toBeTruthy();
       });
       it('rejects missing email', () => {
-        const { email, ...rest } = validRegister;
+        const { email: _email, ...rest } = validRegister;
         expect(fails(RegisterBodySchema, rest)).toBeTruthy();
       });
     });

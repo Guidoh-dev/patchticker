@@ -559,15 +559,15 @@ describe('PostBugReportBodySchema', () => {
       expect(fails(PostBugReportBodySchema, { ...valid, description: { $ne: null } })).toBeTruthy();
     });
     it('rejects missing required field: updateId', () => {
-      const { updateId, ...rest } = valid;
+      const { updateId: _updateId, ...rest } = valid;
       expect(fails(PostBugReportBodySchema, rest)).toBeTruthy();
     });
     it('rejects missing required field: severity', () => {
-      const { severity, ...rest } = valid;
+      const { severity: _severity, ...rest } = valid;
       expect(fails(PostBugReportBodySchema, rest)).toBeTruthy();
     });
     it('rejects missing required field: description', () => {
-      const { description, ...rest } = valid;
+      const { description: _description, ...rest } = valid;
       expect(fails(PostBugReportBodySchema, rest)).toBeTruthy();
     });
     it('rejects completely empty body', () => {

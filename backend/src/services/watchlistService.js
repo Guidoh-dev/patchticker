@@ -14,7 +14,7 @@ const db           = require('../config/db');
 const emailService = require('./emailService');
 const logger       = require('../utils/logger');
 
-const { PLATFORM_KEYS: VALID_PLATFORMS, isValidPlatform } = require('../config/platformRegistry');
+const { isValidPlatform } = require('../config/platformRegistry');
 
 // ── Watchlist CRUD ────────────────────────────────────────────────────────────
 

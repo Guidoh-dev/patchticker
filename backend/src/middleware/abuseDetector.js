@@ -64,6 +64,23 @@ function formatBlockRemaining(expiresAt) {
 }
 
 /**
+ * Temporary automated restrictions protect accounts and writes, but must not
+ * take the public product offline for every user behind the same household,
+ * office, campus, or carrier-grade NAT address. These reads are still subject
+ * to the normal downstream rate limiters.
+ */
+function isSafePublicRead(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const path = String(req.path || '');
+  if (!path.startsWith('/api/')) return true;
+  return path === '/api/feed/recent'
+    || path === '/api/updates'
+    || path.startsWith('/api/updates/')
+    || path === '/api/health'
+    || path.startsWith('/api/health/');
+}
+
+/**
  * Abuse detector middleware.
  * @type {import('express').RequestHandler}
  */
@@ -73,7 +90,8 @@ function abuseDetector(req, res, next) {
 
   // ── 1. Blacklist check ────────────────────────────────────────────────────
   const check = isBlacklisted(ip);
-  if (check.blocked && !bypassLocalDev) {
+  const allowSafeRead = check.blocked && check.autoAdded && isSafePublicRead(req);
+  if (check.blocked && !bypassLocalDev && !allowSafeRead) {
     logger.warn('Blocked request from blacklisted IP', {
       ip,
       reason:    check.reason,
@@ -84,6 +102,14 @@ function abuseDetector(req, res, next) {
     return res.status(403).json({
       error:    'Access denied.',
       blockedFor: formatBlockRemaining(check.expiresAt),
+    });
+  }
+
+  if (allowSafeRead) {
+    logger.info('Allowed safe public read from temporarily restricted IP', {
+      ip,
+      method: req.method,
+      path: req.path,
     });
   }
 
@@ -109,3 +135,4 @@ function abuseDetector(req, res, next) {
 
 module.exports = abuseDetector;
 module.exports.isLocalDevelopmentIp = isLocalDevelopmentIp;
+module.exports.isSafePublicRead = isSafePublicRead;

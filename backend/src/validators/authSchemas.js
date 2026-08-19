@@ -21,14 +21,13 @@
 //  Lowercased + trimmed before any comparison.
 //  .email() uses Zod's built-in RFC-5322 validation.
 //  max 254 chars — RFC 5321 maximum email address length.
-//  hardened() injection guards still applied (email could be stored/logged).
+//  Email remains a bounded, normalized value; SQL access stays parameterized.
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
 'use strict';
 
 const { z } = require('zod');
-const { _hardened: hardened } = require('./schemas');
 
 // ── Email field ───────────────────────────────────────────────────────────────
 // Shared between register and login. Lowercased in .transform() so all
@@ -58,7 +57,7 @@ const RegistrationPasswordField = z
     if (!/[A-Z]/.test(v))                    add('Password must contain at least one uppercase letter');
     if (!/[a-z]/.test(v))                    add('Password must contain at least one lowercase letter');
     if (!/[0-9]/.test(v))                    add('Password must contain at least one number');
-    if (!/[!@#$%^&*()_+\-=\[\]{}|;,.<>?]/.test(v))
+    if (!/[!@#$%^&*()_+\-=[\]{}|;,.<>?]/.test(v))
                                               add('Password must contain at least one special character');
   });
 

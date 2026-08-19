@@ -41,7 +41,7 @@ const ROLE_RANK = { free: 0, pro: 1, admin: 2 };
  * @returns {import('express').RequestHandler}
  */
 function requireRole(requiredRole) {
-  if (!ROLE_RANK.hasOwnProperty(requiredRole)) {
+  if (!Object.prototype.hasOwnProperty.call(ROLE_RANK, requiredRole)) {
     throw new Error(`requireRole: unknown role "${requiredRole}"`);
   }
 

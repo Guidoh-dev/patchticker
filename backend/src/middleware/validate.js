@@ -28,7 +28,6 @@
 
 'use strict';
 
-const { ZodError } = require('zod');
 const logger = require('../utils/logger');
 const { sanitizeInput } = require('../utils/sanitize');
 
@@ -37,7 +36,7 @@ const { sanitizeInput } = require('../utils/sanitize');
  * We deliberately omit Zod's internal `code` and `received` fields so as not
  * to leak schema structure to potential attackers.
  *
- * @param {ZodError} zodError
+ * @param {import('zod').ZodError} zodError
  * @returns {{ field: string, message: string }[]}
  */
 function formatZodErrors(zodError) {

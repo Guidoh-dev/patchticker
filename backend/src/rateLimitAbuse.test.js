@@ -147,6 +147,18 @@ describe('ipAbuseService', () => {
       expect(r.autoBlacklisted).toBe(false);
     });
 
+    it('never auto-blacklists an IP from rate-limit responses alone', () => {
+      const ip = '10.0.0.40';
+      let result;
+      for (let i = 0; i < service.AUTO_BLACKLIST_POINTS * 3; i++) {
+        result = service.recordSignal(ip, service.SIGNAL.RATE_LIMIT_HIT, {});
+      }
+      expect(result.points).toBeGreaterThanOrEqual(service.AUTO_BLACKLIST_POINTS);
+      expect(result.blacklistPoints).toBe(0);
+      expect(result.autoBlacklisted).toBe(false);
+      expect(require('./services/ipBlacklist').isBlacklisted(ip).blocked).toBe(false);
+    });
+
     it('triggers auto-blacklist when points reach AUTO_BLACKLIST_POINTS', () => {
       const ip = '10.0.0.5';
       // SCANNER = 8 points. 3 hits = 24 points > threshold of 20
@@ -397,6 +409,34 @@ describe('abuseDetector (integration)', () => {
       .set('X-Forwarded-For', '198.51.100.252');
     expect(res.status).toBe(403);
     expect(res.body.blockedFor).toBe('indefinitely');
+  });
+
+  it('keeps public update reads available for a temporarily auto-blocked shared IP', async () => {
+    const ip = '198.51.100.253';
+    const { autoBlacklist } = require('./services/ipBlacklist');
+    autoBlacklist(ip, 'temporary automated restriction', ['SUSPICIOUS']);
+
+    const safeRead = await request(app)
+      .get('/api/updates/summary')
+      .set('X-Forwarded-For', ip);
+    expect(safeRead.status).not.toBe(403);
+
+    const protectedMutation = await request(app)
+      .post('/api/auth/logout')
+      .set('X-Forwarded-For', ip)
+      .send({});
+    expect(protectedMutation.status).toBe(403);
+  });
+
+  it('continues to enforce manual permanent blocks on public reads', async () => {
+    const ip = '198.51.100.254';
+    const { blacklist } = require('./services/ipBlacklist');
+    blacklist(ip, 'manual security block');
+
+    await request(app)
+      .get('/api/updates/summary')
+      .set('X-Forwarded-For', ip)
+      .expect(403);
   });
 });
 

@@ -12,8 +12,6 @@
 
 'use strict';
 
-/* global fetch */
-
 const crypto  = require('crypto');
 const { z }   = require('zod');
 const db      = require('../config/db');

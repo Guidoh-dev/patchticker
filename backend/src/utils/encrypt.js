@@ -173,7 +173,7 @@ function decrypt(ciphertextHex) {
       decipher.final(), // throws if auth tag doesn't match
     ]);
     return decrypted.toString('utf8');
-  } catch (err) {
+  } catch {
     // Do not include the ciphertext in the error — it may be sensitive
     throw new Error('[encrypt] Decryption failed — data may be tampered or key mismatch');
   }

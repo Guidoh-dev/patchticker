@@ -293,7 +293,6 @@ router.post('/stripe', async (req, res) => {
 
           if (cusId) {
             // Revoke Pro access immediately — reinstated after dispute resolution
-            const { syncSubscriptionByCustomer } = require('../services/subscriptionService');
             // If no helper, downgrade via direct DB update as fallback
             const db = require('../config/db');
             if (db.isAvailable()) {

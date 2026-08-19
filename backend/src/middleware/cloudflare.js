@@ -284,7 +284,7 @@ function cloudflareMiddleware(req, res, next) {
     // Validate it looks like an IP address (basic sanity check)
     const trimmed = cfConnectingIp.trim();
     // Simple regex: IPv4 or IPv6 characters only — no injection possible
-    if (/^[0-9a-fA-F:.\[\]%]+$/.test(trimmed) && trimmed.length < 50) {
+    if (/^[0-9a-fA-F:.%]+$/.test(trimmed) && trimmed.length < 50) {
       // Override req.ip — Express uses a getter/setter backed by a private
       // property. We set req._realIp and patch the property with defineProperty
       // only if it hasn't been patched already.

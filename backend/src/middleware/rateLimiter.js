@@ -42,10 +42,10 @@
 // keys at the per-IP backoff interval.
 //
 // Our approach: the handler logs the backoff window for the offending IP and
-// the Retry-After header is set to reflect it. Enforcement of the extended
-// window happens via ipAbuseService's auto-blacklisting threshold — once an
-// IP accumulates enough points it is blocked entirely, which is more effective
-// than trying to dynamically resize windows in an in-memory store.
+// the Retry-After header is set to reflect it. Automatic blacklisting remains
+// reserved for concrete scanner, request-guard, or authentication-abuse
+// evidence; repeated 429 responses cannot take the public site offline for a
+// household, office, campus, or carrier-grade NAT address.
 //
 // For fully dynamic per-IP windows, replace the in-memory store with a Redis
 // store using rate-limit-redis and set windowMs via a store.init() callback.
@@ -91,9 +91,10 @@ function makeHandler(tier) {
       method:        req.method,
       offences:      abuseStatus?.offences || 0,
       points:        abuseStatus?.points || 0,
+      blacklistPoints: abuseStatus?.blacklistPoints || 0,
       backoffMs,
       retryAfterSec,
-      autoBlacklisted: Number(abuseStatus?.points || 0) >= AUTO_BLACKLIST_POINTS,
+      autoBlacklisted: Number(abuseStatus?.blacklistPoints || 0) >= AUTO_BLACKLIST_POINTS,
     });
 
     res.json({

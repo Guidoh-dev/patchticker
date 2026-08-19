@@ -330,7 +330,7 @@ router.post('/email/test', async (req, res, next) => {
 
 // ── POST /api/admin/pipeline/run — trigger full scan manually ─────────────────
 
-router.post('/pipeline/run', async (req, res, next) => {
+router.post('/pipeline/run', async (req, res, _next) => {
   try {
     const platform = req.body?.platform || null;
     const validPlatforms = Object.keys(scraperService.DETECTORS || {});

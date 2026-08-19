@@ -21,7 +21,7 @@ const validate           = require('../middleware/validate');
 const { standardLimiter, accountMutateLimiter } = require('../middleware/rateLimiter');
 const watchlistService   = require('../services/watchlistService');
 
-const { PLATFORM_KEYS: VALID_PLATFORMS, isValidPlatform } = require('../config/platformRegistry');
+const { PLATFORM_KEYS: VALID_PLATFORMS } = require('../config/platformRegistry');
 
 const PlatformParamSchema = z.object({
   platform: z.enum(VALID_PLATFORMS),

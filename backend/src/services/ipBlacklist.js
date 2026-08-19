@@ -112,7 +112,7 @@ function _matchesCidr(ip) {
  * Check whether an IP is blacklisted (by exact match or CIDR).
  *
  * @param {string} ip
- * @returns {{ blocked: boolean, reason: string|null, permanent: boolean, expiresAt: number|null }}
+ * @returns {{ blocked: boolean, reason: string|null, permanent: boolean, autoAdded: boolean, expiresAt: number|null }}
  */
 function isBlacklisted(ip) {
   const now = Date.now();
@@ -129,6 +129,7 @@ function isBlacklisted(ip) {
         blocked:    true,
         reason:     entry.reason,
         permanent:  entry.permanent,
+        autoAdded:  entry.autoAdded === true,
         expiresAt:  entry.expiresAt,
       };
     }
@@ -141,11 +142,12 @@ function isBlacklisted(ip) {
       blocked:   true,
       reason:    `IP ${ip} falls within blocked CIDR range ${cidrMatch.cidr}`,
       permanent: true,
+      autoAdded: false,
       expiresAt: null,
     };
   }
 
-  return { blocked: false, reason: null, permanent: false, expiresAt: null };
+  return { blocked: false, reason: null, permanent: false, autoAdded: false, expiresAt: null };
 }
 
 /**

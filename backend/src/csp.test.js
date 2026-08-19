@@ -8,31 +8,6 @@
 
 process.env.NODE_ENV = 'test';
 
-// Helper: parse a CSP header string into a directive → sources map
-function parseCSP(headerValue) {
-  const result = {};
-  headerValue.split(';').forEach(part => {
-    const trimmed = part.trim();
-    if (!trimmed) return;
-    const [directive, ...rest] = trimmed.split(/\s+/);
-    result[directive.toLowerCase()] = rest;
-  });
-  return result;
-}
-
-// Build a CSP string from Helmet's directive object format (camelCase keys)
-function helmetDirectivesToString(directives) {
-  return Object.entries(directives)
-    .filter(([, v]) => v !== undefined)
-    .map(([key, sources]) => {
-      const directive = key.replace(/([A-Z])/g, '-$1').toLowerCase();
-      return Array.isArray(sources) && sources.length === 0
-        ? directive
-        : `${directive} ${sources.join(' ')}`;
-    })
-    .join('; ');
-}
-
 describe('API CSP directives', () => {
   let buildApiCspDirectives;
 

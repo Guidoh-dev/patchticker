@@ -39,7 +39,6 @@ const { issueAccessToken }  = require('./services/tokenService');
 const {
   statusToRole,
   isActiveSubscription,
-  constructWebhookEvent,
   eventAlreadyProcessed,
   recordEvent,
   syncSubscription,

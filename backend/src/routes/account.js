@@ -17,7 +17,6 @@ const validate            = require('../middleware/validate');
 const { standardLimiter, accountMutateLimiter } = require('../middleware/rateLimiter');
 const userService         = require('../services/userService');
 const db                  = require('../config/db');
-const { decrypt }         = require('../utils/encrypt');
 const logger              = require('../utils/logger');
 
 router.use(requireAuth, standardLimiter);

@@ -200,11 +200,8 @@ describe('config/security', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('httpsRedirect', () => {
-  let httpsRedirect;
-
   beforeEach(() => {
     jest.resetModules();
-    httpsRedirect = require('./middleware/httpsRedirect');
   });
 
   it('is a no-op when HTTPS_REDIRECT is false', () => {
