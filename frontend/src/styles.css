@@ -6234,6 +6234,8 @@ body { overflow-x: hidden; }
 }
 
 .feed-send {
+  width: auto;
+  min-width: 44px;
   min-height: 44px;
   border: 0;
   border-radius: 12px;
