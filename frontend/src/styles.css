@@ -624,6 +624,11 @@ select.field-input { cursor: pointer; }
   min-width: 0;
 }
 
+.detail-hero-left > div {
+  flex: 1;
+  min-width: 0;
+}
+
 .detail-platform-icon {
   width: 64px !important;
   height: 64px !important;
@@ -5545,6 +5550,21 @@ body { overflow-x: hidden; }
 @media (max-width: 900px) {
   .detail-hero--brief { flex-direction: column; }
   .detail-decision-panel { flex-basis: auto; width: 100%; }
+  .detail-meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* The decision panel and four-column metadata grid need more room than the
+   generic detail breakpoint allows. Stack them before either can overlap. */
+@media (max-width: 1120px) {
+  .detail-hero--brief { flex-direction: column; }
+  .detail-decision-panel {
+    flex-basis: auto;
+    width: 100%;
+  }
+  .detail-meta-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
   .detail-meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
