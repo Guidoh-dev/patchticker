@@ -243,7 +243,13 @@ select.field-input { cursor: pointer; }
 .sub-banner-left   { display: flex; align-items: center; gap: 12px; }
 .sub-badge         { padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 700; background: var(--green-primary); color: #000; letter-spacing: .06em; }
 .sub-status        { color: var(--text-2); font-size: 12px; }
-.sub-upgrade-link  { color: var(--green-primary); font-weight: 600; }
+.sub-upgrade-link  {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--green-primary);
+  font-weight: 600;
+}
 .sub-manage-btn    { padding: 5px 12px; background: transparent; border: 1px solid rgba(22,201,110,.4); color: var(--green-primary); border-radius: var(--radius-sm); font-size: 12px; transition: all .15s; cursor: pointer; }
 .sub-manage-btn:hover { background: rgba(22,201,110,.1); }
 

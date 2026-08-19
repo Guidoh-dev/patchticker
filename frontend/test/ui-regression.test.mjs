@@ -222,6 +222,7 @@ test('auth, feed, and history controls meet the touch target floor', () => {
   assert.match(cssSource, /\.history-link\s*\{[^}]*min-width:\s*44px/s);
   assert.match(cssSource, /\.feed-input\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /\.feed-send\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.sub-upgrade-link\s*\{[^}]*display:\s*inline-flex;[^}]*min-height:\s*44px/s);
 });
 
 test('signup copy matches the enforced password policy and handles email outages', () => {
