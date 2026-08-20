@@ -1301,6 +1301,34 @@ function releaseLaneKey(update) {
   return `${update?.platform || 'unknown'}:${product}`;
 }
 
+function discoveryLaneKey(update) {
+  if (update?.platform !== 'Steam') return update?.platform || 'unknown';
+  if (update?.sourceKind === 'steam-game-news') return 'Steam:games';
+  if (update?.sourceKind === 'steam-client-news') return 'Steam:client';
+  if (update?.sourceKind === 'steamos-news' || /steam(?:os| deck)/i.test(`${update?.name || ''} ${update?.affects || ''}`)) return 'Steam:steamos';
+  return 'Steam:other';
+}
+
+function discoveryLaneLabel(update) {
+  const lane = discoveryLaneKey(update);
+  if (lane === 'Steam:games') return 'Steam Games';
+  if (lane === 'Steam:client') return 'Steam Client';
+  if (lane === 'Steam:steamos') return 'SteamOS';
+  return platformLabel(update?.platform);
+}
+
+function latestUniqueUpdates(updates, keyForUpdate) {
+  const seen = new Set();
+  return [...(updates || [])]
+    .sort((a, b) => new Date(b.releasedAt || 0) - new Date(a.releasedAt || 0))
+    .filter(update => {
+      const key = keyForUpdate(update);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 function searchTermGroups(raw) {
   const q = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!q) return [];
@@ -3094,15 +3122,19 @@ async function renderDashboard({ focusId = null } = {}) {
 
   function renderTapeAndLatest(updates, message = 'Live patch feed is reconnecting. Showing recent PatchTicker coverage.') {
     const newest = [...(updates || [])].sort((a, b) => new Date(b.releasedAt) - new Date(a.releasedAt));
+    const tapeReleases = latestUniqueUpdates(newest, discoveryLaneKey);
+    const featuredReleases = latestUniqueUpdates(newest, update => update?.platform || 'unknown').slice(0, 3);
 
     const tapeTrack = document.getElementById('update-tape-track');
     if (tapeTrack) {
-      const tapeItems = newest.length ? [...newest, ...newest, ...newest] : [];
+      // One current release per discovery lane keeps Steam volume from burying
+      // every other ecosystem while preserving a seamless repeating tape.
+      const tapeItems = tapeReleases.length ? [...tapeReleases, ...tapeReleases, ...tapeReleases] : [];
       tapeTrack.innerHTML = tapeItems.length
         ? tapeItems.map((u) => {
             const d = decisionForUpdate(u);
             const delta = u.status === 'stable' ? '↑' : u.status === 'avoid' ? '↓' : '•';
-            return `<a class="update-tape-item update-tape-item--${H(d.cls)}" href="#/updates/${H(u.id)}"><b>${H(platformLabel(u.platform))}</b><span>${H(scoreDisplay(u.score))}</span><em>${H(d.action)} ${delta}</em></a>`;
+            return `<a class="update-tape-item update-tape-item--${H(d.cls)}" href="#/updates/${H(u.id)}"><b>${H(discoveryLaneLabel(u))}</b><span>${H(scoreDisplay(u.score))}</span><em>${H(d.action)} ${delta}</em></a>`;
           }).join('')
         : `<span class="update-tape-empty">${H(message)}</span>`;
     }
@@ -3110,7 +3142,7 @@ async function renderDashboard({ focusId = null } = {}) {
     const featureGrid = document.getElementById('dash-feature-grid');
     if (featureGrid) {
       // These are an editorial preview, not a second copy of the full feed.
-      featureGrid.innerHTML = newest.slice(0, 3).map(renderMiniUpdateCard).join('') || `<p class="dash-empty-copy">${H(message)}</p>`;
+      featureGrid.innerHTML = featuredReleases.map(renderMiniUpdateCard).join('') || `<p class="dash-empty-copy">${H(message)}</p>`;
       refreshMotionEffects(featureGrid);
     }
     refreshMotionEffects(document.getElementById('section-tape') || document);

@@ -65,7 +65,7 @@ function stripSteamMarkup(value) {
     .replace(/\[\*\]/gi, '\n• ')
     .replace(/\[url=[^\]]+\]([\s\S]*?)\[\/url\]/gi, '$1')
     .replace(/\[img\][\s\S]*?\[\/img\]/gi, ' ')
-    .replace(/\{STEAM_CLAN_LOC_IMAGE\}\/\d+\/[^\s<\]]+/gi, ' ')
+    .replace(/\{STEAM_CLAN(?:_LOC)?_IMAGE\}(?:\/[^\s<\]]+)+/gi, ' ')
     .replace(/\[[^\]]+\]/g, ' ')
     .replace(/<\/(?:li|p|h[1-6]|div)>/gi, '\n')
     .replace(/<br\s*\/?\s*>/gi, '\n');

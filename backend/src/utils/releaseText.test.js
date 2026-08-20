@@ -13,9 +13,15 @@ test('repairs only mechanically identifiable vendor-feed artifacts', () => {
     .toBe('Gameplay: Kickoff rules changed.');
   expect(normaliseReleaseText('Seasons system and Season One With this release, seasons begin.'))
     .toBe('Seasons system and Season One: With this release, seasons begin.');
+  expect(normaliseReleaseText('{STEAM_CLAN_IMAGE}/3949769/banner.png Greetings Terrarians!'))
+    .toBe('Greetings Terrarians!');
 });
 
 test('normalizes release arrays and drops empty artifacts', () => {
-  expect(normaliseReleaseTextArray(['  Valid note. ', '{STEAM_CLAN_LOC_IMAGE}/1/a.png']))
+  expect(normaliseReleaseTextArray([
+    '  Valid note. ',
+    '{STEAM_CLAN_LOC_IMAGE}/1/a.png',
+    '{STEAM_CLAN_IMAGE}/3949769/banner.png',
+  ]))
     .toEqual(['Valid note.']);
 });

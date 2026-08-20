@@ -15,7 +15,7 @@ function preserveInitialCase(original, replacement) {
  */
 function normaliseReleaseText(value) {
   return String(value || '')
-    .replace(/\{STEAM_CLAN_LOC_IMAGE\}\/\d+\/[^\s<\]]+/gi, ' ')
+    .replace(/\{STEAM_CLAN(?:_LOC)?_IMAGE\}(?:\/[^\s<\]]+)+/gi, ' ')
     .replace(/\bintro\s+duced\b/gi, match => preserveInitialCase(match, 'introduced'))
     .replace(/\bintro\s+duces\b/gi, match => preserveInitialCase(match, 'introduces'))
     .replace(/\bintro\s+duce\b/gi, match => preserveInitialCase(match, 'introduce'))

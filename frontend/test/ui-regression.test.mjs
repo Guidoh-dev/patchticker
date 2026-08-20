@@ -228,8 +228,21 @@ test('default platform sections reveal deep history on demand instead of floodin
 });
 
 test('featured decisions remain an editorial preview instead of duplicating the full feed', () => {
-  assert.match(mainSource, /newest\.slice\(0, 3\)\.map\(renderMiniUpdateCard\)/);
+  assert.match(mainSource, /function latestUniqueUpdates\(updates, keyForUpdate\)/);
+  assert.match(mainSource, /const featuredReleases = latestUniqueUpdates\(newest, update => update\?\.platform \|\| 'unknown'\)\.slice\(0, 3\)/);
+  assert.match(mainSource, /featuredReleases\.map\(renderMiniUpdateCard\)/);
   assert.match(cssSource, /\.latest-decisions-grid\s*\{[^}]*grid-auto-flow:\s*column/s);
+});
+
+test('live tape balances ecosystems and gives Steam products distinct lanes', () => {
+  assert.match(mainSource, /function discoveryLaneKey\(update\)/);
+  assert.match(mainSource, /return 'Steam:games'/);
+  assert.match(mainSource, /return 'Steam:client'/);
+  assert.match(mainSource, /return 'Steam:steamos'/);
+  assert.match(mainSource, /const tapeReleases = latestUniqueUpdates\(newest, discoveryLaneKey\)/);
+  assert.match(mainSource, /\[\.\.\.tapeReleases, \.\.\.tapeReleases, \.\.\.tapeReleases\]/);
+  assert.match(mainSource, /H\(discoveryLaneLabel\(u\)\)/);
+  assert.doesNotMatch(mainSource, /const tapeItems = newest\.length/);
 });
 
 test('mobile cards prioritize the decision and collapse low-value repetition', () => {

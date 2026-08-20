@@ -103,10 +103,10 @@ describe('material Steam game update pipeline', () => {
 
   test('preserves decimal versions and removes Steam image placeholders', () => {
     const notes = __test.releaseNotesFromPost({
-      contents: '{STEAM_CLAN_LOC_IMAGE}/3703047/asset.png Version: Rocket League v2.72. GameplayKickoff rules changed. GeneralSnow Day maps can now use Soccar.',
+      contents: '{STEAM_CLAN_LOC_IMAGE}/3703047/asset.png {STEAM_CLAN_IMAGE}/3703047/banner.png Version: Rocket League v2.72. GameplayKickoff rules changed. GeneralSnow Day maps can now use Soccar.',
     });
 
-    expect(notes.plain).not.toContain('STEAM_CLAN_LOC_IMAGE');
+    expect(notes.plain).not.toMatch(/STEAM_CLAN(?:_LOC)?_IMAGE/);
     expect(notes.changelog).toContain('Version: Rocket League v2.72.');
     expect(notes.changelog).toContain('Kickoff rules changed.');
     expect(notes.changelog).toContain('Snow Day maps can now use Soccar.');
