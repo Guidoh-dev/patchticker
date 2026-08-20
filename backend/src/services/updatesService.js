@@ -6,6 +6,7 @@ const { URL } = require('node:url');
 const logger  = require('../utils/logger');
 const secrets = require('../config/secrets');
 const { validateScore, statusForScore } = require('../utils/updateScore');
+const { normaliseReleaseText, normaliseReleaseTextArray } = require('../utils/releaseText');
 const { getFreshnessSlaHours } = require('../config/platformRegistry');
 
 const MAX_UPDATE_AGE_DAYS = 240;
@@ -931,10 +932,16 @@ function analysisMethodForEvidence(evidence = []) {
 }
 
 function rowToUpdate(row) {
-  const changelog = jsonArray(row.changelog);
-  const knownIssues = jsonArray(row.known_issues);
-  const riskFactors = jsonArray(row.risk_factors);
-  const evidence = jsonArray(row.evidence);
+  const changelog = normaliseReleaseTextArray(jsonArray(row.changelog));
+  const knownIssues = normaliseReleaseTextArray(jsonArray(row.known_issues));
+  const riskFactors = jsonArray(row.risk_factors).map(item => ({
+    ...item,
+    text: item?.text ? normaliseReleaseText(item.text) : item?.text,
+  }));
+  const evidence = jsonArray(row.evidence).map(item => ({
+    ...item,
+    text: item?.text ? normaliseReleaseText(item.text) : item?.text,
+  }));
   const subreddits = jsonArray(row.subreddits);
   const officialEvidence = evidence.find(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`));
   const evidenceSizeBytes = evidence

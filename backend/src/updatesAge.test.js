@@ -146,6 +146,22 @@ test('verified evidence metadata is promoted for API clients without inference',
   });
 });
 
+test('legacy vendor-feed text is safely normalized when rows are hydrated', () => {
+  const update = updatesService.__test.rowToUpdate({
+    id: 'legacy-text', platform: 'Steam', name: 'Release', version: '1.0.0',
+    released_at: '2026-08-10', score: '7.1', impact_score: '4.0',
+    changelog: ['{STEAM_CLAN_LOC_IMAGE}/123/a.png The release intro duces maps.General fixes landed.'],
+    known_issues: ['Global modifiers:Apply to seasonal profiles.'],
+    risk_factors: [{ level: 'low', text: 'PrivacyPlayers may need to reconnect.' }],
+    evidence: [{ source: 'Steam', url: 'https://store.steampowered.com/news/app/1/view/2', text: 'Official notes intro duced this change.' }],
+  });
+
+  expect(update.changelog).toEqual(['The release introduces maps. General fixes landed.']);
+  expect(update.knownIssues).toEqual(['Global modifiers: Apply to seasonal profiles.']);
+  expect(update.riskFactors[0].text).toBe('Privacy: Players may need to reconnect.');
+  expect(update.evidence[0].text).toBe('Official notes introduced this change.');
+});
+
 test('invalid persisted scores are dropped with their derived status', () => {
   const update = updatesService.__test.rowToUpdate({
     id: 'invalid-score', platform: 'Windows', name: 'Malformed score fixture', version: '1.0',

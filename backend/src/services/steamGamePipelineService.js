@@ -27,6 +27,7 @@ const {
   requireValidScore,
   statusForScore,
 } = require('../utils/updateScore');
+const { normaliseReleaseText } = require('../utils/releaseText');
 const {
   STEAM_GAME_CANDIDATE_SNAPSHOT,
   STEAM_GAME_CANDIDATES,
@@ -101,7 +102,7 @@ function uniqueText(items, max = 12) {
   const seen = new Set();
   const out = [];
   for (const item of items) {
-    const clean = stripSteamMarkup(item).replace(/^[-•]\s*/, '').replace(/\n+/g, ' ').trim();
+    const clean = normaliseReleaseText(stripSteamMarkup(item).replace(/^[-•]\s*/, '').replace(/\n+/g, ' '));
     const key = clean.toLowerCase();
     if (clean.length < 18 || seen.has(key)) continue;
     seen.add(key);
