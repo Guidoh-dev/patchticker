@@ -5,10 +5,9 @@
 // WHAT THIS MODULE DOES
 // ─────────────────────
 // Tracks per-IP abuse signals and translates accumulated offences into
-// progressively longer rate-limit windows. Each time an IP is penalised
-// (rate limit hit, suspicious request, guard rejection), its offence count
-// is incremented. The resulting backoff window doubles with each offence,
-// capped at BACKOFF_MAX_MS.
+// progressively longer diagnostic backoff windows. A burst of responses from
+// one exhausted rate-limit bucket is one event, not dozens of new offences.
+// Concrete hostile signals remain individually counted.
 //
 // BACKOFF SCHEDULE (defaults)
 // ────────────────────────────
@@ -60,6 +59,7 @@ const BACKOFF_MULTIPLIER    = parseFloat(process.env.BACKOFF_MULTIPLIER  || '2')
 const BACKOFF_MAX_MS        = parseInt(process.env.BACKOFF_MAX_MS        || String(16 * 60 * 60 * 1000), 10); // 16 hr
 const AUTO_BLACKLIST_POINTS = parseInt(process.env.AUTO_BLACKLIST_POINTS || '20', 10);
 const DECAY_WINDOW_MS       = parseInt(process.env.ABUSE_DECAY_MS        || String(24 * 60 * 60 * 1000), 10); // 24 hr
+const RATE_LIMIT_SIGNAL_COOLDOWN_MS = parseInt(process.env.RATE_LIMIT_SIGNAL_COOLDOWN_MS || String(60 * 1000), 10);
 
 // Signal types and their point weights. `points` drive diagnostics/backoff;
 // `blacklistPoints` require concrete hostile behavior before a full block.
@@ -83,6 +83,7 @@ const SIGNAL = Object.freeze({
 //   blacklistPoints: number — concrete hostile-signal weight only
 //   firstSeenAt:  number   — ms timestamp of first recorded signal
 //   lastSignalAt: number   — ms timestamp of most recent signal
+//   lastRateLimitAt: number — start of the most recent deduplicated 429 burst
 //   signals:      string[] — ring buffer of last 20 signal names (for diagnostics)
 // }
 
@@ -128,6 +129,7 @@ function _getOrCreate(ip) {
       blacklistPoints: 0,
       firstSeenAt:  Date.now(),
       lastSignalAt: Date.now(),
+      lastRateLimitAt: 0,
       signals:      [],
     };
     _records.set(ip, record);
@@ -153,6 +155,24 @@ function recordSignal(ip, signal, meta = {}) {
   const normIp  = normaliseIp(ip);
   const record  = _getOrCreate(normIp);
   const now     = Date.now();
+
+  // express-rate-limit calls its handler for every request that arrives after
+  // a bucket is exhausted. Those responses belong to the same limiter event;
+  // counting each one made a short concurrent burst look like days of abuse.
+  if (signal.name === SIGNAL.RATE_LIMIT_HIT.name
+      && record.lastRateLimitAt > 0
+      && now - record.lastRateLimitAt < RATE_LIMIT_SIGNAL_COOLDOWN_MS) {
+    return {
+      offences: record.offences,
+      points: record.points,
+      blacklistPoints: record.blacklistPoints,
+      backoffMs: computeBackoffMs(record.offences),
+      autoBlacklisted: false,
+      deduplicated: true,
+    };
+  }
+
+  if (signal.name === SIGNAL.RATE_LIMIT_HIT.name) record.lastRateLimitAt = now;
 
   record.offences++;
   record.points       += signal.points;
@@ -192,6 +212,7 @@ function recordSignal(ip, signal, meta = {}) {
     blacklistPoints: record.blacklistPoints,
     backoffMs,
     autoBlacklisted,
+    deduplicated: false,
   };
 }
 
@@ -272,5 +293,6 @@ module.exports = {
   _resetAll,
   SIGNAL,
   BASE_WINDOW_MS,
+  RATE_LIMIT_SIGNAL_COOLDOWN_MS,
   AUTO_BLACKLIST_POINTS,
 };

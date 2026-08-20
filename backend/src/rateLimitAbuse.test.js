@@ -112,13 +112,15 @@ describe('ipAbuseService', () => {
   // ── recordSignal ──────────────────────────────────────────────────────────
 
   describe('recordSignal', () => {
-    it('increments offence count on each call', () => {
+    it('deduplicates concurrent rate-limit responses into one offence', () => {
       const ip = '10.0.0.1';
       const r1 = service.recordSignal(ip, service.SIGNAL.RATE_LIMIT_HIT, {});
       expect(r1.offences).toBe(1);
+      expect(r1.deduplicated).toBe(false);
 
       const r2 = service.recordSignal(ip, service.SIGNAL.RATE_LIMIT_HIT, {});
-      expect(r2.offences).toBe(2);
+      expect(r2.offences).toBe(1);
+      expect(r2.deduplicated).toBe(true);
     });
 
     it('accumulates points based on signal weight', () => {
@@ -132,9 +134,10 @@ describe('ipAbuseService', () => {
 
     it('returns monotonically increasing backoffMs across offences', () => {
       const ip = '10.0.0.3';
+      const diagnosticSignal = { name: 'DIAGNOSTIC', points: 1, blacklistPoints: 0 };
       let prev = 0;
       for (let i = 0; i < 5; i++) {
-        const r = service.recordSignal(ip, service.SIGNAL.RATE_LIMIT_HIT, {});
+        const r = service.recordSignal(ip, diagnosticSignal, {});
         expect(r.backoffMs).toBeGreaterThanOrEqual(prev);
         prev = r.backoffMs;
       }
@@ -153,9 +156,10 @@ describe('ipAbuseService', () => {
       for (let i = 0; i < service.AUTO_BLACKLIST_POINTS * 3; i++) {
         result = service.recordSignal(ip, service.SIGNAL.RATE_LIMIT_HIT, {});
       }
-      expect(result.points).toBeGreaterThanOrEqual(service.AUTO_BLACKLIST_POINTS);
+      expect(result.points).toBe(1);
       expect(result.blacklistPoints).toBe(0);
       expect(result.autoBlacklisted).toBe(false);
+      expect(result.deduplicated).toBe(true);
       expect(require('./services/ipBlacklist').isBlacklisted(ip).blocked).toBe(false);
     });
 
@@ -200,8 +204,9 @@ describe('ipAbuseService', () => {
 
     it('keeps only the last 20 signals in the ring buffer', () => {
       const ip = '10.0.0.8';
+      const diagnosticSignal = { name: 'DIAGNOSTIC', points: 1, blacklistPoints: 0 };
       for (let i = 0; i < 25; i++) {
-        service.recordSignal(ip, service.SIGNAL.RATE_LIMIT_HIT, {});
+        service.recordSignal(ip, diagnosticSignal, {});
       }
       const status = service.getStatus(ip);
       expect(status.signals.length).toBe(20);
@@ -487,34 +492,25 @@ describe('Rate limiter (integration)', () => {
     expect(limited.body.error).toMatch(/rating requests/i);
   });
 
-  it('returns 429 with Retry-After header after limit is exhausted', async () => {
-    // The standard limiter allows 100 req/15min.
-    // We fire requests with a unique IP that has been pre-seeded with enough
-    // abuse signals to be on its 2nd offence (backoffMs = 30min).
-    // Rather than making 100+ HTTP requests, we test the handler directly.
-    const { makeHandler: _makeHandler } = jest.requireActual('./middleware/rateLimiter');
-
-    // Instead, verify the handler produces correct structure through ipAbuseService
-    // by inspecting what recordSignal returns for a fresh vs. repeat offender.
+  it('treats a burst of exhausted requests as one diagnostic offence', async () => {
     const { recordSignal, SIGNAL, BASE_WINDOW_MS } = require('./services/ipAbuseService');
     const testIp = '10.20.30.40';
 
     const r1 = recordSignal(testIp, SIGNAL.RATE_LIMIT_HIT, { tier: 'standard' });
     expect(r1.offences).toBe(1);
-    expect(r1.backoffMs).toBe(BASE_WINDOW_MS);     // first offence = base window
+    expect(r1.backoffMs).toBe(BASE_WINDOW_MS);
 
     const r2 = recordSignal(testIp, SIGNAL.RATE_LIMIT_HIT, { tier: 'standard' });
-    expect(r2.offences).toBe(2);
-    expect(r2.backoffMs).toBe(BASE_WINDOW_MS * 2); // second = 2x
+    expect(r2.offences).toBe(1);
+    expect(r2.backoffMs).toBe(BASE_WINDOW_MS);
+    expect(r2.deduplicated).toBe(true);
   });
 
-  it('Retry-After header value matches backoff window in seconds', async () => {
-    // Confirm the handler sets Retry-After = ceil(backoffMs / 1000)
-    const { computeBackoffMs } = require('./services/ipAbuseService');
-    const backoffMs = computeBackoffMs(3); // 3 offences = 4x base = 60min
-    const expectedRetryAfterSec = Math.ceil(backoffMs / 1000);
-    // Should be 3600 seconds (60 min)
-    expect(expectedRetryAfterSec).toBe(60 * 60);
+  it('Retry-After reflects the real limiter reset instead of diagnostic backoff', async () => {
+    const { retryAfterSeconds } = require('./middleware/rateLimiter').__test;
+    const now = Date.now();
+    expect(retryAfterSeconds({ rateLimit: { resetTime: new Date(now + 60_000) } }, { windowMs: 900_000 })).toBeGreaterThanOrEqual(59);
+    expect(retryAfterSeconds({}, { windowMs: 60_000 })).toBe(60);
   });
 
   it('records exactly one abuse offence for one limiter response', async () => {
@@ -722,11 +718,11 @@ describe('IP normalisation in abuse tracking', () => {
     expect(status.points).toBe(service.SIGNAL.SUSPICIOUS.points);
   });
 
-  it('counts signals from both ::1 and 127.0.0.1 towards the same offence total', () => {
+  it('deduplicates one rate-limit burst across equivalent loopback forms', () => {
     service.recordSignal('::1', service.SIGNAL.RATE_LIMIT_HIT, {});
     service.recordSignal('127.0.0.1', service.SIGNAL.RATE_LIMIT_HIT, {});
     const status = service.getStatus('127.0.0.1');
-    expect(status.offences).toBe(2);
+    expect(status.offences).toBe(1);
   });
 });
 

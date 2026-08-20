@@ -18,10 +18,10 @@
 // EXPONENTIAL BACKOFF
 // ────────────────────
 // Each limiter uses a dynamic `windowMs` via a `skip` + handler pattern.
-// On a 429, abuseDetector (which wraps res.status) records a RATE_LIMIT_HIT
-// signal against the IP via ipAbuseService. The service tracks offences and
-// returns a progressively longer backoff window each time the same IP hits a
-// limit again:
+// On a 429, abuseDetector (which wraps res.status) records a deduplicated
+// RATE_LIMIT_HIT signal against the IP via ipAbuseService. Concrete hostile
+// signals retain escalating diagnostics, while the client-facing Retry-After
+// always reflects the actual limiter bucket reset:
 //
 //   Offence 1 → 15 min   (base window)
 //   Offence 2 → 30 min
@@ -41,11 +41,10 @@
 // True per-IP dynamic windows require a custom store (e.g. Redis) that expires
 // keys at the per-IP backoff interval.
 //
-// Our approach: the handler logs the backoff window for the offending IP and
-// the Retry-After header is set to reflect it. Automatic blacklisting remains
-// reserved for concrete scanner, request-guard, or authentication-abuse
-// evidence; repeated 429 responses cannot take the public site offline for a
-// household, office, campus, or carrier-grade NAT address.
+// Our approach: the handler logs the diagnostic backoff for the offending IP,
+// but the Retry-After header reflects express-rate-limit's real reset time.
+// Automatic blacklisting remains reserved for concrete scanner, request-guard,
+// or authentication-abuse evidence.
 //
 // For fully dynamic per-IP windows, replace the in-memory store with a Redis
 // store using rate-limit-redis and set windowMs via a store.init() callback.
@@ -79,10 +78,11 @@ function makeHandler(tier) {
     // auto-blacklist.
     res.status(429);
     const abuseStatus = getStatus(ip);
-    const backoffMs = getBackoffMs(ip);
+    const diagnosticBackoffMs = getBackoffMs(ip);
 
-    // Retry-After: IP's current backoff window in seconds
-    const retryAfterSec = Math.ceil(backoffMs / 1000);
+    // Tell clients when this limiter actually resets. Returning the diagnostic
+    // abuse backoff here could advertise a 16-hour wait for a one-minute bucket.
+    const retryAfterSec = retryAfterSeconds(req, options);
     res.set('Retry-After', String(retryAfterSec));
 
     logger.warn(`Rate limit exceeded [${tier}]`, {
@@ -92,7 +92,7 @@ function makeHandler(tier) {
       offences:      abuseStatus?.offences || 0,
       points:        abuseStatus?.points || 0,
       blacklistPoints: abuseStatus?.blacklistPoints || 0,
-      backoffMs,
+      diagnosticBackoffMs,
       retryAfterSec,
       autoBlacklisted: Number(abuseStatus?.blacklistPoints || 0) >= AUTO_BLACKLIST_POINTS,
     });
@@ -103,6 +103,21 @@ function makeHandler(tier) {
       backoffOffences: abuseStatus?.offences || 0,
     });
   };
+}
+
+function retryAfterSeconds(req, options = {}) {
+  const resetTime = req?.rateLimit?.resetTime;
+  const resetAt = resetTime instanceof Date ? resetTime.getTime() : Number(resetTime);
+  if (Number.isFinite(resetAt) && resetAt > Date.now()) {
+    return Math.max(1, Math.ceil((resetAt - Date.now()) / 1000));
+  }
+
+  const windowMs = Number(options?.windowMs);
+  if (Number.isFinite(windowMs) && windowMs > 0) {
+    return Math.max(1, Math.ceil(windowMs / 1000));
+  }
+
+  return 60;
 }
 
 // ── Shared limiter options ────────────────────────────────────────────────────
@@ -277,5 +292,5 @@ module.exports = {
   ratingsReadLimiter,
   accountMutateLimiter,
   aiAnalysisLimiter,
-  __test: { makeHandler },
+  __test: { makeHandler, retryAfterSeconds },
 };
