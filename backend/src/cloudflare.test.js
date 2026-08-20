@@ -32,6 +32,15 @@ process.env.HCAPTCHA_ENABLED   = 'false';
 process.env.TRUST_PROXY        = '1';
 
 const request = require('supertest');
+const fs = require('fs');
+const path = require('path');
+
+test('Render production blueprint enables authoritative Cloudflare client IPs', () => {
+  const blueprint = fs.readFileSync(path.resolve(__dirname, '../../render.yaml'), 'utf8');
+  expect(blueprint).toMatch(
+    /- key: CLOUDFLARE_MODE[\s\S]*?value: "true"[\s\S]*?- key: CLOUDFLARE_VALIDATE_IPS[\s\S]*?value: "false"/
+  );
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. TRUST PROXY — req.ip resolves from X-Forwarded-For

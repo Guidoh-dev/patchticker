@@ -44,7 +44,9 @@ services:
       - key: HCAPTCHA_ENABLED
         value: "true"
       - key: CLOUDFLARE_MODE
-        value: "false"
+        # patchticker.app is proxied by Cloudflare. Use CF-Connecting-IP as the
+        # per-visitor key for throttling instead of Render's rotating edge hop.
+        value: "true"
       - key: CLOUDFLARE_VALIDATE_IPS
         value: "false"
       - key: DATABASE_URL
