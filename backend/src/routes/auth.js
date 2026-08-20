@@ -56,6 +56,7 @@ const { checkLockout, recordFailedAttempt, clearAttempts }
 const { setRefreshCookie, clearRefreshCookie, getRefreshToken }
   = require('../utils/cookies');
 const logger = require('../utils/logger');
+const securityConfig = require('../config/security');
 
 const {
   issueEmailVerificationToken,
@@ -71,6 +72,17 @@ const { sendVerificationEmail, sendPasswordResetEmail } = require('../services/e
 // Sets the pp-csrf cookie and returns the token value for the X-CSRF-Token header.
 router.get('/csrf-token', (req, res) => {
   sendCsrfToken(req, res);
+});
+
+// ── GET /api/auth/captcha-config ─────────────────────────────────────────────
+// The site key is public by design. Serving it from the running backend keeps
+// the widget and siteverify validation on exactly the same key after deploys.
+router.get('/captcha-config', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({
+    enabled: securityConfig.HCAPTCHA_ENABLED,
+    siteKey: securityConfig.HCAPTCHA_ENABLED ? securityConfig.HCAPTCHA_SITE_KEY : '',
+  });
 });
 
 // ── POST /api/auth/register ───────────────────────────────────────────────────

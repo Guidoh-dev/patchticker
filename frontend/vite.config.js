@@ -64,8 +64,6 @@ export default defineConfig(({ mode }) => {
       // Expose price IDs to index.html template substitution
       '__STRIPE_PRICE_MONTHLY__':  JSON.stringify(env.VITE_STRIPE_PRICE_MONTHLY  || ''),
       '__STRIPE_PRICE_ANNUAL__':   JSON.stringify(env.VITE_STRIPE_PRICE_ANNUAL   || ''),
-      // hCaptcha public site key — safe to expose in bundle
-      '__HCAPTCHA_SITE_KEY__':     JSON.stringify(env.VITE_HCAPTCHA_SITE_KEY     || ''),
     },
 
     server: {

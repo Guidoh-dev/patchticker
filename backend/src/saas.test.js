@@ -752,6 +752,13 @@ describe('15. Auth route smoke tests (HTTP)', () => {
     expect(typeof res.body.csrfToken).toBe('string');
   });
 
+  test('GET /api/auth/captcha-config returns runtime CAPTCHA state', async () => {
+    const res = await request(app).get('/api/auth/captcha-config');
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(res.body).toEqual({ enabled: false, siteKey: '' });
+  });
+
   test('POST /api/auth/register creates account and returns accessToken', async () => {
     const { cookie, token } = await getCsrf();
     const email = uniqueEmail();

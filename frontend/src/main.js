@@ -11,7 +11,7 @@
 
 import {
   register as apiRegister, login as apiLogin, logout as apiLogout,
-  getMe, verifyEmail as apiVerifyEmail, resendVerification,
+  getCaptchaConfig, getMe, verifyEmail as apiVerifyEmail, resendVerification,
   forgotPassword as apiForgotPassword, resetPassword as apiResetPassword,
   createCheckout, openBillingPortal, getBillingStatus,
   fetchUpdates, fetchSummary, submitBugReport,
@@ -44,7 +44,6 @@ import { SETUP_LENSES, filterUpdatesBySetup } from './filterLogic.js';
 // Role hierarchy:  free < pro < admin
 // Any role above 'free' gets no ads and no ad script.
 
-const HCAPTCHA_SITE_KEY = typeof __HCAPTCHA_SITE_KEY__ !== 'undefined' ? __HCAPTCHA_SITE_KEY__ : '';
 const STRIPE_PRICE_MONTHLY = typeof __STRIPE_PRICE_MONTHLY__ !== 'undefined' ? __STRIPE_PRICE_MONTHLY__ : '';
 const STRIPE_PRICE_ANNUAL = typeof __STRIPE_PRICE_ANNUAL__ !== 'undefined' ? __STRIPE_PRICE_ANNUAL__ : '';
 const ADSENSE_PUBLISHER_ID = 'ca-pub-5058946458366067';
@@ -585,7 +584,7 @@ function renderRegister() {
           <div class="field-group">
             <div class="h-captcha"
                  id="hcaptcha-widget"
-                 data-sitekey="${H(HCAPTCHA_SITE_KEY)}"
+                 data-sitekey=""
                  data-theme="${H(document.documentElement.dataset.theme || 'dark')}"
                  data-size="normal">
             </div>
@@ -607,30 +606,70 @@ function renderRegister() {
   const pwdInput  = document.getElementById('reg-password');
   const strength  = document.getElementById('pwd-strength');
 
-  // Render hCaptcha widget once the hcaptcha global is available.
-  // The async script tag in index.html sets window.hcaptcha when ready.
+  // Fetch the public site key from the running backend. Keeping one runtime
+  // source of truth prevents a stale build-time Vite key from producing tokens
+  // that the backend rejects with sitekey-secret-mismatch.
   let captchaWidgetId = null;
+  let captchaSiteKey = '';
+  let captchaEnabled = true;
+  let captchaConfigLoaded = false;
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Preparing secure signup…';
+
+  function showCaptchaConfigurationError(message) {
+    errorEl.textContent = message;
+    errorEl.classList.remove('hidden');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Create account';
+  }
+
   function mountCaptcha() {
-    if (!HCAPTCHA_SITE_KEY) {
-      errorEl.textContent = 'CAPTCHA is not configured. Add VITE_HCAPTCHA_SITE_KEY before enabling registration.';
-      errorEl.classList.remove('hidden');
-      submitBtn.disabled = true;
+    if (!captchaConfigLoaded || !captchaEnabled) return;
+    if (!captchaSiteKey) {
+      showCaptchaConfigurationError('Account verification is temporarily unavailable. Please try again shortly.');
       return;
     }
     if (typeof window.hcaptcha !== 'undefined' && captchaWidgetId === null) {
       captchaWidgetId = window.hcaptcha.render('hcaptcha-widget', {
-        sitekey: HCAPTCHA_SITE_KEY,
+        sitekey: captchaSiteKey,
         theme:   document.documentElement.dataset.theme || 'dark',
         size:    'normal',
       });
     }
   }
-  // Try immediately (script may already be loaded on second visit to page)
-  mountCaptcha();
+
+  getCaptchaConfig()
+    .then((config) => {
+      captchaEnabled = config?.enabled !== false;
+      captchaSiteKey = String(config?.siteKey || '').trim();
+      captchaConfigLoaded = true;
+
+      if (!captchaEnabled) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create account';
+        return;
+      }
+      if (!captchaSiteKey) {
+        showCaptchaConfigurationError('Account verification is temporarily unavailable. Please try again shortly.');
+        return;
+      }
+
+      mountCaptcha();
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Create account';
+    })
+    .catch(() => {
+      captchaConfigLoaded = true;
+      showCaptchaConfigurationError('Account verification is temporarily unavailable. Please try again shortly.');
+    });
+
   // hCaptcha loads async; poll briefly so registration works even if this view mounts first.
   const captchaPoll = window.setInterval(() => {
     mountCaptcha();
-    if (captchaWidgetId !== null || !HCAPTCHA_SITE_KEY) window.clearInterval(captchaPoll);
+    if (captchaWidgetId !== null || (captchaConfigLoaded && !captchaEnabled)) {
+      window.clearInterval(captchaPoll);
+    }
   }, 250);
   window.setTimeout(() => window.clearInterval(captchaPoll), 10000);
 
@@ -661,14 +700,18 @@ function renderRegister() {
       // Collect the hCaptcha response token.
       // getResponse() returns '' if the user hasn't completed the challenge.
       let captchaToken = '';
-      if (typeof window.hcaptcha !== 'undefined' && captchaWidgetId !== null) {
+      if (captchaEnabled && typeof window.hcaptcha !== 'undefined' && captchaWidgetId !== null) {
         captchaToken = window.hcaptcha.getResponse(captchaWidgetId);
       }
-      if (!captchaToken) {
+      if (captchaEnabled && !captchaToken) {
         throw new Error('Please complete the CAPTCHA challenge before continuing.');
       }
 
-      const data = await apiRegister({ email, password, 'h-captcha-response': captchaToken });
+      const data = await apiRegister({
+        email,
+        password,
+        ...(captchaToken ? { 'h-captcha-response': captchaToken } : {}),
+      });
       setUser(data.user);
       captureAnalytics('signup_completed', { plan: data.user?.role || 'free' });
       if (data.verificationEmailSent === false) {
@@ -682,11 +725,12 @@ function renderRegister() {
       errorEl.textContent = err.message;
       errorEl.classList.remove('hidden');
       // Reset captcha so user can attempt again with a fresh token
-      if (typeof window.hcaptcha !== 'undefined' && captchaWidgetId !== null) {
+      if (captchaEnabled && typeof window.hcaptcha !== 'undefined' && captchaWidgetId !== null) {
         window.hcaptcha.reset(captchaWidgetId);
       }
     } finally {
-      submitBtn.disabled = false;
+      const captchaUnavailable = !captchaConfigLoaded || (captchaEnabled && !captchaSiteKey);
+      submitBtn.disabled = captchaUnavailable;
       submitBtn.textContent = 'Create account';
     }
   });

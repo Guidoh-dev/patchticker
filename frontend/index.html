@@ -33,9 +33,9 @@
   <!--
     hCaptcha widget script — loaded async, does not block page render.
     The widget is rendered into #hcaptcha-widget inside the register form
-    by main.js after the view mounts. The site key is injected at build
-    time by Vite (__HCAPTCHA_SITE_KEY__). The secret key never appears
-    here — backend only.
+    by main.js after the view mounts. The public site key is fetched from
+    the backend at runtime so widget and verifier cannot drift. The secret
+    key never appears here — backend only.
   -->
   <script src="https://js.hcaptcha.com/1/api.js?render=explicit" async defer></script>
 

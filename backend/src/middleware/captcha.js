@@ -26,7 +26,7 @@
 // ENVIRONMENT VARIABLES
 // ──────────────────────
 //   HCAPTCHA_SECRET_KEY   — server-side secret from hcaptcha.com dashboard
-//   HCAPTCHA_SITE_KEY     — public site key (passed to frontend via Vite env)
+//   HCAPTCHA_SITE_KEY     — public site key (served to the frontend at runtime)
 //   HCAPTCHA_MIN_SCORE    — minimum score to pass (0.0–1.0, default 0.5)
 //                           hCaptcha Enterprise only; standard always returns 1.0
 //   HCAPTCHA_ENABLED      — 'false' to disable in all environments (for E2E tests)

@@ -54,6 +54,13 @@ test('anonymous session restore handles the backend no-session response quietly'
   assert.match(apiSource, /if \(res\.status === 204\) \{ clearAuth\(\); return false; \}/);
 });
 
+test('registration loads the hCaptcha site key from the runtime backend', () => {
+  assert.match(apiSource, /getCaptchaConfig\(\)[\s\S]*?\/auth\/captcha-config/);
+  assert.match(mainSource, /getCaptchaConfig\(\)[\s\S]*?captchaSiteKey = String\(config\?\.siteKey/);
+  assert.match(mainSource, /sitekey: captchaSiteKey/);
+  assert.doesNotMatch(mainSource, /__HCAPTCHA_SITE_KEY__/);
+});
+
 test('dashboard section links remain inside the hash router', () => {
   assert.doesNotMatch(mainSource, /href=["']#(?:section|category)-/);
   assert.match(mainSource, /data-scroll-target="section-latest"/);

@@ -65,8 +65,6 @@ services:
         sync: false
       - key: HCAPTCHA_SITE_KEY
         sync: false
-      - key: VITE_HCAPTCHA_SITE_KEY
-        sync: false
       - key: VITE_POSTHOG_ENABLED
         value: "true"
       - key: VITE_POSTHOG_KEY

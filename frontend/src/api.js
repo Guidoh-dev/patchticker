@@ -98,6 +98,9 @@ async function request(path, options = {}) {
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
+export async function getCaptchaConfig() {
+  return request('/auth/captcha-config', { skipAuth: true, skipCsrf: true });
+}
 export async function register({ email, password, confirmPassword, ...rest }) {
   const body = {
     email,
