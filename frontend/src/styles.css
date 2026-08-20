@@ -5713,6 +5713,130 @@ body { overflow-x: hidden; }
   border-left: 1px solid var(--border);
 }
 
+.dash-layout,
+.dash-aside {
+  transition: grid-template-columns 220ms ease, width 220ms ease, padding 220ms ease;
+}
+
+.dash-layout.is-aside-collapsed {
+  grid-template-columns: minmax(0, 1fr) 52px;
+}
+
+.dash-aside-toolbar {
+  position: sticky;
+  top: -18px;
+  z-index: 12;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+  padding: 0 0 12px;
+  background: var(--bg);
+}
+
+.dash-aside-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-2);
+}
+
+.dash-aside-tab,
+.dash-aside-collapse,
+.dash-aside-open {
+  min-height: 38px;
+  border: 0;
+  color: var(--text-2);
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.dash-aside-tab {
+  padding: 8px 7px;
+  border-radius: 9px;
+}
+
+.dash-aside-tab:hover,
+.dash-aside-tab:focus-visible,
+.dash-aside-tab.active {
+  color: var(--text);
+  background: var(--bg-3);
+}
+
+.dash-aside-tab.active {
+  color: var(--green-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green-primary) 35%, var(--border));
+}
+
+.dash-aside-collapse {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  font-size: 17px;
+}
+
+.dash-aside-collapse:hover,
+.dash-aside-collapse:focus-visible,
+.dash-aside-open:hover,
+.dash-aside-open:focus-visible {
+  color: var(--green-primary);
+  border-color: color-mix(in srgb, var(--green-primary) 50%, var(--border));
+}
+
+.dash-aside-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.dash-aside-pane[hidden] {
+  display: none;
+}
+
+.dash-aside-open {
+  display: none;
+}
+
+.dash-aside.is-collapsed {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12px 6px;
+  overflow: hidden;
+}
+
+.dash-aside.is-collapsed .dash-aside-toolbar,
+.dash-aside.is-collapsed .dash-aside-pane {
+  display: none;
+}
+
+.dash-aside.is-collapsed .dash-aside-open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 40px;
+  min-height: 126px;
+  padding: 10px 5px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-2);
+}
+
+.dash-aside-open b {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  letter-spacing: .08em;
+  white-space: nowrap;
+}
+
 .dash-main {
   padding: clamp(16px, 2vw, 26px);
 }
@@ -8025,6 +8149,9 @@ html[data-theme="light"] .dash-side-copy { color: var(--text-2); }
     min-height: 0;
     overflow: hidden;
   }
+  body.dashboard-shell-active .dash-layout.is-aside-collapsed {
+    grid-template-columns: minmax(0, 1fr) 52px;
+  }
   body.dashboard-shell-active .dash-main,
   body.dashboard-shell-active .dash-aside {
     position: static;
@@ -8043,6 +8170,9 @@ html[data-theme="light"] .dash-side-copy { color: var(--text-2); }
 @media (min-width: 769px) and (max-width: 1280px) {
   body.dashboard-shell-active .dash-layout {
     grid-template-columns: minmax(0, 1fr) 300px;
+  }
+  body.dashboard-shell-active .dash-layout.is-aside-collapsed {
+    grid-template-columns: minmax(0, 1fr) 52px;
   }
   body.dashboard-shell-active .dash-aside {
     display: block;
@@ -8070,6 +8200,24 @@ html[data-theme="light"] .dash-side-copy { color: var(--text-2); }
     display: block;
     border: 0;
     overflow: visible !important;
+  }
+  body.dashboard-shell-active .dash-aside.is-collapsed {
+    display: block;
+    padding: 12px 14px;
+  }
+  body.dashboard-shell-active .dash-aside.is-collapsed .dash-aside-open {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    min-height: 44px;
+  }
+  body.dashboard-shell-active .dash-aside-open b {
+    writing-mode: horizontal-tb;
+    transform: none;
+  }
+  .dash-aside-toolbar {
+    position: static;
+    top: auto;
   }
   body.dashboard-shell-active .site-footer { display: block; }
   .dash-quickbar { top: var(--nav-h); }

@@ -481,6 +481,72 @@ function attachMotionEffects(root = document) {
   });
 }
 
+function attachDashboardAside() {
+  const layout = document.querySelector('.dash-layout');
+  const aside = document.querySelector('.dash-aside');
+  const collapseButton = document.getElementById('dash-aside-collapse');
+  const openButton = document.getElementById('dash-aside-open');
+  const tabs = [...document.querySelectorAll('[data-aside-tab]')];
+  const panes = [...document.querySelectorAll('[data-aside-pane]')];
+  if (!layout || !aside || !collapseButton || !openButton || !tabs.length) return;
+
+  const COLLAPSED_KEY = 'patchticker.dashboardAsideCollapsed';
+  const TAB_KEY = 'patchticker.dashboardAsideTab';
+  let activeTab = localStorage.getItem(TAB_KEY) === 'platforms' ? 'platforms' : 'live';
+  let collapsed = localStorage.getItem(COLLAPSED_KEY) === 'true';
+
+  const applyTab = (tabName, { focus = false } = {}) => {
+    activeTab = tabName === 'platforms' ? 'platforms' : 'live';
+    localStorage.setItem(TAB_KEY, activeTab);
+    aside.dataset.activeTab = activeTab;
+    tabs.forEach(tab => {
+      const selected = tab.dataset.asideTab === activeTab;
+      tab.classList.toggle('active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      if (selected && focus) tab.focus();
+    });
+    panes.forEach(pane => {
+      pane.hidden = pane.dataset.asidePane !== activeTab;
+    });
+    openButton.querySelector('b').textContent = activeTab === 'live' ? 'Live feed' : 'Platforms';
+  };
+
+  const applyCollapsed = (nextCollapsed, { focus = false } = {}) => {
+    collapsed = Boolean(nextCollapsed);
+    localStorage.setItem(COLLAPSED_KEY, String(collapsed));
+    layout.classList.toggle('is-aside-collapsed', collapsed);
+    aside.classList.toggle('is-collapsed', collapsed);
+    collapseButton.setAttribute('aria-expanded', String(!collapsed));
+    collapseButton.setAttribute('aria-label', collapsed ? 'Open side panel' : 'Hide side panel');
+    openButton.setAttribute('aria-expanded', String(!collapsed));
+    openButton.hidden = !collapsed;
+    if (focus) (collapsed ? openButton : tabs.find(tab => tab.dataset.asideTab === activeTab))?.focus();
+  };
+
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => {
+      if (collapsed) applyCollapsed(false);
+      applyTab(tab.dataset.asideTab);
+    });
+    tab.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      let nextIndex = index;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = tabs.length - 1;
+      applyTab(tabs[nextIndex].dataset.asideTab, { focus: true });
+    });
+  });
+  collapseButton.addEventListener('click', () => applyCollapsed(true, { focus: true }));
+  openButton.addEventListener('click', () => applyCollapsed(false, { focus: true }));
+
+  applyTab(activeTab);
+  applyCollapsed(collapsed);
+}
+
 function refreshMotionEffects(root = document) {
   requestAnimationFrame(() => attachMotionEffects(root));
 }
@@ -2679,7 +2745,18 @@ async function renderDashboard({ focusId = null } = {}) {
           </section>
         </main>
 
-        <aside class="dash-aside" aria-label="Live signals and service list">
+        <aside class="dash-aside" aria-label="Live signals and tracked platforms" data-active-tab="live">
+          <button class="dash-aside-open" id="dash-aside-open" type="button" aria-expanded="true" aria-controls="dash-aside-content" aria-label="Open side panel" hidden>
+            <span aria-hidden="true">←</span><b>Live feed</b>
+          </button>
+          <div class="dash-aside-toolbar" id="dash-aside-content">
+            <div class="dash-aside-tabs" role="tablist" aria-label="Side panel">
+              <button class="dash-aside-tab active" id="dash-aside-tab-live" type="button" role="tab" aria-selected="true" aria-controls="dash-aside-pane-live" data-aside-tab="live">Live feed</button>
+              <button class="dash-aside-tab" id="dash-aside-tab-platforms" type="button" role="tab" aria-selected="false" aria-controls="dash-aside-pane-platforms" data-aside-tab="platforms" tabindex="-1">Platforms</button>
+            </div>
+            <button class="dash-aside-collapse" id="dash-aside-collapse" type="button" aria-expanded="true" aria-controls="dash-aside-content" aria-label="Hide side panel"><span aria-hidden="true">→</span></button>
+          </div>
+          <div class="dash-aside-pane" id="dash-aside-pane-live" role="tabpanel" aria-labelledby="dash-aside-tab-live" data-aside-pane="live">
           <section class="dash-panel dash-live-feed">
             <div class="dash-panel-head dash-panel-head--compact">
               <div><p class="dash-section-kicker">Live feed</p><h2>Release wire + chat</h2></div>
@@ -2703,7 +2780,9 @@ async function renderDashboard({ focusId = null } = {}) {
               </div>
             ` : `<p class="dash-side-copy">Public reading stays open. ${isAuthed ? '<a href="#/verify-email">Verify your email</a>' : '<a href="#/login">Sign in</a>'} to join the chat.</p>`}
           </section>
+          </div>
 
+          <div class="dash-aside-pane" id="dash-aside-pane-platforms" role="tabpanel" aria-labelledby="dash-aside-tab-platforms" data-aside-pane="platforms" hidden>
           <section class="dash-panel topic-section" id="section-services">
             <div class="dash-panel-head dash-panel-head--compact">
               <div><p class="dash-section-kicker">Tracked services</p><h2>Coverage</h2></div>
@@ -2747,6 +2826,7 @@ async function renderDashboard({ focusId = null } = {}) {
           `}
 
           <div id="ad-slot-dashboard" class="ad-slot ad-slot--dashboard"></div>
+          </div>
         </aside>
       </div>
     </div><!-- /.dash-wrap -->
@@ -2756,6 +2836,7 @@ async function renderDashboard({ focusId = null } = {}) {
   attachNavHandlers(user);
   attachTopicScrollNav();
   attachQuickbarScrollBehavior();
+  attachDashboardAside();
   refreshMotionEffects();
   if (focusId) {
     requestAnimationFrame(() => {

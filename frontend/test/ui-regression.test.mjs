@@ -85,6 +85,18 @@ test('dashboard uses a two-column update workspace with no left settings rail', 
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-meta-grid\s*\{\s*grid-template-columns:\s*1fr;/);
 });
 
+test('dashboard right rail switches between live feed and platforms and can collapse', () => {
+  assert.ok(mainSource.includes('role="tablist" aria-label="Side panel"'));
+  assert.ok(mainSource.includes('data-aside-tab="live"'));
+  assert.ok(mainSource.includes('data-aside-tab="platforms"'));
+  assert.ok(mainSource.includes('function attachDashboardAside()'));
+  assert.ok(mainSource.includes('patchticker.dashboardAsideCollapsed'));
+  assert.ok(mainSource.includes("layout.classList.toggle('is-aside-collapsed', collapsed)"));
+  assert.ok(cssSource.includes('.dash-layout.is-aside-collapsed'));
+  assert.ok(cssSource.includes('.dash-aside.is-collapsed .dash-aside-open'));
+  assert.ok(cssSource.includes('flex-direction: row'));
+});
+
 test('the top search bar is the single dashboard navigation and filtering surface', () => {
   assert.match(mainSource, /aria-label="Search and filter update feed"/);
   assert.match(mainSource, /id="dash-top-search"/);
