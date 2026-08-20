@@ -1233,6 +1233,16 @@ const SEARCH_ALIASES = {
   rtx: ['rtx', 'nvidia', 'dlss', 'game ready'],
   radeon: ['radeon', 'amd', 'rx 7900', 'adrenalin'],
 };
+const EXACT_PLATFORM_SEARCHES = new Map([
+  ['amd', 'AMD'], ['nvidia', 'NVIDIA'], ['intel', 'Intel'],
+  ['apple', 'Apple'], ['ios', 'Apple'],
+  ['macos', 'macOS'], ['mac os', 'macOS'],
+  ['windows', 'Windows'], ['steam', 'Steam'], ['discord', 'Discord'],
+  ['battle.net', 'BattleNet'], ['battlenet', 'BattleNet'],
+  ['gog', 'GOG'], ['gog galaxy', 'GOG'],
+  ['switch', 'Switch'], ['nintendo switch', 'Switch'],
+  ['xbox', 'Xbox'], ['ps5', 'PS5'], ['playstation 5', 'PS5'],
+]);
 const FOLLOWABLE_STEAM_GAMES = STEAM_GAME_CANDIDATES;
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
@@ -1305,6 +1315,11 @@ function searchTermGroups(raw) {
   return [[q]];
 }
 
+function exactPlatformForSearch(raw) {
+  const query = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return EXACT_PLATFORM_SEARCHES.get(query) || null;
+}
+
 function updateSearchRelevance(update, query) {
   const exactQuery = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim();
   const groups = searchTermGroups(exactQuery);
@@ -1344,6 +1359,8 @@ function updateSearchRelevance(update, query) {
 }
 
 function searchMatchReason(update, query) {
+  const exactPlatform = exactPlatformForSearch(query);
+  if (exactPlatform && update?.platform === exactPlatform) return `Platform · ${platformLabel(exactPlatform)}`;
   const groups = searchTermGroups(query);
   const matchesAll = value => {
     const haystack = String(value || '').toLowerCase();
@@ -2779,11 +2796,16 @@ async function renderDashboard({ focusId = null } = {}) {
     if (platform) filtered = filtered.filter(u => u.platform === platform);
     if (status)   filtered = filtered.filter(u => u.status   === status);
     if (search) {
-      const groups = searchTermGroups(search);
-      filtered = filtered.filter(u => {
-        const haystack = searchableTextForUpdate(u);
-        return groups.every(group => group.some(term => haystack.includes(term)));
-      });
+      const exactPlatform = exactPlatformForSearch(search);
+      if (exactPlatform) {
+        filtered = filtered.filter(u => u.platform === exactPlatform);
+      } else {
+        const groups = searchTermGroups(search);
+        filtered = filtered.filter(u => {
+          const haystack = searchableTextForUpdate(u);
+          return groups.every(group => group.some(term => haystack.includes(term)));
+        });
+      }
     }
 
     const sorters = {
@@ -2845,7 +2867,10 @@ async function renderDashboard({ focusId = null } = {}) {
       el.className = 'dash-search-status is-error';
       return;
     }
-    el.textContent = _searchMode === 'server'
+    const exactPlatform = exactPlatformForSearch(_filterState.search);
+    el.textContent = exactPlatform
+      ? `Platform search · ${platformLabel(exactPlatform)} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
+      : _searchMode === 'server'
       ? `Database search · ${resultCount} ${resultCount === 1 ? 'match' : 'matches'}`
       : `${resultCount} cached ${resultCount === 1 ? 'match' : 'matches'}`;
     el.className = 'dash-search-status is-ready';

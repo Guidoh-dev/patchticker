@@ -101,6 +101,24 @@ describe('material Steam game update pipeline', () => {
     expect(notes.changelog.some(item => item.startsWith('Welcome to the update.'))).toBe(true);
   });
 
+  test('preserves decimal versions and removes Steam image placeholders', () => {
+    const notes = __test.releaseNotesFromPost({
+      contents: '{STEAM_CLAN_LOC_IMAGE}/3703047/asset.png Version: Rocket League v2.72. GameplayKickoff rules changed. GeneralSnow Day maps can now use Soccar.',
+    });
+
+    expect(notes.plain).not.toContain('STEAM_CLAN_LOC_IMAGE');
+    expect(notes.changelog).toContain('Version: Rocket League v2.72.');
+    expect(notes.changelog).toContain('Kickoff rules changed.');
+    expect(notes.changelog).toContain('Snow Day maps can now use Soccar.');
+  });
+
+  test('separates common publisher headings flattened into their first item', () => {
+    const plain = __test.stripSteamMarkup('Seasons system and Season OneWith this release, seasons begin. Seasonal characterAdded a separate profile. Global modifiersApply to all seasonal players.');
+    expect(plain).toContain('Season One\nWith this release');
+    expect(plain).toContain('Seasonal character\nAdded a separate profile');
+    expect(plain).toContain('Global modifiers\nApply to all seasonal players');
+  });
+
   test('rejects dated pre-release announcements while allowing live releases', () => {
     const material = `${list(Array.from({ length: 8 }, (_, i) => `New gameplay map and combat system ${i}`))}${' gameplay '.repeat(150)}`;
     expect(__test.classifyMaterialUpdate({

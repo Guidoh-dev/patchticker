@@ -123,6 +123,13 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(cssSource, /\.decision-match-reason\s*\{[^}]*color:\s*var\(--cyan\)/s);
 });
 
+test('exact platform searches exclude incidental mentions from other release notes', () => {
+  assert.match(mainSource, /const EXACT_PLATFORM_SEARCHES = new Map/);
+  assert.match(mainSource, /function exactPlatformForSearch\(raw\)/);
+  assert.match(mainSource, /filtered = filtered\.filter\(u => u\.platform === exactPlatform\)/);
+  assert.match(mainSource, /Platform search · \$\{platformLabel\(exactPlatform\)\}/);
+});
+
 test('multi-part searches use strict all-term matching without phrase-order failures', () => {
   assert.match(mainSource, /function searchTermGroups\(raw\)/);
   assert.match(mainSource, /tokens\.length > 1[\s\S]*?map\(token => \[token\]\)/);

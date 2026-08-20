@@ -64,6 +64,7 @@ function stripSteamMarkup(value) {
     .replace(/\[\*\]/gi, '\n• ')
     .replace(/\[url=[^\]]+\]([\s\S]*?)\[\/url\]/gi, '$1')
     .replace(/\[img\][\s\S]*?\[\/img\]/gi, ' ')
+    .replace(/\{STEAM_CLAN_LOC_IMAGE\}\/\d+\/[^\s<\]]+/gi, ' ')
     .replace(/\[[^\]]+\]/g, ' ')
     .replace(/<\/(?:li|p|h[1-6]|div)>/gi, '\n')
     .replace(/<br\s*\/?\s*>/gi, '\n');
@@ -73,12 +74,22 @@ function stripSteamMarkup(value) {
     // Valve's bounded news response can flatten heading markup completely
     // ("INTROWelcome" or "UPDATESGameplay"). Restore readable boundaries
     // before extracting sentences and changelog items.
-    .replace(/\b(CHANGES AND UPDATES|BUG FIXES|KNOWN ISSUES|PERFORMANCE AND STABILITY|PERFORMANCE & STABILITY|GAMEPLAY|GENERAL|VISUALS|AUDIO|INTRO)(?=[A-Z][a-z])/g, '$1\n')
+    .replace(/\b(CHANGES AND UPDATES|BUG FIXES|KNOWN ISSUES|PERFORMANCE AND STABILITY|PERFORMANCE & STABILITY|GAMEPLAY|GENERAL|VISUALS|AUDIO|INTRO)(?=[A-Z][a-z])/gi, '\n$1\n')
+    .replace(/\b(Seasons? system(?: and Season One)?|Seasonal character|Global season modifiers|Global modifiers)(?=[A-Z][a-z])/g, '\n$1\n')
     .replace(/\b([A-Z][A-Z0-9 &/:'’()-]{2,}?)(?=[A-Z][a-z])/g, '$1\n')
     .replace(/([.!?])(?=[A-Z][a-z])/g, '$1\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s*\n+/g, '\n')
     .trim();
+}
+
+function extractSteamSentences(value) {
+  // Protect dots inside versions and decimals before sentence segmentation.
+  // Publisher feeds frequently flatten "v2.72" into prose; treating that dot
+  // as punctuation yields misleading fragments such as "Version v2.".
+  const protectedText = String(value || '').replace(/(?<=\d)\.(?=\d)/g, '\uE000');
+  return (protectedText.match(/[^.!?\n]{25,360}[.!?]+/g) || [])
+    .map(sentence => sentence.replace(/\uE000/g, '.'));
 }
 
 function uniqueText(items, max = 12) {
@@ -107,11 +118,13 @@ function releaseNotesFromPost(post) {
     ...$('h1,h2,h3,h4,h5,h6').map((_, element) => $(element).text()).get(),
   ];
   const plain = stripSteamMarkup(raw);
-  const lines = plain.split('\n').map(line => line.replace(/^[-•]\s*/, '').trim());
+  const lines = plain.split('\n')
+    .map(line => line.replace(/^[-•]\s*/, '').trim())
+    .filter(line => line.length <= 520);
   // Valve's bounded `maxlength` response sometimes flattens publisher markup
   // into one long string. Sentence extraction preserves a useful, readable
   // breakdown instead of publishing a single 520-character blob.
-  const sentences = plain.match(/[^.!?\n]{25,360}[.!?]+/g) || [];
+  const sentences = extractSteamSentences(plain);
   const changelog = uniqueText([...headings, ...listItems, ...sentences, ...lines], 12);
   return {
     raw,
@@ -493,6 +506,7 @@ module.exports = {
     explicitPackageSizeBytes,
     knownIssuesFromNotes,
     releaseNotesFromPost,
+    extractSteamSentences,
     selectBestMaterialPost,
     stripSteamMarkup,
     toDatabaseUpdate,

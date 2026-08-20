@@ -27,6 +27,36 @@ const SEARCH_ALIAS_GROUPS = [
   ['switch', 'nintendo switch', 'switch oled', 'switch lite'],
 ];
 
+// Exact top-level platform labels are navigation intent, not prose searches.
+// Without this gate, a search for "NVIDIA" can surface a Steam game merely
+// because its release notes mention an NVIDIA-specific fix.
+const EXACT_PLATFORM_SEARCHES = new Map([
+  ['amd', 'AMD'],
+  ['nvidia', 'NVIDIA'],
+  ['intel', 'Intel'],
+  ['apple', 'Apple'],
+  ['ios', 'Apple'],
+  ['macos', 'macOS'],
+  ['mac os', 'macOS'],
+  ['windows', 'Windows'],
+  ['steam', 'Steam'],
+  ['discord', 'Discord'],
+  ['battle.net', 'BattleNet'],
+  ['battlenet', 'BattleNet'],
+  ['gog', 'GOG'],
+  ['gog galaxy', 'GOG'],
+  ['switch', 'Switch'],
+  ['nintendo switch', 'Switch'],
+  ['xbox', 'Xbox'],
+  ['ps5', 'PS5'],
+  ['playstation 5', 'PS5'],
+]);
+
+function exactPlatformForSearch(rawSearch) {
+  const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return EXACT_PLATFORM_SEARCHES.get(query) || null;
+}
+
 function expandSearchTerms(rawSearch) {
   const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!query) return [];
@@ -1058,7 +1088,12 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         params.push(status);
         query += ` AND status = $${params.length}`;
       }
-      const searchGroups = buildSearchTermGroups(search);
+      const searchPlatform = exactPlatformForSearch(search);
+      if (searchPlatform && (!platform || platform.toLowerCase() !== searchPlatform.toLowerCase())) {
+        params.push(searchPlatform);
+        query += ` AND LOWER(platform) = LOWER($${params.length})`;
+      }
+      const searchGroups = searchPlatform ? [] : buildSearchTermGroups(search);
       if (searchGroups.length) {
         const searchDocument = `LOWER(CONCAT_WS(' ',
           name, platform, version, COALESCE(display_version, ''),
@@ -1122,16 +1157,21 @@ async function getUpdates({ platform, status, sort, search } = {}) {
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
-    const groups = buildSearchTermGroups(search);
-    updates = updates.filter(u => {
-      const document = [
-        u.name, u.platform, u.version, u.internalVersion, u.productId,
-        u.affects, u.verdict, u.reasoning,
-        JSON.stringify(u.changelog || []), JSON.stringify(u.knownIssues || []),
-        JSON.stringify(u.riskFactors || []), JSON.stringify(u.evidence || []),
-      ].filter(Boolean).join(' ').toLowerCase();
-      return groups.every(group => group.some(term => document.includes(term)));
-    });
+    const searchPlatform = exactPlatformForSearch(search);
+    if (searchPlatform) {
+      updates = updates.filter(u => u.platform.toLowerCase() === searchPlatform.toLowerCase());
+    } else {
+      const groups = buildSearchTermGroups(search);
+      updates = updates.filter(u => {
+        const document = [
+          u.name, u.platform, u.version, u.internalVersion, u.productId,
+          u.affects, u.verdict, u.reasoning,
+          JSON.stringify(u.changelog || []), JSON.stringify(u.knownIssues || []),
+          JSON.stringify(u.riskFactors || []), JSON.stringify(u.evidence || []),
+        ].filter(Boolean).join(' ').toLowerCase();
+        return groups.every(group => group.some(term => document.includes(term)));
+      });
+    }
   }
   const sorters = {
     date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
@@ -1317,6 +1357,7 @@ module.exports = {
     analysisMethodForEvidence,
     expandSearchTerms,
     buildSearchTermGroups,
+    exactPlatformForSearch,
     searchRelevanceScore,
   },
 };

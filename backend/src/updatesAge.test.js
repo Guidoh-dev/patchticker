@@ -255,6 +255,31 @@ test('multi-part searches require every term while aliases remain alternatives',
   ]);
 });
 
+test('exact platform searches use platform equality instead of incidental note text', async () => {
+  expect(updatesService.__test.exactPlatformForSearch('NVIDIA')).toBe('NVIDIA');
+  expect(updatesService.__test.exactPlatformForSearch('Battle.net')).toBe('BattleNet');
+  expect(updatesService.__test.exactPlatformForSearch('nvidia driver')).toBeNull();
+
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'NVIDIA', sort: 'relevance' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$1\)/);
+  expect(sql).not.toContain('search_group_0');
+  expect(params).toEqual(['NVIDIA']);
+});
+
+test('an explicit platform filter and matching exact search do not add duplicate SQL params', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ platform: 'NVIDIA', search: 'nvidia' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect((sql.match(/LOWER\(platform\) = LOWER/g) || [])).toHaveLength(1);
+  expect(params).toEqual(['NVIDIA']);
+});
+
 test('search relevance favors direct product matches over incidental patch-note mentions', () => {
   const terms = updatesService.__test.expandSearchTerms('radeon');
   const amdRelease = {
