@@ -146,11 +146,17 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(cssSource, /\.decision-match-reason\s*\{[^}]*color:\s*var\(--cyan\)/s);
 });
 
-test('exact platform searches exclude incidental mentions from other release notes', () => {
+test('platform and release-lane search intent excludes incidental mentions', () => {
   assert.match(mainSource, /const EXACT_PLATFORM_SEARCHES = new Map/);
   assert.match(mainSource, /function exactPlatformForSearch\(raw\)/);
-  assert.match(mainSource, /filtered = filtered\.filter\(u => u\.platform === exactPlatform\)/);
-  assert.match(mainSource, /Platform search · \$\{platformLabel\(exactPlatform\)\}/);
+  assert.match(mainSource, /function searchIntentForQuery\(raw\)/);
+  assert.match(mainSource, /SEARCH_INTENT_STOPWORDS/);
+  assert.match(mainSource, /sourceKind: 'steam-client-news'/);
+  assert.match(mainSource, /sourceKind: 'steamos-news'/);
+  assert.match(mainSource, /if \(intent\.platform\) filtered = filtered\.filter\(u => u\.platform === intent\.platform\)/);
+  assert.match(mainSource, /if \(intent\.sourceKind\) filtered = filtered\.filter\(u => u\.sourceKind === intent\.sourceKind\)/);
+  assert.match(mainSource, /Platform search · \$\{platformLabel\(intent\.platform\)\}/);
+  assert.match(mainSource, /Release lane · \$\{intent\.sourceLabel\}/);
 });
 
 test('multi-part searches use strict all-term matching without phrase-order failures', () => {

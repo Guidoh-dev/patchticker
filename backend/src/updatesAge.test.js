@@ -278,12 +278,12 @@ test('multi-part searches require every term while aliases remain alternatives',
 
   const [sql, params] = mockQuery.mock.calls[0];
   expect(sql).toContain('search_group_0');
-  expect(sql).toContain('search_group_1');
-  expect(sql).toMatch(/search_group_0[\s\S]+AND EXISTS \([\s\S]+search_group_1/);
+  expect(sql).not.toContain('search_group_1');
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$1\)/);
   expect(params).toEqual([
-    ['intel'],
+    'Intel',
     ['8974'],
-    ['intel', '8974'],
+    ['8974'],
   ]);
 });
 
@@ -300,6 +300,51 @@ test('exact platform searches use platform equality instead of incidental note t
   expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$1\)/);
   expect(sql).not.toContain('search_group_0');
   expect(params).toEqual(['NVIDIA']);
+});
+
+test('search intent keeps platform modifiers and Steam lanes precise', () => {
+  expect(updatesService.__test.parseSearchIntent('NVIDIA latest driver')).toEqual(expect.objectContaining({
+    platform: 'NVIDIA', semanticQuery: '', sourceKind: null,
+  }));
+  expect(updatesService.__test.parseSearchIntent('AMD Adrenalin 26.8.1')).toEqual(expect.objectContaining({
+    platform: 'AMD', semanticQuery: 'adrenalin 26.8.1', sourceKind: null,
+  }));
+  expect(updatesService.__test.parseSearchIntent('iOS 26.6')).toEqual(expect.objectContaining({
+    platform: 'Apple', semanticQuery: '26.6', sourceKind: null,
+  }));
+  expect(updatesService.__test.parseSearchIntent('Steam client latest')).toEqual(expect.objectContaining({
+    platform: 'Steam', semanticQuery: '', sourceKind: 'steam-client-news',
+  }));
+  expect(updatesService.__test.parseSearchIntent('Steam Deck current')).toEqual(expect.objectContaining({
+    platform: 'Steam', semanticQuery: '', sourceKind: 'steamos-news',
+  }));
+  expect(updatesService.__test.parseSearchIntent('security update')).toEqual(expect.objectContaining({
+    platform: null, semanticQuery: 'security', sourceKind: null,
+  }));
+});
+
+test('date-sorted free-text searches bind only parameters present in SQL', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'terraria 1.4.5.7', sort: 'date_desc' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toContain('search_group_0');
+  expect(sql).toContain('search_group_1');
+  expect(sql).not.toContain('ranking_term');
+  expect(params).toEqual([['terraria'], ['1.4.5.7']]);
+});
+
+test('platform and source-lane search intent become explicit SQL constraints', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'Steam client latest', sort: 'relevance' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$1\)/);
+  expect(sql).toMatch(/source_kind = \$2/);
+  expect(sql).not.toContain('search_group_0');
+  expect(params).toEqual(['Steam', 'steam-client-news']);
 });
 
 test('an explicit platform filter and matching exact search do not add duplicate SQL params', async () => {

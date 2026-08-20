@@ -53,9 +53,75 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['playstation 5', 'PS5'],
 ]);
 
+const SEARCH_INTENT_STOPWORDS = new Set([
+  'latest', 'current', 'recent', 'new', 'newest',
+  'update', 'updates', 'patch', 'patches', 'release', 'releases',
+  'note', 'notes', 'version', 'versions', 'firmware', 'driver', 'drivers',
+  'software', 'system',
+]);
+
+const SOURCE_SEARCH_INTENTS = [
+  { aliases: ['steam desktop client', 'steam client'], platform: 'Steam', sourceKind: 'steam-client-news', label: 'Steam client' },
+  { aliases: ['steam deck', 'steamdeck', 'steam os', 'steamos'], platform: 'Steam', sourceKind: 'steamos-news', label: 'SteamOS / Steam Deck' },
+  { aliases: ['steam games', 'steam game'], platform: 'Steam', sourceKind: 'steam-game-news', label: 'Steam games' },
+];
+
 function exactPlatformForSearch(rawSearch) {
   const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
   return EXACT_PLATFORM_SEARCHES.get(query) || null;
+}
+
+function stripIntentStopwords(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ');
+}
+
+/**
+ * Separate explicit ecosystem/lane intent from the product, version, or issue
+ * terms that still need full-text matching. Platform aliases are matched only
+ * at the beginning so a query such as "crash on NVIDIA" can remain a broad
+ * cross-platform issue search.
+ */
+function parseSearchIntent(rawSearch) {
+  const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
+
+  for (const intent of SOURCE_SEARCH_INTENTS) {
+    const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
+      .find(candidate => query === candidate || query.startsWith(`${candidate} `));
+    if (!alias) continue;
+    return {
+      platform: intent.platform,
+      sourceKind: intent.sourceKind,
+      sourceLabel: intent.label,
+      semanticQuery: stripIntentStopwords(query.slice(alias.length).trim()),
+    };
+  }
+
+  const exactPlatform = exactPlatformForSearch(query);
+  if (exactPlatform) {
+    return { platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' };
+  }
+
+  const platformAlias = [...EXACT_PLATFORM_SEARCHES.entries()]
+    .sort(([a], [b]) => b.length - a.length)
+    .find(([alias]) => query.startsWith(`${alias} `));
+  if (platformAlias) {
+    const [alias, platform] = platformAlias;
+    return {
+      platform,
+      sourceKind: null,
+      sourceLabel: null,
+      semanticQuery: stripIntentStopwords(query.slice(alias.length).trim()),
+    };
+  }
+
+  return {
+    platform: null,
+    sourceKind: null,
+    sourceLabel: null,
+    semanticQuery: stripIntentStopwords(query),
+  };
 }
 
 function expandSearchTerms(rawSearch) {
@@ -1095,12 +1161,17 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         params.push(status);
         query += ` AND status = $${params.length}`;
       }
-      const searchPlatform = exactPlatformForSearch(search);
+      const searchIntent = parseSearchIntent(search);
+      const searchPlatform = searchIntent.platform;
       if (searchPlatform && (!platform || platform.toLowerCase() !== searchPlatform.toLowerCase())) {
         params.push(searchPlatform);
         query += ` AND LOWER(platform) = LOWER($${params.length})`;
       }
-      const searchGroups = searchPlatform ? [] : buildSearchTermGroups(search);
+      if (searchIntent.sourceKind) {
+        params.push(searchIntent.sourceKind);
+        query += ` AND source_kind = $${params.length}`;
+      }
+      const searchGroups = buildSearchTermGroups(searchIntent.semanticQuery);
       if (searchGroups.length) {
         const searchDocument = `LOWER(CONCAT_WS(' ',
           name, platform, version, COALESCE(display_version, ''),
@@ -1118,26 +1189,28 @@ async function getUpdates({ platform, status, sort, search } = {}) {
           WHERE POSITION(search_group_${index}.term IN ${searchDocument}) > 0
         )`).join(' AND ')}`;
 
-        const searchTerms = [...new Set(searchGroups.flat())];
-        params.push(searchTerms);
-        const patternParam = `$${params.length}`;
-        const fieldContainsTerm = field => `EXISTS (
-          SELECT 1 FROM unnest(${patternParam}::text[]) AS ranking_term(term)
-          WHERE POSITION(ranking_term.term IN LOWER(COALESCE(${field}, ''))) > 0
-        )`;
-        relevanceOrder = `GREATEST(
-          CASE WHEN ${fieldContainsTerm('name')} THEN 100 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('platform')} THEN 85 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm("CONCAT_WS(' ', version, COALESCE(display_version, ''))")} THEN 80 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('product_id')} THEN 80 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('affects')} THEN 60 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('verdict')} THEN 40 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('reasoning')} THEN 35 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('changelog::text')} THEN 30 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('known_issues::text')} THEN 30 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('risk_factors::text')} THEN 25 ELSE 0 END,
-          CASE WHEN ${fieldContainsTerm('evidence::text')} THEN 20 ELSE 0 END
-        ) DESC, `;
+        if (sort === 'relevance') {
+          const searchTerms = [...new Set(searchGroups.flat())];
+          params.push(searchTerms);
+          const patternParam = `$${params.length}`;
+          const fieldContainsTerm = field => `EXISTS (
+            SELECT 1 FROM unnest(${patternParam}::text[]) AS ranking_term(term)
+            WHERE POSITION(ranking_term.term IN LOWER(COALESCE(${field}, ''))) > 0
+          )`;
+          relevanceOrder = `GREATEST(
+            CASE WHEN ${fieldContainsTerm('name')} THEN 100 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('platform')} THEN 85 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm("CONCAT_WS(' ', version, COALESCE(display_version, ''))")} THEN 80 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('product_id')} THEN 80 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('affects')} THEN 60 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('verdict')} THEN 40 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('reasoning')} THEN 35 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('changelog::text')} THEN 30 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('known_issues::text')} THEN 30 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('risk_factors::text')} THEN 25 ELSE 0 END,
+            CASE WHEN ${fieldContainsTerm('evidence::text')} THEN 20 ELSE 0 END
+          ) DESC, `;
+        }
       }
 
       query += ` ORDER BY ${sort === 'relevance' && relevanceOrder ? relevanceOrder : ''}released_at DESC, created_at DESC LIMIT 100`;
@@ -1149,7 +1222,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
         score_desc: compareScores('desc'),
         score_asc:  compareScores('asc'),
-        relevance:  (a, b) => searchRelevanceScore(b, search) - searchRelevanceScore(a, search),
+        relevance:  (a, b) => searchRelevanceScore(b, searchIntent.semanticQuery || search) - searchRelevanceScore(a, searchIntent.semanticQuery || search),
       };
       if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
       return hydrateLiveRatings(updates);
@@ -1164,11 +1237,15 @@ async function getUpdates({ platform, status, sort, search } = {}) {
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
-    const searchPlatform = exactPlatformForSearch(search);
-    if (searchPlatform) {
-      updates = updates.filter(u => u.platform.toLowerCase() === searchPlatform.toLowerCase());
-    } else {
-      const groups = buildSearchTermGroups(search);
+    const searchIntent = parseSearchIntent(search);
+    if (searchIntent.platform) {
+      updates = updates.filter(u => u.platform.toLowerCase() === searchIntent.platform.toLowerCase());
+    }
+    if (searchIntent.sourceKind) {
+      updates = updates.filter(u => u.sourceKind === searchIntent.sourceKind);
+    }
+    const groups = buildSearchTermGroups(searchIntent.semanticQuery);
+    if (groups.length) {
       updates = updates.filter(u => {
         const document = [
           u.name, u.platform, u.version, u.internalVersion, u.productId,
@@ -1365,6 +1442,7 @@ module.exports = {
     expandSearchTerms,
     buildSearchTermGroups,
     exactPlatformForSearch,
+    parseSearchIntent,
     searchRelevanceScore,
   },
 };

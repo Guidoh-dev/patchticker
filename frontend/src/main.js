@@ -1245,6 +1245,17 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['switch', 'Switch'], ['nintendo switch', 'Switch'],
   ['xbox', 'Xbox'], ['ps5', 'PS5'], ['playstation 5', 'PS5'],
 ]);
+const SEARCH_INTENT_STOPWORDS = new Set([
+  'latest', 'current', 'recent', 'new', 'newest',
+  'update', 'updates', 'patch', 'patches', 'release', 'releases',
+  'note', 'notes', 'version', 'versions', 'firmware', 'driver', 'drivers',
+  'software', 'system',
+]);
+const SOURCE_SEARCH_INTENTS = [
+  { aliases: ['steam desktop client', 'steam client'], platform: 'Steam', sourceKind: 'steam-client-news', label: 'Steam client' },
+  { aliases: ['steam deck', 'steamdeck', 'steam os', 'steamos'], platform: 'Steam', sourceKind: 'steamos-news', label: 'SteamOS / Steam Deck' },
+  { aliases: ['steam games', 'steam game'], platform: 'Steam', sourceKind: 'steam-game-news', label: 'Steam games' },
+];
 const FOLLOWABLE_STEAM_GAMES = STEAM_GAME_CANDIDATES;
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
@@ -1350,10 +1361,53 @@ function exactPlatformForSearch(raw) {
   return EXACT_PLATFORM_SEARCHES.get(query) || null;
 }
 
+function stripSearchIntentStopwords(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ');
+}
+
+function searchIntentForQuery(raw) {
+  const query = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
+
+  for (const intent of SOURCE_SEARCH_INTENTS) {
+    const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
+      .find(candidate => query === candidate || query.startsWith(`${candidate} `));
+    if (!alias) continue;
+    return {
+      platform: intent.platform,
+      sourceKind: intent.sourceKind,
+      sourceLabel: intent.label,
+      semanticQuery: stripSearchIntentStopwords(query.slice(alias.length).trim()),
+    };
+  }
+
+  const exactPlatform = exactPlatformForSearch(query);
+  if (exactPlatform) return { platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' };
+
+  const platformAlias = [...EXACT_PLATFORM_SEARCHES.entries()]
+    .sort(([a], [b]) => b.length - a.length)
+    .find(([alias]) => query.startsWith(`${alias} `));
+  if (platformAlias) {
+    const [alias, platform] = platformAlias;
+    return {
+      platform,
+      sourceKind: null,
+      sourceLabel: null,
+      semanticQuery: stripSearchIntentStopwords(query.slice(alias.length).trim()),
+    };
+  }
+
+  return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: stripSearchIntentStopwords(query) };
+}
+
 function updateSearchRelevance(update, query) {
-  const exactQuery = String(query || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const intent = searchIntentForQuery(query);
+  const exactQuery = intent.semanticQuery;
   const groups = searchTermGroups(exactQuery);
-  if (!groups.length) return 0;
+  const intentScore = (intent.platform && update?.platform === intent.platform ? 200 : 0)
+    + (intent.sourceKind && update?.sourceKind === intent.sourceKind ? 200 : 0);
+  if (!groups.length) return intentScore;
   const fields = [
     [update?.name, 100],
     [releaseLaneLabel(update), 90],
@@ -1385,13 +1439,14 @@ function updateSearchRelevance(update, query) {
     const hasEveryGroup = groups.every(group => group.some(term => haystack.includes(term)));
     return Math.max(best, hasEveryGroup ? weight * 5 : 0);
   }, 0);
-  return Math.max(crossFieldCoverage, sameFieldStrength);
+  return intentScore + Math.max(crossFieldCoverage, sameFieldStrength);
 }
 
 function searchMatchReason(update, query) {
-  const exactPlatform = exactPlatformForSearch(query);
-  if (exactPlatform && update?.platform === exactPlatform) return `Platform · ${platformLabel(exactPlatform)}`;
-  const groups = searchTermGroups(query);
+  const intent = searchIntentForQuery(query);
+  const groups = searchTermGroups(intent.semanticQuery);
+  if (!groups.length && intent.sourceKind && update?.sourceKind === intent.sourceKind) return `Release lane · ${intent.sourceLabel}`;
+  if (!groups.length && intent.platform && update?.platform === intent.platform) return `Platform · ${platformLabel(intent.platform)}`;
   const matchesAll = value => {
     const haystack = String(value || '').toLowerCase();
     return groups.every(group => group.some(needle => haystack.includes(needle)));
@@ -2348,7 +2403,7 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
     .map(update => update.lastCheckedAt || update.updatedAt)
     .filter(Boolean)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
-  const matchedTermCount = search ? searchTermGroups(search).length : 0;
+  const matchedTermCount = search ? searchTermGroups(searchIntentForQuery(search).semanticQuery).length : 0;
   const facets = search ? `
     <div class="search-result-facets" aria-label="Narrow search results by platform">
       <span>Results by platform</span>
@@ -2830,11 +2885,11 @@ async function renderDashboard({ focusId = null } = {}) {
     filtered = filterUpdatesBySetup(filtered, setup);
     if (status)   filtered = filtered.filter(u => u.status   === status);
     if (search) {
-      const exactPlatform = exactPlatformForSearch(search);
-      if (exactPlatform) {
-        filtered = filtered.filter(u => u.platform === exactPlatform);
-      } else {
-        const groups = searchTermGroups(search);
+      const intent = searchIntentForQuery(search);
+      if (intent.platform) filtered = filtered.filter(u => u.platform === intent.platform);
+      if (intent.sourceKind) filtered = filtered.filter(u => u.sourceKind === intent.sourceKind);
+      const groups = searchTermGroups(intent.semanticQuery);
+      if (groups.length) {
         filtered = filtered.filter(u => {
           const haystack = searchableTextForUpdate(u);
           return groups.every(group => group.some(term => haystack.includes(term)));
@@ -2901,9 +2956,11 @@ async function renderDashboard({ focusId = null } = {}) {
       el.className = 'dash-search-status is-error';
       return;
     }
-    const exactPlatform = exactPlatformForSearch(_filterState.search);
-    el.textContent = exactPlatform
-      ? `Platform search · ${platformLabel(exactPlatform)} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
+    const intent = searchIntentForQuery(_filterState.search);
+    el.textContent = intent.sourceKind
+      ? `Release lane · ${intent.sourceLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
+      : intent.platform
+      ? `Platform search · ${platformLabel(intent.platform)} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
       : _searchMode === 'server'
       ? `Database search · ${resultCount} ${resultCount === 1 ? 'match' : 'matches'}`
       : `${resultCount} cached ${resultCount === 1 ? 'match' : 'matches'}`;
