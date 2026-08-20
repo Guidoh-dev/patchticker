@@ -70,10 +70,19 @@ test('update detail columns cannot force horizontal page overflow', () => {
   assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
   assert.match(cssSource, /\.detail-meta-grid > div:last-child\s*\{[^}]*grid-column:\s*1 \/ -1;/s);
   assert.match(cssSource, /\.detail-meta-grid > div:nth-child\(2\) strong\s*\{[^}]*white-space:\s*nowrap;/s);
-  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-hero-left\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*56px minmax\(0, 1fr\);[^}]*width:\s*100%/s);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-hero--brief\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*56px minmax\(0, 1fr\)/s);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-hero-left\s*\{\s*display:\s*contents;\s*\}/s);
   assert.match(cssSource, /\.detail-meta-grid,[\s\S]*?\.detail-source-timeline-wrap\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%/s);
   assert.match(cssSource, /\.detail-hero-left > div\s*\{[^}]*flex:\s*1;[^}]*min-width:\s*0;/s);
   assert.match(cssSource, /@media \(max-width: 1120px\)[\s\S]*?\.detail-hero--brief\s*\{[^}]*flex-direction:\s*column;[^}]*\}[\s\S]*?\.detail-decision-panel\s*\{[^}]*width:\s*100%/s);
+});
+
+test('mobile update details put the recommendation before metadata', () => {
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-hero--brief\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*56px minmax\(0, 1fr\)/s);
+  assert.match(cssSource, /\.detail-hero-left\s*\{\s*display:\s*contents;\s*\}/);
+  assert.match(cssSource, /\.detail-decision-panel\s*\{[^}]*grid-row:\s*3;/s);
+  assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-row:\s*4;/s);
+  assert.match(cssSource, /\.detail-decision-facts\s*\{\s*grid-template-columns:\s*repeat\(3,/);
 });
 
 test('update cards organize title, release date, package size, and rating without fabricated size data', () => {

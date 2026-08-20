@@ -11,7 +11,7 @@
 //   loginLimiter           10 req / 15 min  — login only (skipSuccessfulRequests)
 //   checkoutLimiter         5 req / 1 hr    — billing checkout (per user ID)
 //   voteLimiter            20 req / 1 hr    — vote cast/change/retract (per user ID)
-//   ratingsReadLimiter    180 failed req / 1 min — GET /ratings/:id (per IP, DB-backed)
+//   ratingsReadLimiter    180 req / 1 min — GET /ratings/:id (per IP, DB-backed)
 //   accountMutateLimiter   10 req / 1 hr    — password change, watchlist, webhooks (per user ID)
 //   aiAnalysisLimiter       3 req / 1 hr    — AI re-analysis per update per user ID
 //
@@ -221,7 +221,7 @@ const voteLimiter = rateLimit({
 });
 
 /**
- * Ratings read limiter — 180 failed requests / 1 min per IP for GET /api/ratings/:id.
+ * Ratings read limiter — 180 requests / 1 min per IP for GET /api/ratings/:id.
  * Tighter than standardLimiter because each request hits the DB.
  * Prevents scrapers/bots from running continuous aggregation queries.
  */
@@ -229,7 +229,9 @@ const ratingsReadLimiter = rateLimit({
   ...SHARED_OPTIONS,
   windowMs: 60 * 1000,   // 1 minute
   max:      parseInt(process.env.RATINGS_READ_LIMIT_MAX || '180', 10),
-  skipSuccessfulRequests: true,
+  // Every read reaches the aggregation path. Refunding successful responses
+  // made this limiter inert for the exact high-volume scraping it must stop.
+  skipSuccessfulRequests: false,
   message:  { error: 'Too many rating requests. Please slow down.' },
   handler:  makeHandler('ratings-read'),
 });

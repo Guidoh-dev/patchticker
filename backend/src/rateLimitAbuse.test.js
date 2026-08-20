@@ -462,6 +462,31 @@ describe('Rate limiter (integration)', () => {
     expect(res.headers['x-ratelimit-limit']).toBeUndefined();
   });
 
+  it('counts successful rating reads and rejects request 181', async () => {
+    const { ratingsReadLimiter } = require('./middleware/rateLimiter');
+    const limiterApp = express();
+    limiterApp.set('trust proxy', 1);
+    limiterApp.get('/ratings/:id', ratingsReadLimiter, (_req, res) => {
+      res.json({ data: { totalVotes: 0, score: null } });
+    });
+
+    const ip = '10.10.10.180';
+    for (let requestNumber = 1; requestNumber <= 180; requestNumber += 1) {
+      const response = await request(limiterApp)
+        .get('/ratings/test-update')
+        .set('X-Forwarded-For', ip);
+      expect(response.status).toBe(200);
+    }
+
+    const limited = await request(limiterApp)
+      .get('/ratings/test-update')
+      .set('X-Forwarded-For', ip);
+
+    expect(limited.status).toBe(429);
+    expect(limited.headers['retry-after']).toBeDefined();
+    expect(limited.body.error).toMatch(/rating requests/i);
+  });
+
   it('returns 429 with Retry-After header after limit is exhausted', async () => {
     // The standard limiter allows 100 req/15min.
     // We fire requests with a unique IP that has been pre-seeded with enough
