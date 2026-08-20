@@ -182,7 +182,9 @@ if (shouldServeFrontend && fs.existsSync(frontendIndex)) {
       if (path.basename(filePath) === 'index.html') {
         // The SPA shell points at fingerprinted JS/CSS assets. Cache-busting only
         // works if browsers revalidate index.html after each deployment.
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        // no-transform prevents CDN HTML rewriting (including automatic RUM
+        // beacon injection) so analytics remains controlled by our consent UI.
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, no-transform');
       } else if (cfg.isProd) {
         res.setHeader('Cache-Control', 'public, max-age=3600, immutable');
       }
@@ -191,7 +193,7 @@ if (shouldServeFrontend && fs.existsSync(frontendIndex)) {
 
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, no-transform');
     res.sendFile(frontendIndex);
   });
 

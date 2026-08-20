@@ -6,6 +6,15 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
+
+test('SPA HTML forbids CDN transformation and automatic analytics injection', () => {
+  const serverSource = fs.readFileSync(path.resolve(__dirname, 'server.js'), 'utf8');
+  const noTransformHeaders = serverSource.match(/no-cache, no-store, must-revalidate, no-transform/g) || [];
+  expect(noTransformHeaders).toHaveLength(2);
+});
+
 process.env.NODE_ENV = 'test';
 
 describe('API CSP directives', () => {
