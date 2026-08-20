@@ -185,6 +185,15 @@ test('search results expose staged platform facets, verification timing, and hon
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.search-result-facets\s*\{[^}]*overflow-x:\s*auto/s);
 });
 
+test('applying console, platform, or game filters lands on the rendered results', () => {
+  assert.match(mainSource, /function scrollAppliedResultsIntoView\(\)/);
+  assert.match(mainSource, /results\.querySelector\([\s\S]*?'\.filtered-feed-section, \.category-feed-section, \.empty-state'/);
+  assert.match(mainSource, /prefers-reduced-motion: reduce/);
+  assert.match(mainSource, /await runAuthoritativeSearch\(_filterState\.search\)/);
+  assert.match(mainSource, /scrollAppliedResultsIntoView\(\);[\s\S]*?return resultCount;/);
+  assert.match(cssSource, /\.updates-list--desk > \.filtered-feed-section,[\s\S]*?scroll-margin-top:\s*92px/s);
+});
+
 test('theme and tracked-game preferences use persistent local storage keys', () => {
   assert.match(mainSource, /patchticker\.theme/);
   assert.match(mainSource, /patchticker\.followedSteamGames/);

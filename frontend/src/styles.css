@@ -6225,6 +6225,13 @@ body { overflow-x: hidden; }
   display: grid;
   gap: 12px;
   margin-top: 14px;
+  scroll-margin-top: 92px;
+}
+
+.updates-list--desk > .filtered-feed-section,
+.updates-list--desk > .category-feed-section,
+.updates-list--desk > .empty-state {
+  scroll-margin-top: 92px;
 }
 
 .dash-aside .feed-messages {

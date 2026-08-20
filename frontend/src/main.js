@@ -3055,6 +3055,28 @@ async function renderDashboard({ focusId = null } = {}) {
     setDraftFilters({ platform: platform || '', setup: '' });
   }
 
+  function scrollAppliedResultsIntoView() {
+    const results = document.getElementById('updates-list');
+    if (!results) return;
+
+    // The patch desk also contains an editorial preview above the live result
+    // list. Land on the newly rendered result block so applying a console,
+    // platform, or game filter never leaves the user looking at stale cards.
+    const target = results.querySelector(
+      '.filtered-feed-section, .category-feed-section, .empty-state'
+    ) || results;
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({
+          behavior: reduceMotion ? 'auto' : 'smooth',
+          block: 'start',
+        });
+      });
+    });
+  }
+
   async function applyDraftFilters() {
     _filterState = { ..._draftFilterState };
     syncDraftFilterControls();
@@ -3066,13 +3088,17 @@ async function renderDashboard({ focusId = null } = {}) {
       has_search: Boolean(_filterState.search),
     });
 
+    let resultCount;
     if (_filterState.search && _filterState.searchMode === 'server') {
-      return runAuthoritativeSearch(_filterState.search);
+      resultCount = await runAuthoritativeSearch(_filterState.search);
+    } else {
+      resetServerSearch();
+      _searchMode = 'local';
+      resultCount = applyFilters();
     }
 
-    resetServerSearch();
-    _searchMode = 'local';
-    return applyFilters();
+    scrollAppliedResultsIntoView();
+    return resultCount;
   }
 
   function syncWatchButtons(platform) {
