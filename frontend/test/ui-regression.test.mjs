@@ -9,6 +9,7 @@ const mainSource = await readFile(resolve(root, 'src/main.js'), 'utf8');
 const cssSource = await readFile(resolve(root, 'src/styles.css'), 'utf8');
 const apiSource = await readFile(resolve(root, 'src/api.js'), 'utf8');
 const routerSource = await readFile(resolve(root, 'src/router.js'), 'utf8');
+const filterLogicSource = await readFile(resolve(root, 'src/filterLogic.js'), 'utf8');
 
 test('router resolves exact and dynamic update directories', () => {
   const updatesHandler = () => 'updates';
@@ -270,6 +271,13 @@ test('filter controls stage draft state and only update the feed through Apply',
   assert.match(mainSource, /if \(status\)\s+filtered = filtered\.filter/);
   assert.match(mainSource, /groups\.every\(group => group\.some\(term => haystack\.includes\(term\)\)\)/);
   assert.doesNotMatch(mainSource, /setTimeout\(\(\) => runAuthoritativeSearch/);
+});
+
+test('setup lenses use ecosystem OR filters instead of impossible all-term searches', () => {
+  assert.match(filterLogicSource, /const SETUP_LENSES = Object\.freeze/);
+  assert.match(filterLogicSource, /pc:\s*\{[^}]*platforms:\s*\['Windows', 'NVIDIA', 'AMD', 'Intel', 'Steam'/s);
+  assert.match(mainSource, /filtered = filterUpdatesBySetup\(filtered, setup\)/);
+  assert.doesNotMatch(mainSource, /data-lens="windows nvidia amd intel/);
 });
 
 test('dashboard uses independent desktop scrollers and native mobile page scroll', () => {

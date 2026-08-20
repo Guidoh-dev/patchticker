@@ -295,6 +295,7 @@ function toDatabaseUpdate(game, post, classification) {
   const gid = String(post.gid || '').replace(/\D/g, '');
   const version = `${game.appId}:${gid}`.slice(0, 64);
   const sourceUrl = trustedSteamNewsUrl(post, game.appId);
+  const checkedAt = new Date().toISOString();
   const knownIssues = knownIssuesFromNotes(classification.changelog);
   const statedSize = classification.packageSizeBytes;
   const sizeSentence = statedSize
@@ -307,6 +308,7 @@ function toDatabaseUpdate(game, post, classification) {
     text: `${stripSteamMarkup(post.title || 'Update')}; material signals: ${classification.signals.join(', ')}.`,
     dateBasis: 'published',
     releaseType: 'official-game-update',
+    checkedAt,
     publishedAt: publishedAt.toISOString(),
     steamAppId: game.appId,
     steamNewsGid: gid,

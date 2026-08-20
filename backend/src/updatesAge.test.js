@@ -162,6 +162,22 @@ test('legacy vendor-feed text is safely normalized when rows are hydrated', () =
   expect(update.evidence[0].text).toBe('Official notes introduced this change.');
 });
 
+test('official source check time takes precedence over unrelated row updates', () => {
+  const update = updatesService.__test.rowToUpdate({
+    id: 'source-freshness', platform: 'Windows', name: 'Release', version: 'KB1',
+    released_at: '2026-08-10', score: '7.5', impact_score: '4.0',
+    updated_at: '2026-08-11T11:30:00Z',
+    changelog: [], known_issues: [], risk_factors: [],
+    evidence: [{
+      source: 'Vendor', url: 'https://vendor.example/release',
+      checkedAt: '2026-08-11T10:00:00Z', releaseType: 'official-release',
+    }],
+  });
+
+  expect(update.lastCheckedAt).toBe('2026-08-11T10:00:00Z');
+  expect(update.updatedAt).toBe('2026-08-11T11:30:00Z');
+});
+
 test('invalid persisted scores are dropped with their derived status', () => {
   const update = updatesService.__test.rowToUpdate({
     id: 'invalid-score', platform: 'Windows', name: 'Malformed score fixture', version: '1.0',

@@ -1002,7 +1002,7 @@ function rowToUpdate(row) {
     evidence,
     sourceUrl:            officialEvidence?.url || evidence.find(e => e?.url)?.url || null,
     dateBasis:            officialEvidence?.dateBasis || 'released',
-    lastCheckedAt:        row.updated_at || officialEvidence?.checkedAt || row.created_at || null,
+    lastCheckedAt:        officialEvidence?.checkedAt || row.updated_at || row.created_at || null,
     officialSourceCount:  evidence.filter(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`)).length,
     sourceCheckSlaHours:  getFreshnessSlaHours(row.platform),
     securityCriticality:  row.security_criticality
@@ -1338,7 +1338,7 @@ async function getUpdateHistory(platform, limit = 20) {
         aiGenerated: r.ai_generated,
         evidence,
         dateBasis:   officialEvidence?.dateBasis || 'released',
-        lastCheckedAt: r.updated_at || officialEvidence?.checkedAt || r.created_at || null,
+        lastCheckedAt: officialEvidence?.checkedAt || r.updated_at || r.created_at || null,
       };
     }).filter(isUpdateDisplayable);
     return dedupeArticleReleases(updates).slice(0, Math.min(limit, 50));

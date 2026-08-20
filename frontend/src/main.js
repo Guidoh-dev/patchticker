@@ -24,6 +24,7 @@ import {
   openAnalyticsPreferences, syncAnalyticsIdentity,
 } from './analytics.js';
 import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCandidates.js';
+import { SETUP_LENSES, filterUpdatesBySetup } from './filterLogic.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -2442,10 +2443,10 @@ async function renderDashboard({ focusId = null } = {}) {
           <section class="dash-filter-card">
             <div class="dash-filter-head"><span>Setup lens</span></div>
             <div class="setup-lens-grid">
-              <button class="setup-lens active" type="button" data-lens="" data-label="Everything">Everything</button>
-              <button class="setup-lens" type="button" data-lens="windows nvidia amd intel steam discord battle.net gog galaxy" data-label="PC &amp; Steam">PC &amp; Steam</button>
-              <button class="setup-lens" type="button" data-lens="steam steamdeck steamos switch ps5 xbox" data-label="Console &amp; handheld">Console &amp; handheld</button>
-              <button class="setup-lens" type="button" data-lens="apple macos ios macbook" data-label="Apple devices">Apple devices</button>
+              <button class="setup-lens active" type="button" data-setup="">Everything</button>
+              <button class="setup-lens" type="button" data-setup="pc">PC &amp; Steam</button>
+              <button class="setup-lens" type="button" data-setup="console">Console &amp; handheld</button>
+              <button class="setup-lens" type="button" data-setup="apple">Apple devices</button>
             </div>
           </section>
 
@@ -2511,10 +2512,10 @@ async function renderDashboard({ focusId = null } = {}) {
                 <button class="chip" type="button" data-status="avoid">Avoid</button>
               </div>
               <div class="dash-lens-ribbon" aria-label="Setup lenses">
-                <button class="setup-lens active" type="button" data-lens="" data-label="Everything">Everything</button>
-                <button class="setup-lens" type="button" data-lens="windows nvidia amd intel steam discord battle.net gog galaxy" data-label="PC &amp; Steam">PC &amp; Steam</button>
-                <button class="setup-lens" type="button" data-lens="steam steamdeck steamos switch ps5 xbox" data-label="Console &amp; handheld">Console &amp; handheld</button>
-                <button class="setup-lens" type="button" data-lens="apple macos ios macbook" data-label="Apple devices">Apple devices</button>
+                <button class="setup-lens active" type="button" data-setup="">Everything</button>
+                <button class="setup-lens" type="button" data-setup="pc">PC &amp; Steam</button>
+                <button class="setup-lens" type="button" data-setup="console">Console &amp; handheld</button>
+                <button class="setup-lens" type="button" data-setup="apple">Apple devices</button>
               </div>
               <div class="dash-category-jumps" aria-label="Category jumps">
                 ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
@@ -2702,7 +2703,7 @@ async function renderDashboard({ focusId = null } = {}) {
   // the user before they finish choosing.
   let _allUpdates  = [];   // full dataset from last fetch
   const defaultFilterState = () => ({
-    platform: '', status: '', sort: 'date_desc', search: '', searchDisplay: '', searchMode: 'local',
+    platform: '', setup: '', status: '', sort: 'date_desc', search: '', searchDisplay: '', searchMode: 'local',
   });
   let _filterState = defaultFilterState();
   let _draftFilterState = defaultFilterState();
@@ -2716,7 +2717,7 @@ async function renderDashboard({ focusId = null } = {}) {
   const saveDashboardWatchlist = () => localStorage.setItem('patchticker.dashboardWatchlist', JSON.stringify([..._watchedPlatforms]));
 
   function filtersAreDirty() {
-    return ['platform', 'status', 'sort', 'search', 'searchMode']
+    return ['platform', 'setup', 'status', 'sort', 'search', 'searchMode']
       .some(key => _draftFilterState[key] !== _filterState[key]);
   }
 
@@ -2734,7 +2735,7 @@ async function renderDashboard({ focusId = null } = {}) {
       button.classList.toggle('active', button.dataset.resultPlatform === _draftFilterState.platform)
     );
     document.querySelectorAll('.setup-lens').forEach(button =>
-      button.classList.toggle('active', button.dataset.lens === _draftFilterState.search && _draftFilterState.searchMode === 'local')
+      button.classList.toggle('active', (button.dataset.setup || '') === _draftFilterState.setup)
     );
 
     const visibleSearch = _draftFilterState.searchDisplay || _draftFilterState.search;
@@ -2788,12 +2789,13 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   function applyFilters() {
-    const { platform, status, sort, search } = _filterState;
+    const { platform, setup, status, sort, search } = _filterState;
     let filtered = search && _searchMode === 'server' && Array.isArray(_serverSearchResults)
       ? _serverSearchResults
       : _allUpdates;
 
     if (platform) filtered = filtered.filter(u => u.platform === platform);
+    filtered = filterUpdatesBySetup(filtered, setup);
     if (status)   filtered = filtered.filter(u => u.status   === status);
     if (search) {
       const exactPlatform = exactPlatformForSearch(search);
@@ -2821,7 +2823,7 @@ async function renderDashboard({ focusId = null } = {}) {
     if (!listEl) return filtered.length;
 
     if (!filtered.length) {
-      const hasFilters = platform || status || search;
+      const hasFilters = platform || setup || status || search;
       listEl.innerHTML = hasFilters
         ? (search
           ? (() => {
@@ -2931,13 +2933,14 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   function updateFilterSummary() {
-    const { platform, status, search, searchDisplay } = _filterState;
+    const { platform, setup, status, search, searchDisplay } = _filterState;
     const summaryEl  = document.getElementById('dash-filter-summary');
     const containerEl = document.getElementById('dash-active-filters');
     if (!summaryEl || !containerEl) return;
 
     const parts = [];
     if (platform) parts.push(`Platform: <strong>${H(platformLabel(platform))}</strong>`);
+    if (setup)    parts.push(`Setup: <strong>${H(SETUP_LENSES[setup]?.label || setup)}</strong>`);
     if (status)   parts.push(`Status: <strong>${H(status)}</strong>`);
     if (search)   parts.push(`Search: <strong>"${H(searchDisplay || search)}"</strong>`);
 
@@ -2960,7 +2963,7 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   function setPlatformFilter(platform) {
-    setDraftFilters({ platform: platform || '' });
+    setDraftFilters({ platform: platform || '', setup: '' });
   }
 
   async function applyDraftFilters() {
@@ -2968,6 +2971,7 @@ async function renderDashboard({ focusId = null } = {}) {
     syncDraftFilterControls();
     captureAnalytics('filters_applied', {
       platform: _filterState.platform || 'all',
+      setup: _filterState.setup || 'all',
       status: _filterState.status || 'all',
       sort: _filterState.sort,
       has_search: Boolean(_filterState.search),
@@ -3234,11 +3238,8 @@ async function renderDashboard({ focusId = null } = {}) {
   // ── Setup lens buttons ─────────────────────────────────────────────────────
   document.querySelectorAll('.setup-lens').forEach(btn => {
     btn.addEventListener('click', () => {
-      const label = btn.dataset.label === 'Everything' ? '' : btn.dataset.label;
       setDraftFilters({
-        search: btn.dataset.lens || '',
-        searchDisplay: label,
-        searchMode: 'local',
+        setup: btn.dataset.setup || '',
         platform: '',
       });
     });
