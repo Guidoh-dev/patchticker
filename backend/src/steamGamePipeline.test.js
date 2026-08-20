@@ -3,21 +3,84 @@
 jest.mock('./config/db', () => ({ isAvailable: jest.fn(() => false), query: jest.fn() }));
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() }));
 
-const { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_SNAPSHOT } = require('./data/steamGameCandidates');
-const { __test } = require('./services/steamGamePipelineService');
+const {
+  STRICT_STEAM_GAME_POLICY,
+  STEAM_GAME_CANDIDATES,
+  STEAM_GAME_ELIGIBILITY_AUDIT,
+  STRICT_STEAM_GAME_CANDIDATES,
+  auditStrictSteamCandidates,
+  loadConfiguredStrictSteamCandidates,
+} = require('./data/steamGameCandidates');
+const { run, __test } = require('./services/steamGamePipelineService');
 
 function list(items) {
   return `[list]${items.map(item => `[*]${item}`).join('')}[/list]`;
 }
 
 describe('material Steam game update pipeline', () => {
-  test('candidate roster contains only unique games above the requested average threshold', () => {
+  test('legacy roster is retained only for audit and includes Counter-Strike 2', () => {
     expect(STEAM_GAME_CANDIDATES).toHaveLength(81);
     expect(new Set(STEAM_GAME_CANDIDATES.map(game => game.appId)).size).toBe(STEAM_GAME_CANDIDATES.length);
-    expect(STEAM_GAME_CANDIDATES.every(game => game.averagePlayers > STEAM_GAME_CANDIDATE_SNAPSHOT.minimumAveragePlayers)).toBe(true);
+    expect(STEAM_GAME_CANDIDATES).toEqual(expect.arrayContaining([
+      expect.objectContaining({ appId: 730, name: 'Counter-Strike 2' }),
+    ]));
     expect(STEAM_GAME_CANDIDATES.map(game => game.name)).not.toEqual(expect.arrayContaining([
       'Wallpaper Engine', 'OBS Studio', 'Crosshair X', 'Spacewar', 'FiveM', 'tModLoader',
     ]));
+    expect(STRICT_STEAM_GAME_CANDIDATES).toHaveLength(0);
+    expect(STEAM_GAME_ELIGIBILITY_AUDIT.rejected).toEqual(expect.arrayContaining([
+      expect.objectContaining({ appId: 730, reasons: expect.arrayContaining(['region_not_us', 'window_not_14_days']) }),
+    ]));
+  });
+
+  test('accepts only explicit US trailing-14-day evidence strictly above 60,000', () => {
+    const accepted = auditStrictSteamCandidates([{
+      appId: 730,
+      name: 'Counter-Strike 2',
+      region: 'US',
+      windowDays: 14,
+      averageConcurrentPlayers: 60001,
+      sourceUrl: 'https://licensed.example/steam/us/730',
+      observedAt: '2026-08-20T12:00:00.000Z',
+    }]);
+    expect(STRICT_STEAM_GAME_POLICY).toEqual(expect.objectContaining({
+      region: 'US', windowDays: 14, minimumAverageConcurrentPlayers: 60000,
+    }));
+    expect(accepted.accepted).toHaveLength(1);
+
+    const thresholdTie = auditStrictSteamCandidates([{
+      ...accepted.accepted[0], averageConcurrentPlayers: 60000,
+    }]);
+    expect(thresholdTie.accepted).toHaveLength(0);
+    expect(thresholdTie.rejected[0].reasons).toContain('average_not_above_60000');
+
+    const configured = loadConfiguredStrictSteamCandidates(JSON.stringify({ candidates: [{
+      appId: 730,
+      name: 'Counter-Strike 2',
+      region: 'US',
+      windowDays: 14,
+      averageConcurrentPlayers: 60001,
+      sourceUrl: 'https://licensed.example/steam/us/730',
+      observedAt: '2026-08-20T12:00:00.000Z',
+    }] }));
+    expect(configured.configured).toBe(true);
+    expect(configured.accepted).toEqual([expect.objectContaining({ appId: 730, name: 'Counter-Strike 2' })]);
+  });
+
+  test('malformed configured regional data fails closed', () => {
+    expect(loadConfiguredStrictSteamCandidates('{not-json')).toEqual(expect.objectContaining({
+      configured: true,
+      accepted: [],
+      errors: [expect.stringContaining('STEAM_US_14D_CANDIDATES_JSON')],
+    }));
+  });
+
+  test('fails closed before polling when no verified regional roster exists', async () => {
+    await expect(run({ dryRun: true })).resolves.toEqual(expect.objectContaining({
+      status: 'eligibility_data_unavailable',
+      candidates: 0,
+      audit: expect.objectContaining({ counterStrike2Reviewed: true }),
+    }));
   });
 
   test('rejects hotfixes even when their notes mention gameplay', () => {

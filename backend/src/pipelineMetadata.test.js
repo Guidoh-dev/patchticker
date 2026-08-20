@@ -118,6 +118,23 @@ describe('pipeline source metadata preservation', () => {
     ]);
   });
 
+  test('persistence boundary rejects malformed ratings before any SQL runs', async () => {
+    await expect(__test.insertUpdate({
+      id: 'bad-rating',
+      platform: 'NVIDIA',
+      name: 'Malformed driver update',
+      version: 'bad',
+      releasedAt: '2026-08-20',
+      score: Number.NaN,
+      impactScore: 4,
+      verdict: 'Do not publish malformed ratings.',
+      reasoning: 'The validation worker must stop this payload before insertion.',
+      changelog: ['Malformed score fixture.'],
+      evidence: [],
+    })).rejects.toMatchObject({ code: 'UPDATE_VALIDATION_REJECTED' });
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
   test('a supported beta game does not misclassify the graphics driver as a beta release', () => {
     const detected = {
       name: 'Intel Arc Graphics Driver 32.0.101.8864 Non-WHQL',

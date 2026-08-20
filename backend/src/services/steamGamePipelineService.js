@@ -1,5 +1,6 @@
 // src/services/steamGamePipelineService.js
-// Tracks material game releases for the vetted >15k-average Steam roster.
+// Tracks material game releases only for a verified US trailing-14-day roster
+// whose average concurrent players are strictly greater than 60,000.
 //
 // Cost controls:
 //   - Uses Valve's public ISteamNews endpoint (no API key or paid service).
@@ -19,6 +20,7 @@ const cheerio = require('cheerio');
 const { URL } = require('node:url');
 const db = require('../config/db');
 const logger = require('../utils/logger');
+const { validateUpdateForPersistence } = require('./updateValidationService');
 const {
   deriveDeterministicScore,
   deriveDeterministicImpactScore,
@@ -29,8 +31,9 @@ const {
 } = require('../utils/updateScore');
 const { normaliseReleaseText } = require('../utils/releaseText');
 const {
-  STEAM_GAME_CANDIDATE_SNAPSHOT,
-  STEAM_GAME_CANDIDATES,
+  STRICT_STEAM_GAME_POLICY,
+  STEAM_GAME_ELIGIBILITY_AUDIT,
+  STRICT_STEAM_GAME_CANDIDATES,
 } = require('../data/steamGameCandidates');
 
 const STEAM_NEWS_URL = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/';
@@ -313,7 +316,10 @@ function toDatabaseUpdate(game, post, classification) {
     steamAppId: game.appId,
     steamNewsGid: gid,
     averagePlayersSnapshot: game.averagePlayers,
-    averagePlayersObservedAt: STEAM_GAME_CANDIDATE_SNAPSHOT.observedAt,
+    averagePlayersRegion: game.region,
+    averagePlayersWindowDays: game.windowDays,
+    averagePlayersObservedAt: game.observedAt,
+    averagePlayersSource: game.sourceUrl,
     ...(statedSize ? { sizeBytes: statedSize } : {}),
   }];
   const riskFactors = [
@@ -342,7 +348,7 @@ function toDatabaseUpdate(game, post, classification) {
     impactScore: deriveDeterministicImpactScore({ changelog: classification.changelog, riskFactors }),
     affects: `${game.name} on Steam / gameplay / compatibility / installation requirements`,
     verdict: 'This is a material game update, not a routine hotfix. Review the official gameplay and system-requirement changes before installing; a user rating appears only after real votes are recorded.',
-    reasoning: `PatchTicker tracks this release because ${game.name} exceeded 15,000 average Steam players in the reviewed 30-day snapshot and its first-party notes document material ${classification.signals.join(', ')} changes. ${sizeSentence}`,
+    reasoning: `PatchTicker tracks this release because ${game.name} exceeded ${STRICT_STEAM_GAME_POLICY.minimumAverageConcurrentPlayers.toLocaleString('en-US')} average concurrent Steam players in the verified US trailing-${STRICT_STEAM_GAME_POLICY.windowDays}-day snapshot and its first-party notes document material ${classification.signals.join(', ')} changes. ${sizeSentence}`,
     changelog: classification.changelog,
     knownIssues,
     riskFactors,
@@ -393,20 +399,21 @@ async function fetchGameNews(game, options = {}) {
 }
 
 async function upsertMaterialUpdate(update, dryRun = false) {
-  if (dryRun) return { inserted: false, dryRun: true };
-  let score;
-  let impactScore;
+  let validation;
   try {
-    score = requireValidScore(update.score);
-    impactScore = requireValidScore(update.impactScore, 'impact score');
+    validation = validateUpdateForPersistence(update);
   } catch (error) {
-    logger.error('[steam-games] Rejected material update with invalid deterministic rating', {
+    logger.error('[steam-games] Rejected material update before persistence', {
       updateId: update?.id || null,
-      field: error.field || null,
-      reason: error.reason || error.message,
+      reasons: error.errors || [error.message],
     });
     throw error;
   }
+  const safe = validation.value;
+  Object.assign(update, safe);
+  if (dryRun) return { inserted: false, dryRun: true, validated: true };
+  const score = requireValidScore(safe.score);
+  const impactScore = requireValidScore(safe.impactScore, 'impact score');
   const result = await db.query(
     `INSERT INTO software_updates
        (id, platform, name, version, display_version, released_at, status, score,
@@ -432,12 +439,12 @@ async function upsertMaterialUpdate(update, dryRun = false) {
        updated_at = now()
      RETURNING id, (xmax = 0) AS inserted`,
     [
-      update.id, update.platform, update.name, update.version, update.displayVersion,
-      update.releasedAt, statusForScore(score), score, impactScore, update.affects,
-      update.verdict, update.reasoning, JSON.stringify(update.changelog),
-      JSON.stringify(update.knownIssues), JSON.stringify(update.riskFactors),
-      JSON.stringify(update.evidence), update.sourceKind, update.sourceRef,
-      update.productId, update.releaseSizeBytes,
+      safe.id, safe.platform, safe.name, safe.version, safe.displayVersion,
+      safe.releasedAt, statusForScore(score), score, impactScore, safe.affects,
+      safe.verdict, safe.reasoning, JSON.stringify(safe.changelog),
+      JSON.stringify(safe.knownIssues), JSON.stringify(safe.riskFactors),
+      JSON.stringify(safe.evidence), safe.sourceKind, safe.sourceRef,
+      safe.productId, update.releaseSizeBytes,
     ]
   );
   return { inserted: result.rows[0]?.inserted === true, id: result.rows[0]?.id || update.id };
@@ -451,10 +458,31 @@ async function run(options = {}) {
     return { status: 'db_unavailable', candidates: 0, material: 0, inserted: 0, failed: 0, results: [] };
   }
 
-  const limit = boundedInteger(options.limit || process.env.STEAM_GAME_CANDIDATE_LIMIT, STEAM_GAME_CANDIDATES.length, 1, STEAM_GAME_CANDIDATES.length);
+  if (!STRICT_STEAM_GAME_CANDIDATES.length) {
+    logger.error('[steam-games] Strict eligibility roster unavailable; scan stopped before vendor polling', {
+      policy: STRICT_STEAM_GAME_POLICY,
+      rejectedCandidates: STEAM_GAME_ELIGIBILITY_AUDIT.rejected.length,
+    });
+    return {
+      status: 'eligibility_data_unavailable',
+      candidates: 0,
+      material: 0,
+      inserted: 0,
+      failed: 0,
+      validationRejected: 0,
+      policy: STRICT_STEAM_GAME_POLICY,
+      audit: {
+        referenceCandidates: STEAM_GAME_ELIGIBILITY_AUDIT.rejected.length,
+        counterStrike2Reviewed: STEAM_GAME_ELIGIBILITY_AUDIT.rejected.some(candidate => candidate.appId === 730),
+      },
+      results: [],
+    };
+  }
+
+  const limit = boundedInteger(options.limit || process.env.STEAM_GAME_CANDIDATE_LIMIT, STRICT_STEAM_GAME_CANDIDATES.length, 1, STRICT_STEAM_GAME_CANDIDATES.length);
   const concurrency = boundedInteger(options.concurrency || process.env.STEAM_GAME_CONCURRENCY, DEFAULT_CONCURRENCY, 1, 8);
   const lookbackDays = boundedInteger(options.lookbackDays || process.env.STEAM_GAME_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS, 1, 60);
-  const candidates = STEAM_GAME_CANDIDATES.slice(0, limit);
+  const candidates = STRICT_STEAM_GAME_CANDIDATES.slice(0, limit);
   const results = [];
 
   for (let index = 0; index < candidates.length; index += concurrency) {
@@ -476,6 +504,10 @@ async function run(options = {}) {
           signals: selected.classification.signals,
         };
       } catch (error) {
+        if (error?.code === 'UPDATE_VALIDATION_REJECTED') {
+          logger.warn('[steam-games] Material update failed persistence validation', { appId: game.appId, game: game.name, reasons: error.errors });
+          return { appId: game.appId, game: game.name, status: 'validation_rejected', reasons: error.errors };
+        }
         logger.warn('[steam-games] Candidate scan failed', { appId: game.appId, game: game.name, error: error.message });
         return { appId: game.appId, game: game.name, status: 'failed', error: error.message };
       }
@@ -489,11 +521,14 @@ async function run(options = {}) {
   const summary = {
     status: 'complete',
     candidates: candidates.length,
-    threshold: STEAM_GAME_CANDIDATE_SNAPSHOT.minimumAveragePlayers,
-    observedAt: STEAM_GAME_CANDIDATE_SNAPSHOT.observedAt,
+    threshold: STRICT_STEAM_GAME_POLICY.minimumAverageConcurrentPlayers,
+    region: STRICT_STEAM_GAME_POLICY.region,
+    windowDays: STRICT_STEAM_GAME_POLICY.windowDays,
+    observedAt: candidates[0]?.observedAt || null,
     material: results.filter(result => ['inserted', 'refreshed', 'material_dry_run'].includes(result.status)).length,
     inserted: results.filter(result => result.status === 'inserted').length,
     failed: results.filter(result => result.status === 'failed').length,
+    validationRejected: results.filter(result => result.status === 'validation_rejected').length,
     results,
   };
   logger.info('[steam-games] Scan complete', {
@@ -518,5 +553,6 @@ module.exports = {
     selectBestMaterialPost,
     stripSteamMarkup,
     toDatabaseUpdate,
+    upsertMaterialUpdate,
   },
 };

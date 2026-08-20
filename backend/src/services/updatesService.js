@@ -10,6 +10,13 @@ const { normaliseReleaseText, normaliseReleaseTextArray } = require('../utils/re
 const { getFreshnessSlaHours } = require('../config/platformRegistry');
 
 const MAX_UPDATE_AGE_DAYS = 240;
+// Historical Steam game rows remain available to administrators for audit,
+// but public reads admit only evidence that satisfies the strict US/14-day
+// average-concurrency policy. Core Steam client/SteamOS rows are unaffected.
+const PUBLIC_STEAM_GAME_ELIGIBILITY_SQL = `(source_kind IS DISTINCT FROM 'steam-game-news' OR jsonb_path_exists(
+  COALESCE(evidence, '[]'::jsonb),
+  '$[*] ? (@.averagePlayersRegion == "US" && @.averagePlayersWindowDays == 14 && @.averagePlayersSnapshot > 60000)'
+))`;
 
 // Common user shorthand should resolve to the same authoritative database
 // search as the full product name. Keep this intentionally small and focused
@@ -1149,6 +1156,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         SELECT *
         FROM software_updates
         WHERE released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+          AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
       `;
       const params = [];
       let relevanceOrder = '';
@@ -1281,6 +1289,7 @@ async function getUpdateById(id) {
          FROM software_updates
          WHERE id = $1
            AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+           AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
          LIMIT 1`,
         [id]
       );
@@ -1313,6 +1322,7 @@ async function getUpdateById(id) {
          WHERE id <> $1
            AND platform = $2
            AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+           AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
          ORDER BY
            CASE
              WHEN $3::text IS NOT NULL AND product_id = $3 THEN 0
@@ -1395,6 +1405,7 @@ async function getUpdateHistory(platform, limit = 20) {
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
          AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+         AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
        ORDER BY released_at DESC, created_at DESC
        LIMIT $2`,
       [platform, Math.min(limit, 50)]
@@ -1432,6 +1443,7 @@ module.exports = {
   getUpdateHistory,
   buildFeedMeta,
   __test: {
+    PUBLIC_STEAM_GAME_ELIGIBILITY_SQL,
     isUpdateDisplayable,
     rowToUpdate,
     canUseStaticUpdates,

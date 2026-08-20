@@ -1,11 +1,14 @@
-// Generated from the reviewed backend ingestion roster. Keep App IDs aligned.
+// Active game follows must use the same strict eligibility policy as backend
+// ingestion. The historical global snapshot remains audit-only below.
 export const STEAM_GAME_CANDIDATE_META = Object.freeze({
-  "observedAt": "2026-08-15",
-  "minimumAveragePlayers": 15000,
-  "source": "https://steamcharts.com/top"
+  "region": "US",
+  "windowDays": 14,
+  "minimumAveragePlayers": 60000,
+  "comparison": "strictly-greater-than",
+  "eligibilityDataAvailable": false
 });
 
-export const STEAM_GAME_CANDIDATES = Object.freeze([
+export const STEAM_GAME_AUDIT_CANDIDATES = Object.freeze([
   {
     "appId": "730",
     "name": "Counter-Strike 2",
@@ -493,3 +496,8 @@ export const STEAM_GAME_CANDIDATES = Object.freeze([
     "tags": "rocket league®"
   }
 ].map(Object.freeze));
+
+// Fail closed: global/30-day values are never exposed as eligible US/14-day
+// games. Populate only from an approved regional snapshot carrying per-row
+// source evidence.
+export const STEAM_GAME_CANDIDATES = Object.freeze([]);

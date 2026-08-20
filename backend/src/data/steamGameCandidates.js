@@ -1,14 +1,24 @@
-// Snapshot of Steam games whose trailing 30-day average exceeded 15,000
-// concurrent players when reviewed on 2026-08-15. Runtime ingestion uses only
-// Valve's public ISteamNews endpoint; SteamCharts is not called in production.
-// Non-game utilities, mod loaders, test apps, and advertising entries are excluded.
+// Historical audit input only. This is a global trailing-30-day SteamCharts
+// snapshot and MUST NOT be used as evidence for the stricter US trailing-14-day
+// tracking policy. Runtime ingestion fails closed until every active row carries
+// explicit regional/window evidence from an approved provider.
 
 'use strict';
 
 const STEAM_GAME_CANDIDATE_SNAPSHOT = Object.freeze({
   observedAt: '2026-08-15',
+  region: 'GLOBAL',
+  windowDays: 30,
   minimumAveragePlayers: 15000,
   source: 'https://steamcharts.com/top',
+  eligibility: 'reference-only',
+});
+
+const STRICT_STEAM_GAME_POLICY = Object.freeze({
+  region: 'US',
+  windowDays: 14,
+  minimumAverageConcurrentPlayers: 60000,
+  comparison: 'strictly-greater-than',
 });
 
 const STEAM_GAME_CANDIDATES = Object.freeze([
@@ -419,4 +429,65 @@ const STEAM_GAME_CANDIDATES = Object.freeze([
   }
 ].map(Object.freeze));
 
-module.exports = { STEAM_GAME_CANDIDATE_SNAPSHOT, STEAM_GAME_CANDIDATES };
+function auditStrictSteamCandidates(candidates = STEAM_GAME_CANDIDATES) {
+  const seen = new Set();
+  const accepted = [];
+  const rejected = [];
+  for (const candidate of candidates) {
+    const reasons = [];
+    const appId = Number(candidate?.appId);
+    const average = Number(candidate?.averageConcurrentPlayers);
+    if (!Number.isInteger(appId) || appId <= 0) reasons.push('invalid_app_id');
+    if (seen.has(appId)) reasons.push('duplicate_app_id');
+    seen.add(appId);
+    if (!String(candidate?.name || '').trim()) reasons.push('missing_name');
+    if (candidate?.region !== STRICT_STEAM_GAME_POLICY.region) reasons.push('region_not_us');
+    if (Number(candidate?.windowDays) !== STRICT_STEAM_GAME_POLICY.windowDays) reasons.push('window_not_14_days');
+    if (!Number.isFinite(average) || average <= STRICT_STEAM_GAME_POLICY.minimumAverageConcurrentPlayers) {
+      reasons.push('average_not_above_60000');
+    }
+    if (!/^https:\/\//i.test(String(candidate?.sourceUrl || ''))) reasons.push('missing_regional_source');
+    if (!/^\d{4}-\d{2}-\d{2}T/i.test(String(candidate?.observedAt || ''))) reasons.push('missing_observed_timestamp');
+    if (reasons.length) rejected.push({ appId, name: candidate?.name || '', reasons });
+    else accepted.push(Object.freeze({ ...candidate, appId, averagePlayers: average }));
+  }
+  return Object.freeze({
+    policy: STRICT_STEAM_GAME_POLICY,
+    accepted: Object.freeze(accepted),
+    rejected: Object.freeze(rejected),
+  });
+}
+
+const STEAM_GAME_ELIGIBILITY_AUDIT = auditStrictSteamCandidates();
+
+function loadConfiguredStrictSteamCandidates(raw = process.env.STEAM_US_14D_CANDIDATES_JSON) {
+  if (!raw) return Object.freeze({ configured: false, accepted: Object.freeze([]), rejected: Object.freeze([]), errors: Object.freeze([]) });
+  try {
+    const parsed = JSON.parse(raw);
+    const candidates = Array.isArray(parsed) ? parsed : parsed?.candidates;
+    if (!Array.isArray(candidates)) throw new TypeError('expected an array or { candidates: [] }');
+    const audit = auditStrictSteamCandidates(candidates);
+    return Object.freeze({ configured: true, accepted: audit.accepted, rejected: audit.rejected, errors: Object.freeze([]) });
+  } catch (error) {
+    return Object.freeze({
+      configured: true,
+      accepted: Object.freeze([]),
+      rejected: Object.freeze([]),
+      errors: Object.freeze([`STEAM_US_14D_CANDIDATES_JSON: ${error.message}`]),
+    });
+  }
+}
+
+const CONFIGURED_STEAM_GAME_ELIGIBILITY = loadConfiguredStrictSteamCandidates();
+const STRICT_STEAM_GAME_CANDIDATES = CONFIGURED_STEAM_GAME_ELIGIBILITY.accepted;
+
+module.exports = {
+  STRICT_STEAM_GAME_POLICY,
+  STEAM_GAME_CANDIDATE_SNAPSHOT,
+  STEAM_GAME_CANDIDATES,
+  STEAM_GAME_ELIGIBILITY_AUDIT,
+  CONFIGURED_STEAM_GAME_ELIGIBILITY,
+  STRICT_STEAM_GAME_CANDIDATES,
+  auditStrictSteamCandidates,
+  loadConfiguredStrictSteamCandidates,
+};

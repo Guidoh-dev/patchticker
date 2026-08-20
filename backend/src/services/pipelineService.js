@@ -23,6 +23,7 @@ const scraperService   = require('./scraperService');
 const aiAnalysisService= require('./aiAnalysisService');
 const watchlistService = require('./watchlistService');
 const liveFeedService  = require('./liveFeedService');
+const { validateUpdateForPersistence } = require('./updateValidationService');
 const { PLATFORM_KEYS } = require('../config/platformRegistry');
 const {
   deriveDeterministicScore,
@@ -111,21 +112,30 @@ function isSourceVersionRegression(latest, detected) {
 }
 
 async function insertUpdate(update) {
-  let score;
-  let impactScore;
+  let validated;
   try {
-    score = requireValidScore(update.score);
-    impactScore = update.impactScore === null || update.impactScore === undefined
-      ? null
-      : requireValidScore(update.impactScore, 'impact score');
+    validated = validateUpdateForPersistence(update);
   } catch (error) {
-    logger.error('[pipeline] Rejected update with invalid deterministic rating', {
+    logger.error('[pipeline] Rejected update before persistence', {
       updateId: update?.id || null,
-      field: error.field || null,
-      reason: error.reason || error.message,
+      reasons: error.errors || [error.message],
     });
     throw error;
   }
+  const safe = validated.value;
+  // Keep downstream AI, SSE, and notification payloads aligned with the exact
+  // sanitized object accepted by the database boundary.
+  Object.assign(update, safe);
+  if (validated.warnings.length) {
+    logger.warn('[pipeline] Persistence validation normalized update fields', {
+      updateId: safe.id,
+      warnings: validated.warnings,
+    });
+  }
+  const score = requireValidScore(safe.score);
+  const impactScore = safe.impactScore === null || safe.impactScore === undefined
+    ? null
+    : requireValidScore(safe.impactScore, 'impact score');
   const status = statusForScore(score);
   const result = await db.query(
     `INSERT INTO software_updates
@@ -139,31 +149,31 @@ async function insertUpdate(update) {
      ON CONFLICT DO NOTHING
      RETURNING id`,
     [
-      update.id,
-      update.platform,
-      update.name,
-      update.version,
-      update.displayVersion || null,
-      update.sourceKind || null,
-      update.sourceRef || null,
-      update.productId || null,
-      update.releasedAt,
+      safe.id,
+      safe.platform,
+      safe.name,
+      safe.version,
+      safe.displayVersion || null,
+      safe.sourceKind || null,
+      safe.sourceRef || null,
+      safe.productId || null,
+      safe.releasedAt,
       status,
       score,
       impactScore,
-      update.bugCount        ?? 0,
-      update.affects         || null,
-      update.verdict         || null,
-      update.reasoning       || null,
-      JSON.stringify(update.changelog      || []),
-      JSON.stringify(update.knownIssues    || []),
-      JSON.stringify(update.riskFactors    || []),
-      JSON.stringify(update.evidence       || []),
-      update.securityCriticality ? JSON.stringify(update.securityCriticality) : null,
-      JSON.stringify(update.subreddits     || []),
-      update.aiGenerated     || false,
-      update.aiModel         || null,
-      update.aiGeneratedAt   || null,
+      Number.isFinite(Number(safe.bugCount)) ? Math.max(0, Math.floor(Number(safe.bugCount))) : 0,
+      safe.affects         || null,
+      safe.verdict         || null,
+      safe.reasoning       || null,
+      JSON.stringify(safe.changelog      || []),
+      JSON.stringify(safe.knownIssues    || []),
+      JSON.stringify(safe.riskFactors    || []),
+      JSON.stringify(safe.evidence       || []),
+      safe.securityCriticality ? JSON.stringify(safe.securityCriticality) : null,
+      JSON.stringify(safe.subreddits     || []),
+      safe.aiGenerated     || false,
+      safe.aiModel         || null,
+      safe.aiGeneratedAt   || null,
     ]
   );
   return Boolean(result.rows?.[0]?.id);
@@ -283,7 +293,33 @@ function platformContext(platform, detected) {
 async function updateExistingMetadata(platform, version, detected) {
   const context = platformContext(platform, detected);
   const fallbackScore = deriveInitialScore(platform, detected, context);
-  const fallbackStatus = deriveInitialStatus(fallbackScore);
+  const candidate = {
+    id: makeUpdateId(platform, version),
+    platform,
+    name: detected.name,
+    version,
+    displayVersion: detected.displayVersion || null,
+    sourceKind: detected.sourceKind || null,
+    sourceRef: detected.sourceRef || null,
+    productId: detected.productId || null,
+    releasedAt: detected.releasedAt,
+    score: fallbackScore,
+    impactScore: deriveDeterministicImpactScore({
+      changelog: context.changelog,
+      riskFactors: context.riskFactors,
+      securityCriticality: context.securityCriticality,
+    }),
+    affects: context.affects,
+    verdict: context.verdict,
+    reasoning: context.reasoning,
+    changelog: context.changelog,
+    knownIssues: context.knownIssues,
+    riskFactors: context.riskFactors,
+    evidence: context.evidence,
+    securityCriticality: context.securityCriticality,
+  };
+  const safe = validateUpdateForPersistence(candidate).value;
+  const fallbackStatus = deriveInitialStatus(safe.score);
   await db.query(
     `UPDATE software_updates SET
        name = COALESCE($3, name),
@@ -307,23 +343,23 @@ async function updateExistingMetadata(platform, version, detected) {
     [
       platform,
       version,
-      detected.name,
-      detected.releasedAt,
-      context.affects,
-      context.verdict,
-      context.reasoning,
-      JSON.stringify(context.changelog),
-      JSON.stringify(context.knownIssues),
-      JSON.stringify(context.riskFactors),
-      JSON.stringify(context.evidence),
-      context.securityCriticality ? JSON.stringify(context.securityCriticality) : null,
-      fallbackScore,
+      safe.name,
+      safe.releasedAt,
+      safe.affects,
+      safe.verdict,
+      safe.reasoning,
+      JSON.stringify(safe.changelog),
+      JSON.stringify(safe.knownIssues),
+      JSON.stringify(safe.riskFactors),
+      JSON.stringify(safe.evidence),
+      safe.securityCriticality ? JSON.stringify(safe.securityCriticality) : null,
+      safe.score,
       fallbackStatus,
       context.knownIssuesAuthoritative,
-      detected.displayVersion || null,
-      detected.sourceKind || null,
-      detected.sourceRef || null,
-      detected.productId || null,
+      safe.displayVersion || null,
+      safe.sourceKind || null,
+      safe.sourceRef || null,
+      safe.productId || null,
     ]
   );
 }
@@ -402,7 +438,12 @@ async function processPlatform(detectorKey) {
   const latestKnown = await getLatestKnownRelease(platform, detected);
   const knownVersion = latestKnown?.version || null;
   if (knownVersion === detected.version) {
-    await updateExistingMetadata(platform, detected.version, detected);
+    try {
+      await updateExistingMetadata(platform, detected.version, detected);
+    } catch (error) {
+      if (error?.code !== 'UPDATE_VALIDATION_REJECTED') throw error;
+      return { platform, status: 'validation_rejected', version: detected.version, reasons: error.errors, latencyMs: detection.latencyMs, attempts: detection.attempts };
+    }
     logger.info('[pipeline] Version unchanged — metadata refreshed', { ...logCtx, knownVersion });
     return { platform, status: 'unchanged', version: detected.version, latencyMs: detection.latencyMs, attempts: detection.attempts };
   }
@@ -413,7 +454,12 @@ async function processPlatform(detectorKey) {
   // from becoming a false "new update" notification.
   const historicalRelease = await getKnownReleaseByVersion(platform, detected.version, detected);
   if (historicalRelease) {
-    await updateExistingMetadata(platform, detected.version, detected);
+    try {
+      await updateExistingMetadata(platform, detected.version, detected);
+    } catch (error) {
+      if (error?.code !== 'UPDATE_VALIDATION_REJECTED') throw error;
+      return { platform, status: 'validation_rejected', version: detected.version, reasons: error.errors, latencyMs: detection.latencyMs, attempts: detection.attempts };
+    }
     logger.warn('[pipeline] Historical source version refreshed without alerting', {
       ...logCtx,
       currentVersion: knownVersion,
@@ -484,7 +530,21 @@ async function processPlatform(detectorKey) {
   };
 
   // 4. Insert into DB (ON CONFLICT DO NOTHING = idempotent)
-  const inserted = await insertUpdate(initialUpdate);
+  let inserted;
+  try {
+    inserted = await insertUpdate(initialUpdate);
+  } catch (error) {
+    if (error?.code !== 'UPDATE_VALIDATION_REJECTED') throw error;
+    return {
+      platform,
+      status: 'validation_rejected',
+      version: detected.version,
+      id,
+      reasons: error.errors,
+      latencyMs: detection.latencyMs,
+      attempts: detection.attempts,
+    };
+  }
   if (!inserted) {
     logger.warn('[pipeline] Duplicate release ignored without alerting', logCtx);
     return {
@@ -578,6 +638,7 @@ async function runAll() {
     historicalRefreshes: 0,
     regressed:  0,
     duplicates: 0,
+    validationRejected: 0,
     unavailable: 0,
     failed:     0,
     results:    [],
@@ -592,6 +653,7 @@ async function runAll() {
       else if (r.value.status === 'historical_refresh') summary.historicalRefreshes++;
       else if (r.value.status === 'source_regression') summary.regressed++;
       else if (r.value.status === 'duplicate') summary.duplicates++;
+      else if (r.value.status === 'validation_rejected') summary.validationRejected++;
       else if (r.value.status === 'source_unavailable') summary.unavailable++;
     } else {
       summary.failed++;
@@ -607,6 +669,7 @@ async function runAll() {
     historicalRefreshes: summary.historicalRefreshes,
     regressed:  summary.regressed,
     duplicates: summary.duplicates,
+    validationRejected: summary.validationRejected,
     unavailable: summary.unavailable,
     failed:     summary.failed,
   });
@@ -628,6 +691,7 @@ module.exports = {
     isCanonicalPipelineRelease,
     isSourceVersionRegression,
     sourceLaneScope,
+    insertUpdate,
     INTERNAL_PIPELINE_KEYS,
   },
 };
