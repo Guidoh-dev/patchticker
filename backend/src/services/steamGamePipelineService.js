@@ -74,7 +74,8 @@ function stripSteamMarkup(value) {
     // Valve's bounded news response can flatten heading markup completely
     // ("INTROWelcome" or "UPDATESGameplay"). Restore readable boundaries
     // before extracting sentences and changelog items.
-    .replace(/\b(CHANGES AND UPDATES|BUG FIXES|KNOWN ISSUES|PERFORMANCE AND STABILITY|PERFORMANCE & STABILITY|GAMEPLAY|GENERAL|VISUALS|AUDIO|INTRO)(?=[A-Z][a-z])/gi, '\n$1\n')
+    .replace(/\b(CHANGES AND UPDATES|BUG FIXES|KNOWN ISSUES|PERFORMANCE AND STABILITY|PERFORMANCE & STABILITY|GAMEPLAY|GENERAL|VISUALS|AUDIO|INTRO)(?=[A-Z][a-z])/g, '\n$1\n')
+    .replace(/\b(Changes and Updates|Bug Fixes|Known Issues|Performance and Stability|Performance & Stability|Gameplay|General|Visuals|Audio|Intro)(?=[A-Z][a-z])/g, '\n$1\n')
     .replace(/\b(Seasons? system(?: and Season One)?|Seasonal character|Global season modifiers|Global modifiers|Personal season modifiers|Streamer Mode & Privacy)(?:\s*:)?(?=[A-Z][a-z])/g, '\n$1\n')
     .replace(/\b([A-Z][A-Z0-9 &/:'’()-]{2,}?)(?=[A-Z][a-z])/g, '$1\n')
     .replace(/([.!?])(?=[A-Z][a-z])/g, '$1\n')

@@ -121,6 +121,14 @@ describe('material Steam game update pipeline', () => {
     expect(plain).toContain('Streamer Mode & Privacy\nPlayers are anonymized');
   });
 
+  test('never mistakes introduced or introduce for an Intro heading', () => {
+    const plain = __test.stripSteamMarkup('This system has been introduced to players. Each season will introduce new rules. IntroWelcome to the actual update.');
+    expect(plain).toContain('been introduced to players');
+    expect(plain).toContain('will introduce new rules');
+    expect(plain).not.toMatch(/intro\s+duced|intro\s+duce/);
+    expect(plain).toContain('Intro\nWelcome');
+  });
+
   test('drops overlong flattened paragraphs instead of publishing a clipped tail', () => {
     const longSentence = `This release begins with important context ${'and more context '.repeat(45)}before the final clause.`;
     const sentences = __test.extractSteamSentences(`${longSentence} A separate complete gameplay sentence remains readable.`);
