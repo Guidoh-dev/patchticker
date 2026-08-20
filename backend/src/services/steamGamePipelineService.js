@@ -75,7 +75,7 @@ function stripSteamMarkup(value) {
     // ("INTROWelcome" or "UPDATESGameplay"). Restore readable boundaries
     // before extracting sentences and changelog items.
     .replace(/\b(CHANGES AND UPDATES|BUG FIXES|KNOWN ISSUES|PERFORMANCE AND STABILITY|PERFORMANCE & STABILITY|GAMEPLAY|GENERAL|VISUALS|AUDIO|INTRO)(?=[A-Z][a-z])/gi, '\n$1\n')
-    .replace(/\b(Seasons? system(?: and Season One)?|Seasonal character|Global season modifiers|Global modifiers)(?=[A-Z][a-z])/g, '\n$1\n')
+    .replace(/\b(Seasons? system(?: and Season One)?|Seasonal character|Global season modifiers|Global modifiers|Personal season modifiers|Streamer Mode & Privacy)(?:\s*:)?(?=[A-Z][a-z])/g, '\n$1\n')
     .replace(/\b([A-Z][A-Z0-9 &/:'’()-]{2,}?)(?=[A-Z][a-z])/g, '$1\n')
     .replace(/([.!?])(?=[A-Z][a-z])/g, '$1\n')
     .replace(/[ \t]+/g, ' ')
@@ -88,15 +88,19 @@ function extractSteamSentences(value) {
   // Publisher feeds frequently flatten "v2.72" into prose; treating that dot
   // as punctuation yields misleading fragments such as "Version v2.".
   const protectedText = String(value || '').replace(/(?<=\d)\.(?=\d)/g, '\uE000');
-  return (protectedText.match(/[^.!?\n]{25,360}[.!?]+/g) || [])
-    .map(sentence => sentence.replace(/\uE000/g, '.'));
+  return protectedText
+    .split(/(?<=[.!?])(?:\s+|\n+)/)
+    .map(sentence => sentence.replace(/\uE000/g, '.').trim())
+    // Skip publisher paragraphs that remain too large rather than returning a
+    // misleading tail fragment cut from the middle of a sentence.
+    .filter(sentence => sentence.length >= 25 && sentence.length <= 520);
 }
 
 function uniqueText(items, max = 12) {
   const seen = new Set();
   const out = [];
   for (const item of items) {
-    const clean = stripSteamMarkup(item).replace(/^[-•]\s*/, '').trim();
+    const clean = stripSteamMarkup(item).replace(/^[-•]\s*/, '').replace(/\n+/g, ' ').trim();
     const key = clean.toLowerCase();
     if (clean.length < 18 || seen.has(key)) continue;
     seen.add(key);

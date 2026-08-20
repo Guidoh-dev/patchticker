@@ -113,10 +113,19 @@ describe('material Steam game update pipeline', () => {
   });
 
   test('separates common publisher headings flattened into their first item', () => {
-    const plain = __test.stripSteamMarkup('Seasons system and Season OneWith this release, seasons begin. Seasonal characterAdded a separate profile. Global modifiersApply to all seasonal players.');
+    const plain = __test.stripSteamMarkup('Seasons system and Season OneWith this release, seasons begin. Seasonal characterAdded a separate profile. Global modifiers:Apply to all seasonal players. Personal season modifiersPlayers can opt in. Streamer Mode & PrivacyPlayers are anonymized.');
     expect(plain).toContain('Season One\nWith this release');
     expect(plain).toContain('Seasonal character\nAdded a separate profile');
     expect(plain).toContain('Global modifiers\nApply to all seasonal players');
+    expect(plain).toContain('Personal season modifiers\nPlayers can opt in');
+    expect(plain).toContain('Streamer Mode & Privacy\nPlayers are anonymized');
+  });
+
+  test('drops overlong flattened paragraphs instead of publishing a clipped tail', () => {
+    const longSentence = `This release begins with important context ${'and more context '.repeat(45)}before the final clause.`;
+    const sentences = __test.extractSteamSentences(`${longSentence} A separate complete gameplay sentence remains readable.`);
+    expect(sentences).not.toContain(expect.stringMatching(/^.{0,20}final clause/));
+    expect(sentences).toContain('A separate complete gameplay sentence remains readable.');
   });
 
   test('rejects dated pre-release announcements while allowing live releases', () => {
