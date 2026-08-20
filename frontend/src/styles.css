@@ -2092,13 +2092,26 @@ select.field-input { cursor: pointer; }
   font-size: 12px;
   line-height: 1.5;
 }
+.analytics-consent-detail--compact { display: none; }
 .analytics-consent-copy a { color: var(--text); font-size: 11px; }
 .analytics-consent-actions { display: flex; gap: 8px; flex: 0 0 auto; }
 
 @media (max-width: 640px) {
-  .analytics-consent { align-items: stretch; flex-direction: column; gap: 14px; }
+  .analytics-consent {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border-radius: 16px;
+  }
+  .analytics-consent-copy strong { margin-bottom: 4px; }
+  .analytics-consent-detail--full { display: none; }
+  .analytics-consent-detail--compact { display: block; }
   .analytics-consent-actions { justify-content: stretch; }
-  .analytics-consent-actions .btn { flex: 1; }
+  .analytics-consent-actions .btn { flex: 1; min-height: 44px; padding-inline: 12px; }
 }
 
 /* ── Marketing landing page ─────────────────────────────────────────────────── */

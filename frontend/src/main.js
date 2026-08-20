@@ -325,7 +325,11 @@ function attachQuickbarScrollBehavior() {
 
   const mainScroller = document.querySelector('.dash-main');
   const scrollRoot = window.matchMedia('(max-width: 768px)').matches || !mainScroller ? window : mainScroller;
-  const collapseAtTop = window.matchMedia('(max-width: 640px)').matches;
+  // Keep the primary search visible, but start the duplicated platform/status
+  // controls collapsed at every viewport. Desktop already has the full filter
+  // rail; mobile can reveal these controls on demand without pushing the value
+  // proposition and latest decisions below the fold.
+  const collapseAtTop = true;
   const getScrollY = () => scrollRoot === window ? window.scrollY : scrollRoot.scrollTop;
 
   _quickbarScrollController?.abort();
@@ -372,7 +376,7 @@ function attachQuickbarScrollBehavior() {
     if (currentY <= QUICKBAR_TOP_ZONE_PX) {
       lastDirection = 'idle';
       setHidden(false);
-      setCollapsed(collapseAtTop);
+      setCollapsed(Date.now() < manualOpenUntil ? false : collapseAtTop);
     } else if (Date.now() < manualOpenUntil) {
       setHidden(false);
     } else if (direction === 'up') {
@@ -396,7 +400,7 @@ function attachQuickbarScrollBehavior() {
       const currentY = Math.max(0, getScrollY());
       if (currentY <= QUICKBAR_TOP_ZONE_PX) {
         setHidden(false);
-        setCollapsed(collapseAtTop);
+        setCollapsed(Date.now() < manualOpenUntil ? false : collapseAtTop);
         return;
       }
       // Trackpads and browser-driven jumps can coalesce several scroll events
@@ -2484,7 +2488,7 @@ async function renderDashboard({ focusId = null } = {}) {
         </aside>
 
         <main class="dash-main" aria-label="PatchTicker dashboard">
-          <section class="dash-quickbar" aria-label="Quick feed navigation">
+          <section class="dash-quickbar is-collapsed" aria-label="Quick feed navigation" data-collapsed="true">
             <div class="dash-quickbar-primary">
               <div class="dash-quickbar-search">
                 <span>Search</span>
@@ -2498,7 +2502,7 @@ async function renderDashboard({ focusId = null } = {}) {
                 <option value="score_asc">Lowest score</option>
               </select>
               <button class="btn btn--primary dash-top-apply" id="dash-top-apply-filters" type="button" disabled>Apply</button>
-              <button class="dash-quickbar-toggle" id="dash-quickbar-toggle" type="button" aria-controls="dash-quickbar-details" aria-expanded="true" aria-label="Hide update filters"><span>Hide filters</span><b aria-hidden="true">↑</b></button>
+              <button class="dash-quickbar-toggle" id="dash-quickbar-toggle" type="button" aria-controls="dash-quickbar-details" aria-expanded="false" aria-label="Show update filters"><span>Show filters</span><b aria-hidden="true">↓</b></button>
             </div>
             <div class="dash-quickbar-details" id="dash-quickbar-details">
               <div class="dash-ribbon" id="platform-ribbon">

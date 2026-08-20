@@ -169,8 +169,8 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(mainSource, /const QUICKBAR_TOP_ZONE_PX = 120/);
   assert.match(mainSource, /direction === 'down'[\s\S]*?setCollapsed\(true\)[\s\S]*?setHidden\(true\)/);
   assert.match(mainSource, /direction === 'up'[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(true\)/);
-  assert.match(mainSource, /const collapseAtTop = window\.matchMedia\('\(max-width: 640px\)'\)\.matches/);
-  assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(collapseAtTop\)/);
+  assert.match(mainSource, /const collapseAtTop = true/);
+  assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(Date\.now\(\) < manualOpenUntil \? false : collapseAtTop\)/);
   assert.match(mainSource, /const scrollRoot = window\.matchMedia\('\(max-width: 768px\)'\)\.matches/);
   assert.match(mainSource, /scrollRoot\.addEventListener\('wheel', onWheel/);
   assert.match(mainSource, /scrollRoot\.addEventListener\('touchmove', onTouchMove/);
@@ -188,6 +188,13 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(cssSource, /\.dash-quickbar\.is-scroll-hidden\s*\{[^}]*opacity:\s*0;[^}]*visibility:\s*hidden;[^}]*transform:\s*translateY\(calc\(-100% - 16px\)\)/s);
   assert.match(cssSource, /\.dash-quickbar-toggle\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /@media \(max-width: 760px\)[\s\S]*?html, body, #app\s*\{[^}]*overflow-x:\s*clip/s);
+});
+
+test('quick filters start collapsed and analytics consent stays compact on mobile', () => {
+  assert.match(mainSource, /<section class="dash-quickbar is-collapsed"[^>]*data-collapsed="true"/);
+  assert.match(mainSource, /aria-expanded="false" aria-label="Show update filters"/);
+  assert.match(cssSource, /\.analytics-consent-detail--compact\s*\{\s*display:\s*none/);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.analytics-consent-detail--full\s*\{\s*display:\s*none;\s*\}[\s\S]*?\.analytics-consent-detail--compact\s*\{\s*display:\s*block;/);
 });
 
 test('default platform sections reveal deep history on demand instead of flooding the page', () => {

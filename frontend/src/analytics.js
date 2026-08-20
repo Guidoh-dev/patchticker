@@ -201,6 +201,7 @@ function renderConsentPanel({ preferences = false } = {}) {
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-modal', preferences ? 'true' : 'false');
   panel.setAttribute('aria-labelledby', 'analytics-consent-title');
+  panel.setAttribute('aria-describedby', 'analytics-consent-detail analytics-consent-detail-compact');
 
   const copy = document.createElement('div');
   copy.className = 'analytics-consent-copy';
@@ -208,11 +209,17 @@ function renderConsentPanel({ preferences = false } = {}) {
   title.id = 'analytics-consent-title';
   title.textContent = preferences ? 'Analytics privacy choices' : 'Help improve PatchTicker?';
   const detail = document.createElement('p');
+  detail.id = 'analytics-consent-detail';
+  detail.className = 'analytics-consent-detail analytics-consent-detail--full';
   detail.textContent = 'With your permission, PostHog measures product usage and Microsoft Clarity provides strictly masked session replay and heatmaps. We never send email addresses, raw searches, watchlist contents, or notification tokens.';
+  const compactDetail = document.createElement('p');
+  compactDetail.id = 'analytics-consent-detail-compact';
+  compactDetail.className = 'analytics-consent-detail analytics-consent-detail--compact';
+  compactDetail.textContent = 'Allow PostHog usage analytics and strictly masked Microsoft Clarity heatmaps? We never send email addresses, searches, watchlists, or notification tokens.';
   const policy = document.createElement('a');
   policy.href = '#/privacy';
   policy.textContent = 'Privacy policy';
-  copy.append(title, detail, policy);
+  copy.append(title, detail, compactDetail, policy);
 
   const actions = document.createElement('div');
   actions.className = 'analytics-consent-actions';
