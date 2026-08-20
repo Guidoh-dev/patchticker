@@ -321,11 +321,11 @@ function attachQuickbarScrollBehavior() {
   if (!quickbar || !toggle) return;
 
   const mainScroller = document.querySelector('.dash-main');
-  const scrollRoot = window.matchMedia('(max-width: 768px)').matches || !mainScroller ? window : mainScroller;
-  // Keep the primary search visible, but start the duplicated platform/status
-  // controls collapsed at every viewport. Desktop already has the full filter
-  // rail; mobile can reveal these controls on demand without pushing the value
-  // proposition and latest decisions below the fold.
+  const mobileQuery = window.matchMedia('(max-width: 768px)');
+  const scrollRoot = mobileQuery.matches || !mainScroller ? window : mainScroller;
+  // Search is now the single control surface on every viewport. Keep its
+  // primary row visible at the top, collapse the deeper filters by default,
+  // retreat while reading downward, and return as soon as the user moves up.
   const collapseAtTop = true;
   const getScrollY = () => scrollRoot === window ? window.scrollY : scrollRoot.scrollTop;
 
@@ -448,12 +448,20 @@ function attachQuickbarScrollBehavior() {
     setHidden(false);
     setCollapsed(willCollapse);
   }, { signal });
+  quickbar.addEventListener('patchticker:filters-applied', () => {
+    manualOpenUntil = 0;
+    lockDirection('down', 1200);
+    if (document.activeElement === search) search.blur();
+    setCollapsed(true);
+    setHidden(true);
+  }, { signal });
   search?.addEventListener('focus', () => setHidden(false), { signal });
   scrollRoot.addEventListener('wheel', onWheel, { passive: true, signal });
   window.addEventListener('keydown', onKeyDown, { signal });
   scrollRoot.addEventListener('touchstart', onTouchStart, { passive: true, signal });
   scrollRoot.addEventListener('touchmove', onTouchMove, { passive: true, signal });
   scrollRoot.addEventListener('scroll', onScroll, { passive: true, signal });
+  mobileQuery.addEventListener('change', attachQuickbarScrollBehavior, { signal });
   signal.addEventListener('abort', () => clearTimeout(settleTimer), { once: true });
 
   setCollapsed(lastY > QUICKBAR_TOP_ZONE_PX || collapseAtTop);
@@ -2493,89 +2501,15 @@ async function renderDashboard({ focusId = null } = {}) {
       </div>
 
       <div class="dash-layout">
-        <aside class="dash-sidebar" aria-label="Dashboard controls">
-          <div class="dash-rail-brand">
-            <span class="dash-rail-kicker">PatchTicker desk</span>
-            <strong><span class="brand-pulse">Patch</span>Ticker</strong>
-            <p>Live install guidance for operating systems, drivers, launchers, firmware, and games.</p>
-          </div>
-
-          <nav class="topic-nav topic-nav--rail" aria-label="PatchTicker sections">
-            <a class="topic-nav-link active" href="#/updates" data-scroll-target="section-overview">Overview</a>
-            <a class="topic-nav-link" href="#/updates" data-scroll-target="section-tape">Live tape</a>
-            <a class="topic-nav-link" href="#/updates" data-scroll-target="section-latest">Patch desk</a>
-            <a class="topic-nav-link" href="#/updates" data-scroll-target="section-services">Services</a>
-            ${hasRole('pro') || user?.role === 'admin' ? '<a class="topic-nav-link" href="#/updates" data-scroll-target="section-games">My games</a>' : ''}
-          </nav>
-
-          <section class="dash-filter-card" aria-label="Precise update filters">
-            <div class="dash-filter-head">
-              <span>Precise filter</span>
-              <button class="link-btn dash-clear-link" id="dash-clear-all" type="button">Reset</button>
-            </div>
-            <div class="dash-search-row">
-              <input class="dash-search" id="dash-search" type="search" placeholder="Search service, device, game, version…" autocomplete="off" />
-              <button class="dash-search-clear hidden" id="dash-search-clear" type="button" aria-label="Clear search">×</button>
-            </div>
-            <div class="dash-search-status" id="dash-search-status" aria-live="polite"></div>
-            <div class="dash-active-filters hidden" id="dash-active-filters">
-              <span id="dash-filter-summary"></span>
-            </div>
-            <div class="dash-filter-actions">
-              <span class="dash-filter-pending" id="dash-filter-pending" aria-live="polite">Filters are up to date</span>
-              <button class="btn btn--primary dash-apply-filters" id="dash-apply-filters" type="button" disabled>Apply filters</button>
-            </div>
-          </section>
-
-          <section class="dash-filter-card">
-            <div class="dash-filter-head"><span>Setup lens</span></div>
-            <div class="setup-lens-grid">
-              <button class="setup-lens active" type="button" data-setup="">Everything</button>
-              <button class="setup-lens" type="button" data-setup="pc">PC &amp; Steam</button>
-              <button class="setup-lens" type="button" data-setup="console">Console &amp; handheld</button>
-              <button class="setup-lens" type="button" data-setup="apple">Apple devices</button>
-            </div>
-          </section>
-
-          <section class="dash-filter-card">
-            <div class="dash-filter-head"><span>Platform</span></div>
-            <div class="dash-chip-grid" id="platform-filters">
-              <button class="chip active" type="button" data-platform="">All</button>
-              ${TRACKED_PLATFORMS.map(p => {
-                const suffix = PLATFORM_CLASS[p] || 'default';
-                return `<button class="chip platform--${suffix}" type="button" data-platform="${H(p)}">${H(platformLabel(p))}</button>`;
-              }).join('')}
-            </div>
-          </section>
-
-          <section class="dash-filter-card">
-            <div class="dash-filter-head"><span>Status</span></div>
-            <div class="dash-chip-grid dash-chip-grid--status" id="status-filters">
-              <button class="chip active" type="button" data-status="">All</button>
-              <button class="chip" type="button" data-status="stable">Stable</button>
-              <button class="chip" type="button" data-status="caution">Caution</button>
-              <button class="chip" type="button" data-status="avoid">Avoid</button>
-            </div>
-          </section>
-
-          <section class="dash-filter-card">
-            <label class="dash-filter-label" for="dash-sort">Sort desk</label>
-            <select class="dash-sort" id="dash-sort">
-              <option value="date_desc">Newest first</option>
-              <option value="relevance">Best match</option>
-              <option value="date_asc">Oldest first</option>
-              <option value="score_desc">Highest score</option>
-              <option value="score_asc">Lowest score</option>
-            </select>
-          </section>
-        </aside>
-
         <main class="dash-main" aria-label="PatchTicker dashboard">
-          <section class="dash-quickbar is-collapsed" aria-label="Quick feed navigation" data-collapsed="true">
+          <section class="dash-quickbar is-collapsed" aria-label="Search and filter update feed" data-collapsed="true">
             <div class="dash-quickbar-primary">
               <div class="dash-quickbar-search">
-                <span>Search</span>
-                <input id="dash-top-search" type="search" placeholder="Search patches, devices, versions…" autocomplete="off" />
+                <label for="dash-top-search"><span>Search updates</span><small>Service, device, game, or version</small></label>
+                <div class="dash-quickbar-input-wrap">
+                  <input id="dash-top-search" type="search" placeholder="Try “SteamOS”, “Windows 11”, or a game…" autocomplete="off" />
+                  <button class="dash-search-clear hidden" id="dash-search-clear" type="button" aria-label="Clear update search">×</button>
+                </div>
               </div>
               <select class="dash-top-sort" id="dash-top-sort" aria-label="Sort patch desk">
                 <option value="date_desc">Newest first</option>
@@ -2587,25 +2521,52 @@ async function renderDashboard({ focusId = null } = {}) {
               <button class="btn btn--primary dash-top-apply" id="dash-top-apply-filters" type="button" disabled>Apply</button>
               <button class="dash-quickbar-toggle" id="dash-quickbar-toggle" type="button" aria-controls="dash-quickbar-details" aria-expanded="false" aria-label="Show update filters"><span>Show filters</span><b aria-hidden="true">↓</b></button>
             </div>
+            <div class="dash-quickbar-feedback hidden" id="dash-quickbar-feedback">
+              <div class="dash-search-status" id="dash-search-status" aria-live="polite"></div>
+              <div class="dash-active-filters hidden" id="dash-active-filters"><span id="dash-filter-summary"></span></div>
+              <span class="dash-filter-pending hidden" id="dash-filter-pending" aria-live="polite"></span>
+            </div>
             <div class="dash-quickbar-details" id="dash-quickbar-details">
-              <div class="dash-ribbon" id="platform-ribbon">
-                <button class="chip active" type="button" data-platform="">All</button>
-                ${TRACKED_PLATFORMS.map(p => `<button class="chip platform--${platformSuffix(p)}" type="button" data-platform="${H(p)}">${H(platformLabel(p))}</button>`).join('')}
+              <div class="dash-quickbar-nav-row">
+                <nav class="topic-nav topic-nav--quickbar" aria-label="PatchTicker sections">
+                  <a class="topic-nav-link active" href="#/updates" data-scroll-target="section-overview">Overview</a>
+                  <a class="topic-nav-link" href="#/updates" data-scroll-target="section-tape">Live tape</a>
+                  <a class="topic-nav-link" href="#/updates" data-scroll-target="section-latest">Patch desk</a>
+                  <a class="topic-nav-link" href="#/updates" data-scroll-target="section-services">Services</a>
+                  ${hasRole('pro') || user?.role === 'admin' ? '<a class="topic-nav-link" href="#/updates" data-scroll-target="section-games">My games</a>' : ''}
+                </nav>
+                <button class="link-btn dash-clear-link" id="dash-clear-all" type="button">Reset filters</button>
               </div>
-              <div class="dash-status-ribbon" id="status-ribbon" aria-label="Status filters">
-                <button class="chip active" type="button" data-status="">All status</button>
-                <button class="chip" type="button" data-status="stable">Stable</button>
-                <button class="chip" type="button" data-status="caution">Caution</button>
-                <button class="chip" type="button" data-status="avoid">Avoid</button>
+              <div class="dash-quickbar-filter-group">
+                <span class="dash-quickbar-filter-label">Setup</span>
+                <div class="dash-lens-ribbon" aria-label="Setup filters">
+                  <button class="setup-lens active" type="button" data-setup="">Everything</button>
+                  <button class="setup-lens" type="button" data-setup="pc">PC &amp; Steam</button>
+                  <button class="setup-lens" type="button" data-setup="console">Console &amp; handheld</button>
+                  <button class="setup-lens" type="button" data-setup="apple">Apple devices</button>
+                </div>
               </div>
-              <div class="dash-lens-ribbon" aria-label="Setup lenses">
-                <button class="setup-lens active" type="button" data-setup="">Everything</button>
-                <button class="setup-lens" type="button" data-setup="pc">PC &amp; Steam</button>
-                <button class="setup-lens" type="button" data-setup="console">Console &amp; handheld</button>
-                <button class="setup-lens" type="button" data-setup="apple">Apple devices</button>
+              <div class="dash-quickbar-filter-group">
+                <span class="dash-quickbar-filter-label">Platform</span>
+                <div class="dash-ribbon" id="platform-ribbon">
+                  <button class="chip active" type="button" data-platform="">All platforms</button>
+                  ${TRACKED_PLATFORMS.map(p => `<button class="chip platform--${platformSuffix(p)}" type="button" data-platform="${H(p)}">${H(platformLabel(p))}</button>`).join('')}
+                </div>
               </div>
-              <div class="dash-category-jumps" aria-label="Category jumps">
-                ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
+              <div class="dash-quickbar-filter-group dash-quickbar-filter-group--split">
+                <span class="dash-quickbar-filter-label">Status</span>
+                <div class="dash-status-ribbon" id="status-ribbon" aria-label="Status filters">
+                  <button class="chip active" type="button" data-status="">All status</button>
+                  <button class="chip" type="button" data-status="stable">Stable</button>
+                  <button class="chip" type="button" data-status="caution">Caution</button>
+                  <button class="chip" type="button" data-status="avoid">Avoid</button>
+                </div>
+              </div>
+              <div class="dash-quickbar-filter-group">
+                <span class="dash-quickbar-filter-label">Jump to</span>
+                <div class="dash-category-jumps" aria-label="Category jumps">
+                  ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
+                </div>
               </div>
             </div>
           </section>
@@ -2808,11 +2769,20 @@ async function renderDashboard({ focusId = null } = {}) {
       .some(key => _draftFilterState[key] !== _filterState[key]);
   }
 
+  function syncQuickbarFeedbackVisibility() {
+    const feedback = document.getElementById('dash-quickbar-feedback');
+    if (!feedback) return;
+    const hasSearchStatus = Boolean(document.getElementById('dash-search-status')?.textContent?.trim());
+    const hasPendingChanges = Boolean(document.getElementById('dash-filter-pending')?.textContent?.trim());
+    const hasAppliedFilters = !document.getElementById('dash-active-filters')?.classList.contains('hidden');
+    feedback.classList.toggle('hidden', !(hasSearchStatus || hasPendingChanges || hasAppliedFilters));
+  }
+
   function syncDraftFilterControls() {
-    document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(button =>
+    document.querySelectorAll('#platform-ribbon .chip').forEach(button =>
       button.classList.toggle('active', button.dataset.platform === _draftFilterState.platform)
     );
-    document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(button =>
+    document.querySelectorAll('#status-ribbon .chip').forEach(button =>
       button.classList.toggle('active', button.dataset.status === _draftFilterState.status)
     );
     document.querySelectorAll('[data-source-platform]').forEach(button =>
@@ -2826,28 +2796,26 @@ async function renderDashboard({ focusId = null } = {}) {
     );
 
     const visibleSearch = _draftFilterState.searchDisplay || _draftFilterState.search;
-    const searchEl = document.getElementById('dash-search');
     const topSearchEl = document.getElementById('dash-top-search');
-    if (searchEl && searchEl.value !== visibleSearch) searchEl.value = visibleSearch;
     if (topSearchEl && topSearchEl.value !== visibleSearch) topSearchEl.value = visibleSearch;
     document.getElementById('dash-search-clear')?.classList.toggle('hidden', !visibleSearch);
 
-    const sortEl = document.getElementById('dash-sort');
     const topSortEl = document.getElementById('dash-top-sort');
-    if (sortEl) sortEl.value = _draftFilterState.sort;
     if (topSortEl) topSortEl.value = _draftFilterState.sort;
 
     const dirty = filtersAreDirty();
-    document.querySelectorAll('#dash-apply-filters, #dash-top-apply-filters, #search-result-apply').forEach(button => {
+    document.querySelectorAll('#dash-top-apply-filters, #search-result-apply').forEach(button => {
       button.disabled = !dirty;
       button.classList.toggle('has-pending', dirty);
     });
     const pendingEl = document.getElementById('dash-filter-pending');
     if (pendingEl) {
-      pendingEl.textContent = dirty ? 'Changes ready · press Apply' : 'Filters are up to date';
+      pendingEl.textContent = dirty ? 'Changes ready · press Apply' : '';
       pendingEl.classList.toggle('is-pending', dirty);
+      pendingEl.classList.toggle('hidden', !dirty);
     }
     updateSearchStatus();
+    syncQuickbarFeedbackVisibility();
   }
 
   function setDraftFilters(patch) {
@@ -2965,6 +2933,7 @@ async function renderDashboard({ focusId = null } = {}) {
       ? `Database search · ${resultCount} ${resultCount === 1 ? 'match' : 'matches'}`
       : `${resultCount} cached ${resultCount === 1 ? 'match' : 'matches'}`;
     el.className = 'dash-search-status is-ready';
+    syncQuickbarFeedbackVisibility();
   }
 
   function resetServerSearch() {
@@ -3039,6 +3008,7 @@ async function renderDashboard({ focusId = null } = {}) {
     } else {
       containerEl.classList.add('hidden');
     }
+    syncQuickbarFeedbackVisibility();
   }
 
   function clearAllFilters() {
@@ -3066,6 +3036,7 @@ async function renderDashboard({ focusId = null } = {}) {
       '.filtered-feed-section, .category-feed-section, .empty-state'
     ) || results;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.querySelector('.dash-quickbar')?.dispatchEvent(new CustomEvent('patchticker:filters-applied'));
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -3365,7 +3336,7 @@ async function renderDashboard({ focusId = null } = {}) {
   });
 
   // ── Platform chip buttons ─────────────────────────────────────────────────
-  document.querySelectorAll('#platform-filters .chip, #platform-ribbon .chip').forEach(btn => {
+  document.querySelectorAll('#platform-ribbon .chip').forEach(btn => {
     btn.addEventListener('click', () => setPlatformFilter(btn.dataset.platform));
   });
 
@@ -3443,19 +3414,18 @@ async function renderDashboard({ focusId = null } = {}) {
   });
 
   // ── Status chip buttons ───────────────────────────────────────────────────
-  document.querySelectorAll('#status-filters .chip, #status-ribbon .chip').forEach(btn => {
+  document.querySelectorAll('#status-ribbon .chip').forEach(btn => {
     btn.addEventListener('click', () => {
       setDraftFilters({ status: btn.dataset.status || '' });
     });
   });
 
   // ── Sort dropdown ─────────────────────────────────────────────────────────
-  document.querySelectorAll('#dash-sort, #dash-top-sort').forEach(select => {
-    select.addEventListener('change', event => setDraftFilters({ sort: event.target.value }));
+  document.getElementById('dash-top-sort')?.addEventListener('change', event => {
+    setDraftFilters({ sort: event.target.value });
   });
 
   // ── Search input (staged; Apply performs authoritative database search) ──
-  const searchEl   = document.getElementById('dash-search');
   const topSearchEl = document.getElementById('dash-top-search');
   const clearBtn   = document.getElementById('dash-search-clear');
 
@@ -3467,14 +3437,11 @@ async function renderDashboard({ focusId = null } = {}) {
       : !search && _draftFilterState.sort === 'relevance' ? 'date_desc' : _draftFilterState.sort;
     setDraftFilters({ search, searchDisplay: val, searchMode: 'server', sort });
   });
-
-  searchEl?.addEventListener('input', (e) => {
-    const val = e.target.value;
-    const search = val.trim();
-    const sort = search && _draftFilterState.sort === 'date_desc'
-      ? 'relevance'
-      : !search && _draftFilterState.sort === 'relevance' ? 'date_desc' : _draftFilterState.sort;
-    setDraftFilters({ search, searchDisplay: val, searchMode: 'server', sort });
+  topSearchEl?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const applyButton = document.getElementById('dash-top-apply-filters');
+    if (!applyButton?.disabled) applyButton.click();
   });
 
   clearBtn?.addEventListener('click', () => {
@@ -3486,9 +3453,7 @@ async function renderDashboard({ focusId = null } = {}) {
 
   // ── Clear all ─────────────────────────────────────────────────────────────
   document.getElementById('dash-clear-all')?.addEventListener('click', clearAllFilters);
-  document.querySelectorAll('#dash-apply-filters, #dash-top-apply-filters').forEach(button => {
-    button.addEventListener('click', applyDraftFilters);
-  });
+  document.getElementById('dash-top-apply-filters')?.addEventListener('click', applyDraftFilters);
   syncDraftFilterControls();
 
   loadUpdates();

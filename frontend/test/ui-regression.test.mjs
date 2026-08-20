@@ -67,13 +67,31 @@ test('user-facing setup filters no longer use stack terminology', () => {
   assert.match(mainSource, />Apple devices</);
 });
 
-test('triad dashboard uses one separated column flow and horizontal metadata rows', () => {
+test('dashboard uses a two-column update workspace with no left settings rail', () => {
+  assert.doesNotMatch(mainSource, /class="dash-sidebar"/);
+  assert.match(cssSource, /\.dash-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 340px/s);
   assert.match(cssSource, /\.dash-wrap--triad \.dash-main\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*18px/s);
   assert.match(cssSource, /\.dash-wrap--triad \.dash-main > \.dash-quickbar,[\s\S]*?\.dash-wrap--triad \.dash-main > \.dash-panel\s*\{[^}]*margin-bottom:\s*0/s);
   assert.match(cssSource, /\.decision-card-link\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 148px/s);
   assert.match(cssSource, /\.decision-card-rating\s*\{[^}]*justify-items:\s*center/s);
   assert.match(cssSource, /\.detail-meta-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-meta-grid\s*\{\s*grid-template-columns:\s*1fr;/);
+});
+
+test('the top search bar is the single dashboard navigation and filtering surface', () => {
+  assert.match(mainSource, /aria-label="Search and filter update feed"/);
+  assert.match(mainSource, /id="dash-top-search"/);
+  assert.match(mainSource, /id="dash-top-sort"/);
+  assert.match(mainSource, /id="dash-top-apply-filters"/);
+  assert.match(mainSource, /class="topic-nav topic-nav--quickbar"/);
+  assert.match(mainSource, /id="platform-ribbon"/);
+  assert.match(mainSource, /id="status-ribbon"/);
+  assert.match(mainSource, /class="dash-lens-ribbon"/);
+  assert.match(mainSource, /topSearchEl\?\.addEventListener\('keydown'[\s\S]*?event\.key !== 'Enter'[\s\S]*?applyButton\.click\(\)/);
+  assert.doesNotMatch(mainSource, /id="dash-search"/);
+  assert.doesNotMatch(mainSource, /id="dash-sort"/);
+  assert.doesNotMatch(mainSource, /id="dash-apply-filters"/);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.dash-top-sort\s*\{[^}]*display:\s*block/s);
 });
 
 test('update detail columns cannot force horizontal page overflow', () => {
@@ -178,7 +196,7 @@ test('search results expose staged platform facets, verification timing, and hon
   assert.match(mainSource, /setDraftFilters\(\{ platform: nextPlatform \}\)/);
   assert.match(mainSource, /Press Apply to update results/);
   assert.match(mainSource, /data-apply-result-facets disabled>Apply view/);
-  assert.match(mainSource, /#dash-apply-filters, #dash-top-apply-filters, #search-result-apply/);
+  assert.match(mainSource, /#dash-top-apply-filters, #search-result-apply/);
   assert.match(mainSource, /await applyDraftFilters\(\)/);
   assert.match(cssSource, /\.search-result-facet\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /\.search-result-apply\s*\{[^}]*min-height:\s*44px/s);
@@ -190,6 +208,7 @@ test('applying console, platform, or game filters lands on the rendered results'
   assert.match(mainSource, /results\.querySelector\([\s\S]*?'\.filtered-feed-section, \.category-feed-section, \.empty-state'/);
   assert.match(mainSource, /prefers-reduced-motion: reduce/);
   assert.match(mainSource, /await runAuthoritativeSearch\(_filterState\.search\)/);
+  assert.match(mainSource, /dispatchEvent\(new CustomEvent\('patchticker:filters-applied'\)\)/);
   assert.match(mainSource, /scrollAppliedResultsIntoView\(\);[\s\S]*?return resultCount;/);
   assert.match(cssSource, /\.updates-list--desk > \.filtered-feed-section,[\s\S]*?scroll-margin-top:\s*92px/s);
 });
@@ -208,7 +227,10 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(mainSource, /direction === 'up'[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(true\)/);
   assert.match(mainSource, /const collapseAtTop = true/);
   assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(Date\.now\(\) < manualOpenUntil \? false : collapseAtTop\)/);
-  assert.match(mainSource, /const scrollRoot = window\.matchMedia\('\(max-width: 768px\)'\)\.matches/);
+  assert.match(mainSource, /const mobileQuery = window\.matchMedia\('\(max-width: 768px\)'\)/);
+  assert.match(mainSource, /const scrollRoot = mobileQuery\.matches \|\| !mainScroller \? window : mainScroller/);
+  assert.match(mainSource, /mobileQuery\.addEventListener\('change', attachQuickbarScrollBehavior/);
+  assert.match(mainSource, /quickbar\.addEventListener\('patchticker:filters-applied'[\s\S]*?setCollapsed\(true\);[\s\S]*?setHidden\(true\)/);
   assert.match(mainSource, /scrollRoot\.addEventListener\('wheel', onWheel/);
   assert.match(mainSource, /scrollRoot\.addEventListener\('touchmove', onTouchMove/);
   assert.match(mainSource, /lockDirection\('down', 1200\)/);
@@ -281,7 +303,7 @@ test('mobile ticker viewport clips its moving track without widening the page', 
 
 test('auth, feed, and history controls meet the touch target floor', () => {
   assert.match(cssSource, /\.chip\s*\{[^}]*min-width:\s*44px;[^}]*min-height:\s*44px/s);
-  assert.match(cssSource, /\.dash-search-row \.dash-search,\s*\.dash-sort\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.dash-quickbar-search input\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /\.field-input\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /\.field-link\s*\{[^}]*min-height:\s*44px/s);
   assert.match(cssSource, /\.history-link\s*\{[^}]*min-width:\s*44px/s);
@@ -321,9 +343,8 @@ test('filter controls stage draft state and only update the feed through Apply',
   assert.match(mainSource, /function setDraftFilters\(patch\)/);
   assert.match(mainSource, /function applyDraftFilters\(\)/);
   assert.match(mainSource, /_filterState = \{ \.\.\._draftFilterState \}/);
-  assert.match(mainSource, /id="dash-apply-filters"[^>]*disabled>Apply filters/);
   assert.match(mainSource, /id="dash-top-apply-filters"[^>]*disabled>Apply/);
-  assert.match(mainSource, /button\.addEventListener\('click', applyDraftFilters\)/);
+  assert.match(mainSource, /getElementById\('dash-top-apply-filters'\)\?\.addEventListener\('click', applyDraftFilters\)/);
   assert.match(mainSource, /if \(platform\) filtered = filtered\.filter/);
   assert.match(mainSource, /if \(status\)\s+filtered = filtered\.filter/);
   assert.match(mainSource, /groups\.every\(group => group\.some\(term => haystack\.includes\(term\)\)\)/);
@@ -340,9 +361,9 @@ test('setup lenses use ecosystem OR filters instead of impossible all-term searc
 test('dashboard uses independent desktop scrollers and native mobile page scroll', () => {
   assert.match(mainSource, /document\.body\.classList\.add\('dashboard-shell-active'\)/);
   assert.match(cssSource, /@media \(min-width: 769px\)[\s\S]*?body\.dashboard-shell-active\s*\{[^}]*height:\s*100vh;[^}]*overflow:\s*hidden/s);
-  assert.match(cssSource, /body\.dashboard-shell-active \.dash-sidebar,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(cssSource, /body\.dashboard-shell-active \.dash-main,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*overflow-y:\s*auto/s);
   assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*?body\.dashboard-shell-active \.dash-main,[\s\S]*?overflow-y:\s*visible/s);
-  assert.match(cssSource, /body\.dashboard-shell-active \.dash-sidebar\s*\{\s*display:\s*none;/s);
+  assert.doesNotMatch(mainSource, /class="dash-sidebar"/);
 });
 
 test('sticky filters are opaque, isolated, and cannot bleed into the patch feed', () => {

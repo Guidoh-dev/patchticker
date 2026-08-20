@@ -69,6 +69,15 @@ function requireVerifiedMember(req, res, next) {
 
 // ── GET /api/feed/recent — initial payload ────────────────────────────────────
 router.get('/recent', async (req, res, next) => {
+  // Community chat is supplemental to the verified release feed. During a DB
+  // outage, return an empty activity list so the client can render its
+  // verified-release fallback instead of turning a server fault into repeated
+  // 500 responses (and, consequently, false abuse strikes against readers).
+  if (typeof db.isAvailable === 'function' && !db.isAvailable()) {
+    logger.warn('Recent community feed unavailable; serving verified-release fallback');
+    return res.json([]);
+  }
+
   try {
     const result = await db.query(`
       SELECT

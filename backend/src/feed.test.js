@@ -4,6 +4,7 @@ const express = require('express');
 const request = require('supertest');
 
 const mockQuery = jest.fn();
+const mockIsAvailable = jest.fn(() => true);
 const mockRequireAuth = jest.fn((req, _res, next) => {
   req.user = {
     id: 'abcd1234-0000-0000-0000-000000000000',
@@ -13,7 +14,7 @@ const mockRequireAuth = jest.fn((req, _res, next) => {
   next();
 });
 
-jest.mock('./config/db', () => ({ query: mockQuery }));
+jest.mock('./config/db', () => ({ query: mockQuery, isAvailable: mockIsAvailable }));
 jest.mock('./middleware/requireAuth', () => mockRequireAuth);
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
@@ -34,6 +35,7 @@ function makeApp() {
 
 beforeEach(() => {
   mockQuery.mockReset();
+  mockIsAvailable.mockReset().mockReturnValue(true);
   mockRequireAuth.mockClear();
 });
 
@@ -47,6 +49,15 @@ test('recent community posts are public and query only anonymous labels', async 
   const sql = mockQuery.mock.calls[0][0];
   expect(sql).toContain('AS "userLabel"');
   expect(sql).not.toMatch(/JOIN\s+users|u\.email/i);
+});
+
+test('recent community feed degrades to an empty list while the database is unavailable', async () => {
+  mockIsAvailable.mockReturnValue(false);
+
+  const response = await request(makeApp()).get('/api/feed/recent').expect(200);
+
+  expect(response.body).toEqual([]);
+  expect(mockQuery).not.toHaveBeenCalled();
 });
 
 test('new posts stay authenticated and never expose the account email', async () => {
