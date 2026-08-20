@@ -55,6 +55,7 @@ async function tryRefresh() {
         headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
         body: JSON.stringify({}),
       });
+      if (res.status === 204) { clearAuth(); return false; }
       if (!res.ok) { clearAuth(); return false; }
       const json = await res.json();
       _accessToken = json.accessToken;

@@ -36,9 +36,22 @@ test('application registers canonical navigation directories and aliases', () =>
 });
 
 test('route renders reset stale page scroll before showing the next screen', () => {
-  assert.match(mainSource, /function resetPageScroll\(\)\s*\{[\s\S]*?document\.scrollingElement \|\| document\.documentElement[\s\S]*?root\.style\.scrollBehavior = 'auto';[\s\S]*?root\.scrollTo\(\{ top: 0, left: 0, behavior: 'auto' \}\);[\s\S]*?app\.scrollTop = 0;/);
+  assert.match(mainSource, /function resetPageScroll\(\)\s*\{[\s\S]*?document\.scrollingElement \|\| document\.documentElement[\s\S]*?classList\.add\('route-scroll-reset'\);[\s\S]*?root\.scrollTo\(\{ top: 0, left: 0, behavior: 'auto' \}\);[\s\S]*?app\.scrollTop = 0;[\s\S]*?classList\.remove\('route-scroll-reset'\);/);
   assert.match(mainSource, /function setHTML\(html\)\s*\{[\s\S]*?document\.body\.classList\.remove\('dashboard-shell-active'\);[\s\S]*?resetPageScroll\(\);[\s\S]*?app\.innerHTML = html;[\s\S]*?resetPageScroll\(\);[\s\S]*?requestAnimationFrame\(resetPageScroll\);/);
   assert.match(routerSource, /typeof window !== 'undefined'[\s\S]*?window\.history\.scrollRestoration = 'manual'/);
+});
+
+test('strict production CSP is not undermined by blocked inline styles', () => {
+  assert.doesNotMatch(mainSource, /\sstyle=["']/);
+  assert.doesNotMatch(mainSource, /\.style\./);
+  assert.match(mainSource, /function scoreToneClass\(score\)/);
+  assert.match(mainSource, /function metricPercentClass\(value\)/);
+  assert.match(cssSource, /\.score-tone--stable\s*\{[^}]*--score-color:/s);
+  assert.match(cssSource, /\.metric-pct--100\s*\{[^}]*--metric-pct:\s*100%/s);
+});
+
+test('anonymous session restore handles the backend no-session response quietly', () => {
+  assert.match(apiSource, /if \(res\.status === 204\) \{ clearAuth\(\); return false; \}/);
 });
 
 test('dashboard section links remain inside the hash router', () => {

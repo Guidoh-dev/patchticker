@@ -123,7 +123,6 @@ async function injectAd(containerId, adSlot = 'auto') {
 
   const ins = document.createElement('ins');
   ins.className                  = 'adsbygoogle';
-  ins.style.display              = 'block';
   ins.dataset.adClient           = ADSENSE_PUBLISHER_ID;
   ins.dataset.adSlot             = adSlot;
   ins.dataset.adFormat           = 'auto';
@@ -181,7 +180,6 @@ function preferredTheme() {
 function applyTheme(theme) {
   const next = theme === 'light' ? 'light' : 'dark';
   document.documentElement.dataset.theme = next;
-  document.documentElement.style.colorScheme = next;
   localStorage.setItem(THEME_STORAGE_KEY, next);
   return next;
 }
@@ -196,8 +194,7 @@ const H = (s) => String(s).replace(/[&<>"']/g,
 // ── Render helpers ────────────────────────────────────────────────────────────
 function resetPageScroll() {
   const root = document.scrollingElement || document.documentElement;
-  const previousBehavior = root.style.scrollBehavior;
-  root.style.scrollBehavior = 'auto';
+  document.documentElement.classList.add('route-scroll-reset');
   root.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   root.scrollTop = 0;
   root.scrollLeft = 0;
@@ -205,7 +202,7 @@ function resetPageScroll() {
   document.body.scrollLeft = 0;
   app.scrollTop = 0;
   app.scrollLeft = 0;
-  root.style.scrollBehavior = previousBehavior;
+  document.documentElement.classList.remove('route-scroll-reset');
 }
 
 function setHTML(html) {
@@ -1462,15 +1459,17 @@ function findSteamGame(query) {
   ) || null;
 }
 
-function scoreColor(score) {
+function scoreToneClass(score) {
   const valid = validScoreOrNull(score);
-  if (valid === null) return 'var(--text-3)';
-  // Returns an interpolated hex between red (#f87171) and green (#4ade80) based on score 0–10
-  const t   = valid / 10;
-  const r   = Math.round(248 + (74  - 248) * t);
-  const g   = Math.round(113 + (222 - 113) * t);
-  const b   = Math.round(113 + (128 - 113) * t);
-  return `rgb(${r},${g},${b})`;
+  if (valid === null) return 'score-tone--unscored';
+  if (valid < 5) return 'score-tone--avoid';
+  if (valid < 7.5) return 'score-tone--caution';
+  return 'score-tone--stable';
+}
+
+function metricPercentClass(value) {
+  const bounded = Math.max(0, Math.min(100, Number(value) || 0));
+  return `metric-pct--${Math.round(bounded / 5) * 5}`;
 }
 
 function validScoreOrNull(value) {
@@ -1507,12 +1506,13 @@ function renderBugFeed(containerEl, reports, updateId) {
   };
 
   function reportCard(r) {
-    const meta = SEVERITY_META[r.severity] || SEVERITY_META.low;
+    const severity = Object.hasOwn(SEVERITY_META, r.severity) ? r.severity : 'low';
+    const meta = SEVERITY_META[severity];
     const ago  = timeAgo(r.createdAt);
     return `
       <div class="bug-card">
         <div class="bug-card-header">
-          <span class="bug-severity-badge" style="background:${meta.color}20;border-color:${meta.color};color:${meta.color}">
+          <span class="bug-severity-badge bug-severity-badge--${severity}">
             ${meta.icon} ${meta.label}
           </span>
           <span class="bug-card-time">${ago}</span>
@@ -1924,13 +1924,13 @@ function renderScoreBar(score, status) {
   const valid = validScoreOrNull(score);
   if (valid === null) return '<div class="score-unavailable">Score unavailable · patch notes remain available</div>';
   const pct   = Math.round((valid / 10) * 100);
-  const color = scoreColor(valid);
+  const tone = scoreToneClass(valid);
   return `
     <div class="score-bar-wrap" title="Score: ${H(String(valid))} / 10">
       <div class="score-bar-track">
-        <div class="score-bar-fill" style="height:${pct}%;background:${color};box-shadow:0 0 8px ${color}55"></div>
+        <div class="score-bar-fill ${tone} ${metricPercentClass(pct)}"></div>
       </div>
-      <div class="score-bar-value" style="color:${color}">${H(valid.toFixed(1))}</div>
+      <div class="score-bar-value ${tone}">${H(valid.toFixed(1))}</div>
     </div>
   `;
 }
@@ -1973,9 +1973,9 @@ function renderInlineUpdatePanel(u, decision, rating, risk) {
         <section class="decision-expanded-block">
           <span>User rating</span>
           <div class="decision-vote-breakdown">
-            <div><b style="width:${Number(ratingBreakdown.install || 0)}%"></b><em>Install</em><strong>${H(String(ratingBreakdown.install || 0))}%</strong></div>
-            <div><b style="width:${Number(ratingBreakdown.wait || 0)}%"></b><em>Wait</em><strong>${H(String(ratingBreakdown.wait || 0))}%</strong></div>
-            <div><b style="width:${Number(ratingBreakdown.avoid || 0)}%"></b><em>Avoid</em><strong>${H(String(ratingBreakdown.avoid || 0))}%</strong></div>
+            <div><b class="${metricPercentClass(ratingBreakdown.install)}"></b><em>Install</em><strong>${H(String(ratingBreakdown.install || 0))}%</strong></div>
+            <div><b class="${metricPercentClass(ratingBreakdown.wait)}"></b><em>Wait</em><strong>${H(String(ratingBreakdown.wait || 0))}%</strong></div>
+            <div><b class="${metricPercentClass(ratingBreakdown.avoid)}"></b><em>Avoid</em><strong>${H(String(ratingBreakdown.avoid || 0))}%</strong></div>
           </div>
           <p class="decision-expanded-note">${H(String(rating.votes))} user votes counted.</p>
         </section>` : ''}
@@ -2140,7 +2140,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
       <dl class="mini-update-facts" aria-label="Update facts">
         <div><dt>Released</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
         <div class="${packageSize.available ? '' : 'is-unavailable'}"><dt>Size</dt><dd>${H(packageSize.value)}</dd></div>
-        <div><dt>${H(scoreLabel)}</dt><dd style="color:${scoreColor(ratingValue)}">${H(ratingDisplay)}${ratingValue === null ? '' : '/10'}</dd><small>${H(ratingSource)}</small></div>
+        <div><dt>${H(scoreLabel)}</dt><dd class="${scoreToneClass(ratingValue)}">${H(ratingDisplay)}${ratingValue === null ? '' : '/10'}</dd><small>${H(ratingSource)}</small></div>
       </dl>
       <div class="mini-update-freshness freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)} · ${H(freshness.detail)}</div>
       <p class="mini-update-copy">${H(u.verdict || u.affects || 'Recent patch coverage available.')}</p>
@@ -3677,7 +3677,7 @@ async function renderUpdateDetail(id) {
   const pSuffix   = platformSuffix(u.platform);
   const updateScore = validScoreOrNull(u.score);
   const updateScoreDisplay = scoreDisplay(updateScore);
-  const color     = scoreColor(updateScore);
+  const updateScoreTone = scoreToneClass(updateScore);
   const packageSize = packageSizeMeta(u);
   const steamAudience = steamAudienceMeta(u);
 
@@ -3688,15 +3688,8 @@ async function renderUpdateDetail(id) {
 
   // ── Security Criticality ──────────────────────────────────────────────────
   const sec = u.securityCriticality || { level: 'none', label: 'No Data', cves: [] };
-  const secColors = {
-    critical: { bg: 'rgba(248,113,113,.08)', border: 'rgba(248,113,113,.35)', text: '#f87171', badge: '#7f1d1d' },
-    high:     { bg: 'rgba(251,146,60,.08)',  border: 'rgba(251,146,60,.35)',  text: '#fb923c', badge: '#7c2d12' },
-    medium:   { bg: 'rgba(251,191,36,.06)',  border: 'rgba(251,191,36,.25)',  text: '#fbbf24', badge: '#713f12' },
-    low:      { bg: 'rgba(74,222,128,.05)',  border: 'rgba(74,222,128,.2)',   text: '#4ade80', badge: '#14532d' },
-    none:     { bg: 'rgba(85,85,85,.08)',    border: 'rgba(85,85,85,.2)',     text: '#888',    badge: '#222' },
-  };
-  const secC = secColors[sec.level] || secColors.none;
-  const secIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢', none: '⚪' }[sec.level] || '⚪';
+  const secLevel = ['critical', 'high', 'medium', 'low'].includes(sec.level) ? sec.level : 'none';
+  const secIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢', none: '⚪' }[secLevel];
   const secCves = Array.isArray(sec.cves) ? sec.cves : [];
   const secCveTotal = Math.max(secCves.length, Number(sec.totalCves) || 0);
   const visibleCves = secCves.slice(0, 12);
@@ -3716,14 +3709,13 @@ async function renderUpdateDetail(id) {
     if (!r) return '<p class="detail-empty-note">User rating appears after real votes are recorded.</p>';
     const communityScore = validScoreOrNull(r.score);
     if (communityScore === null) return '<p class="detail-empty-note">The current user rating failed validation and was not displayed.</p>';
-    const urColor = scoreColor(communityScore);
     const install = r.breakdown?.install ?? 0;
     const wait = r.breakdown?.wait ?? 0;
     const avoid = r.breakdown?.avoid ?? 0;
     return `
       <div class="detail-rating-card detail-rating-card--compact">
         <div class="detail-rating-top">
-          <div class="detail-rating-score" style="color:${urColor}">${H(communityScore.toFixed(1))}</div>
+          <div class="detail-rating-score ${scoreToneClass(communityScore)}">${H(communityScore.toFixed(1))}</div>
           <div>
             <div class="detail-rating-title">User Rating</div>
             <div class="detail-rating-count">${(r.totalVotes || 0).toLocaleString()} votes${ratingsLive ? ' <span class="rating-live-dot">●</span>' : ''}</div>
@@ -3855,7 +3847,7 @@ async function renderUpdateDetail(id) {
         <aside class="detail-decision-panel detail-decision-panel--${H(u.status)}" aria-label="PatchTicker decision summary">
           <div class="status-badge ${H(u.status)} detail-status-badge">${H(u.status.toUpperCase())}</div>
           <div class="detail-decision-score">
-            <span style="color:${color}">${H(updateScoreDisplay)}</span>
+            <span class="${updateScoreTone}">${H(updateScoreDisplay)}</span>
             <em>${updateScore === null ? 'Patch notes available · rating rejected or unavailable' : 'PatchTicker score · out of 10'}</em>
           </div>
           <div class="detail-decision-facts">
@@ -3923,10 +3915,10 @@ async function renderUpdateDetail(id) {
           <!-- Security Criticality -->
           <section class="detail-section">
             <h2 class="detail-section-title">Security notes</h2>
-            <div class="detail-security-card" style="background:${secC.bg};border-color:${secC.border}">
+            <div class="detail-security-card detail-security-card--${H(secLevel)}">
               <div class="detail-security-header">
                 <span class="detail-security-icon">${secIcon}</span>
-                <span class="detail-security-level" style="color:${secC.text}">${H(sec.level.toUpperCase())}</span>
+                <span class="detail-security-level">${H(secLevel.toUpperCase())}</span>
                 <span class="detail-security-label">${H(sec.label)}</span>
               </div>
               ${cveHTML ? `<div class="detail-cve-list">${cveHTML}${remainingCves ? `<span class="detail-cve-more">+${H(String(remainingCves))} more in the official advisory</span>` : ''}</div>` : ''}
@@ -4266,7 +4258,7 @@ async function renderAccount() {
       if (!item) return;
       const platform = item.dataset.platform;
       const isActive = item.classList.contains('watchlist-item--active');
-      item.style.opacity = '0.5';
+      item.classList.add('watchlist-item--pending');
       try {
         const { upsertWatch, removeWatch } = await import('./api.js');
         if (isActive) {
@@ -4283,7 +4275,7 @@ async function renderAccount() {
           item_count: watchlistGrid.querySelectorAll('.watchlist-item--active').length,
         });
       } catch (err) { showToast(err.message, 'error'); }
-      finally { item.style.opacity = '1'; }
+      finally { item.classList.remove('watchlist-item--pending'); }
     });
   }
 
@@ -4512,7 +4504,7 @@ async function renderAdmin() {
           <td class="admin-td">${e.tokens_in ?? '—'}</td>
           <td class="admin-td">${e.tokens_out ?? '—'}</td>
           <td class="admin-td">${e.latency_ms ? `${e.latency_ms}ms` : '—'}</td>
-          <td class="admin-td">${e.success ? '<span style="color:var(--green)">✓</span>' : `<span style="color:var(--red)" title="${H(e.error_msg || '')}">✗</span>`}</td>
+          <td class="admin-td">${e.success ? '<span class="admin-result admin-result--ok">✓</span>' : `<span class="admin-result admin-result--error" title="${H(e.error_msg || '')}">✗</span>`}</td>
           <td class="admin-td admin-td--date">${new Date(e.created_at).toLocaleString()}</td>
         </tr>
       `).join('');
@@ -4564,8 +4556,8 @@ async function renderAdmin() {
           </tr></thead>
           <tbody>
             ${rows.map(r => `<tr>
-              <td class="admin-td"><a href="#/platform/${H(r.platform)}" style="color:var(--text)">${H(r.platform)}</a></td>
-              <td class="admin-td" style="font-family:var(--font-mono);font-size:11px">${H(r.latest_version || '—')}</td>
+              <td class="admin-td"><a class="admin-platform-link" href="#/platform/${H(r.platform)}">${H(r.platform)}</a></td>
+              <td class="admin-td admin-version-value">${H(r.latest_version || '—')}</td>
               <td class="admin-td admin-td--date">${r.last_release ? new Date(r.last_release).toLocaleDateString() : '—'}</td>
               <td class="admin-td admin-td--date">${r.last_detected ? new Date(r.last_detected).toLocaleString() : '—'}</td>
               <td class="admin-td">${r.total_versions}</td>
@@ -4645,18 +4637,12 @@ async function renderAdmin() {
 async function renderPlatformPage(platformName) {
   const user = getUser();
   const name = decodeURIComponent(platformName);
-
-  const PLATFORM_COLOR = {
-    AMD: '#ef4444', NVIDIA: '#22c55e', Intel: '#0071c5', Apple: '#9ca3af',
-    macOS: '#a78bfa', Windows: '#60a5fa', Steam: '#64748b',
-    Xbox: '#107c10', PS5: '#3b82f6',
-  };
-  const color = PLATFORM_COLOR[name] || '#888';
+  const platformClass = platformSuffix(name);
 
   setHTML(`
     ${renderNav(user)}
     <div class="platform-page">
-      <div class="platform-hero" style="border-left:4px solid ${color}">
+      <div class="platform-hero platform-hero--accent platform--${H(platformClass)}">
         <div class="platform-hero-inner">
           <a class="platform-back" href="#/updates">← All platforms</a>
           <div class="platform-title-row">${renderPlatformLogo(name, 'platform-title-logo')}<h1 class="platform-title">${H(name)}</h1></div>
@@ -4696,11 +4682,10 @@ async function renderPlatformPage(platformName) {
       currentEl.innerHTML = '<p class="platform-empty">No update data yet for this platform.</p>';
     } else {
       const currentScore = validScoreOrNull(current.score);
-      const color  = scoreColor(currentScore);
+      const scoreTone = scoreToneClass(currentScore);
       const status = current.status || 'caution';
-      const statusColors = { stable: 'var(--green)', caution: 'var(--yellow)', avoid: 'var(--red)' };
       currentEl.innerHTML = `
-        <div class="platform-current-card" style="border-color:${color}">
+        <div class="platform-current-card ${scoreTone}">
           <div class="platform-current-left">
             <div class="platform-current-version">${H(current.name)}</div>
             <div class="platform-current-meta">
@@ -4709,11 +4694,11 @@ async function renderPlatformPage(platformName) {
             <div class="platform-current-verdict">${H(current.verdict || 'Review pending.')}</div>
           </div>
           <div class="platform-current-right">
-            <div class="platform-score-ring" style="--ring-color:${color}">
-              <span class="platform-score-num" style="color:${color}">${H(scoreDisplay(currentScore))}</span>
+            <div class="platform-score-ring ${scoreTone}">
+              <span class="platform-score-num ${scoreTone}">${H(scoreDisplay(currentScore))}</span>
               ${currentScore === null ? '' : '<span class="platform-score-label">/ 10</span>'}
             </div>
-            <div class="platform-status-badge" style="color:${statusColors[status]||'#888'};border-color:${statusColors[status]||'#888'}">
+            <div class="platform-status-badge ${H(status)}">
               ${status.toUpperCase()}
             </div>
             <a class="btn btn--outline btn--sm" href="#/updates/${H(current.id)}">Full details →</a>
@@ -4750,13 +4735,11 @@ async function renderPlatformPage(platformName) {
             <tbody>
               ${history.map(h => {
                 const historyScore = validScoreOrNull(h.score);
-                const c = scoreColor(historyScore);
-                const statusColors = { stable: 'var(--green)', caution: 'var(--yellow)', avoid: 'var(--red)' };
                 return `<tr class="history-row">
                   <td class="history-td history-td--version">${H(h.version)}</td>
                   <td class="history-td history-td--date">${new Date(h.releasedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}</td>
-                  <td class="history-td"><span style="color:${c};font-weight:700">${H(scoreDisplay(historyScore))}</span></td>
-                  <td class="history-td"><span class="history-status" style="color:${statusColors[h.status]||'#888'}">${(h.status||'').toUpperCase()}</span></td>
+                  <td class="history-td"><span class="history-score ${scoreToneClass(historyScore)}">${H(scoreDisplay(historyScore))}</span></td>
+                  <td class="history-td"><span class="history-status ${H(h.status || 'unscored')}">${(h.status||'').toUpperCase()}</span></td>
                   <td class="history-td">${h.bugCount ?? '—'}</td>
                   <td class="history-td"><a class="history-link" href="#/updates/${H(h.id)}">View →</a></td>
                 </tr>`;

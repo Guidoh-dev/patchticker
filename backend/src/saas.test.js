@@ -790,6 +790,18 @@ describe('15. Auth route smoke tests (HTTP)', () => {
     expect(res.status).toBe(401);
   });
 
+  test('POST /api/auth/refresh treats a missing cookie as an anonymous session', async () => {
+    const { cookie, token } = await getCsrf();
+    const res = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', cookie)
+      .set('X-CSRF-Token', token)
+      .send({});
+
+    expect(res.status).toBe(204);
+    expect(res.body).toEqual({});
+  });
+
   test('GET /api/auth/me with valid token returns user', async () => {
     const csrf1 = await getCsrf();
     const email = uniqueEmail();

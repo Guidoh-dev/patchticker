@@ -207,7 +207,10 @@ router.post(
       const rawToken = getRefreshToken(req);
 
       if (!rawToken) {
-        return res.status(401).json({ error: 'No refresh token' });
+        // A first-time visitor has no refresh cookie. That is an anonymous
+        // session state, not an authentication failure worth surfacing as a
+        // browser console/network error.
+        return res.status(204).end();
       }
 
       // consumeRefreshToken handles expiry check + replay detection
