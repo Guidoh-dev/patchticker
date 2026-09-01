@@ -19,7 +19,12 @@ Open the SQL editor and run these files in order:
 -- 2. supabase/migrations/202607200001_email_delivery_log.sql
 -- 3. supabase/migrations/202608040001_launch_schema_repair.sql
 -- 4. supabase/migrations/20260815152854_steam_games_and_email_quota.sql
+-- 5. supabase/migrations/20260901232532_enable_rls_for_public_tables.sql
 ```
+
+The final migration enables RLS on every PatchTicker table, revokes direct
+Data API access from `anon` and `authenticated`, and keeps database access
+limited to the backend `patchticker_app` role (plus database-owner operations).
 
 ## Required backend `.env` values
 

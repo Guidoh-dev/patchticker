@@ -641,3 +641,44 @@ CREATE INDEX IF NOT EXISTS idx_ai_log_update_id ON ai_analysis_log (update_id);
 CREATE INDEX IF NOT EXISTS idx_ai_log_created   ON ai_analysis_log (created_at DESC);
 GRANT SELECT, INSERT ON ai_analysis_log TO patchticker_app;
 GRANT USAGE ON SEQUENCE ai_analysis_log_id_seq TO patchticker_app;
+
+-- ── Data API isolation / Row-Level Security ──────────────────────────────────────
+-- PatchTicker uses custom JWT auth behind the Express API. Supabase's anon and
+-- authenticated roles must not have direct table access.
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL PRIVILEGES ON TABLES FROM PUBLIC, anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL PRIVILEGES ON SEQUENCES FROM PUBLIC, anon, authenticated;
+
+DO $$
+DECLARE
+  table_name TEXT;
+BEGIN
+  FOREACH table_name IN ARRAY ARRAY[
+    'users', 'refresh_tokens', 'account_lockouts', 'bug_reports',
+    'email_verification_tokens', 'password_reset_tokens', 'subscriptions',
+    'subscription_events', 'community_posts', 'platform_watchlist',
+    'user_webhooks', 'update_ratings', 'software_updates', 'ai_analysis_log',
+    'email_delivery_log', 'email_daily_usage'
+  ]
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', table_name || '_app_only', table_name);
+    EXECUTE format(
+      'CREATE POLICY %I ON public.%I FOR ALL TO patchticker_app USING (true) WITH CHECK (true)',
+      table_name || '_app_only', table_name
+    );
+  END LOOP;
+END $$;
+
+-- Pin privileged maintenance functions to trusted schemas and remove the
+-- implicit PUBLIC execute grant.
+ALTER FUNCTION public.trigger_set_updated_at() SET search_path = pg_catalog, public;
+ALTER FUNCTION public.cleanup_expired_tokens() SET search_path = pg_catalog, public;
+ALTER FUNCTION public.cleanup_stale_lockouts(INTEGER) SET search_path = pg_catalog, public;
+ALTER FUNCTION public.cleanup_expired_auth_tokens() SET search_path = pg_catalog, public;
+
+REVOKE EXECUTE ON FUNCTION public.trigger_set_updated_at() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.cleanup_expired_tokens() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.cleanup_stale_lockouts(INTEGER) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.cleanup_expired_auth_tokens() FROM PUBLIC, anon, authenticated;
