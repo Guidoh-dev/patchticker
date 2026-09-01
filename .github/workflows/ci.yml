@@ -65,10 +65,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload audit reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-audit-reports-${{ github.sha }}
           path: |
@@ -120,10 +120,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -151,10 +151,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
@@ -187,7 +187,7 @@ jobs:
 
       - name: Upload coverage report
         if: matrix.node-version == '22'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-${{ github.sha }}
           path: backend/coverage/
@@ -204,10 +204,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -235,7 +235,7 @@ jobs:
       # "Security" → "Code scanning alerts" view.
       - name: Upload OSV SARIF results
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: osv-results.sarif
           category: osv-scanner
@@ -244,7 +244,7 @@ jobs:
       # Also save raw results as an artefact for offline review
       - name: Upload OSV raw results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: osv-scan-results-${{ github.sha }}
           path: osv-results.sarif
@@ -261,24 +261,24 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Initialize CodeQL with JavaScript/TypeScript queries.
       # 'security-extended' includes the default security queries plus
       # additional ones for injection, path traversal, and prototype pollution.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: javascript
           queries: security-extended
 
       # For JavaScript, CodeQL uses autobuild — no compile step needed.
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       # Performs the analysis and uploads results to GitHub Security tab.
       # Results appear under Security → Code scanning alerts.
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: codeql-javascript
