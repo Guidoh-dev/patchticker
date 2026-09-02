@@ -18,6 +18,7 @@ const SECURITY_BONUSES = Object.freeze({
 });
 
 const RESOLUTION_RE = /\b(?:fixed|fixes|resolved|corrected|addressed|reduced|improved|mitigated|eliminated|prevented)\b/i;
+const DOCUMENTED_BENEFIT_RE = /\b(?:add(?:ed|s)?|introduc(?:e|ed|es)|enabl(?:e|ed|es)|enhanc(?:e|ed|es)|improv(?:e|ed|es)|optimi[sz](?:e|ed|es)|restor(?:e|ed|es)|support(?:ed|s)|upgrad(?:e|ed|es)|fix(?:ed|es)?|resolv(?:e|ed|es)|correct(?:ed|s)?|address(?:ed|es)|reduc(?:e|ed|es)|mitigat(?:e|ed|es)|eliminat(?:e|ed|es)|prevent(?:ed|s)?)\b/i;
 const UNRESOLVED_QUALIFIER_RE = /\b(?:remain(?:s|ing)?|may still|can still|continues? to|workaround|not fixed|unresolved|under investigation)\b/i;
 const NEGATIVE_ISSUE_RE = /\b(?:not (?:currently )?aware of any issues?|no known issues?|no issues? (?:are )?(?:known|reported|listed|found|identified)|without known issues?)\b/i;
 
@@ -90,6 +91,11 @@ function isNegativeKnownIssueStatement(value) {
   return NEGATIVE_ISSUE_RE.test(textValue(value));
 }
 
+function isDocumentedBenefitStatement(value) {
+  const text = textValue(value);
+  return Boolean(text && DOCUMENTED_BENEFIT_RE.test(text) && !UNRESOLVED_QUALIFIER_RE.test(text));
+}
+
 function normalizedSignal(value) {
   return textValue(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -134,6 +140,14 @@ function sourceKindAdjustment(input) {
   return 0;
 }
 
+function hasFullReleaseNotes(input) {
+  const kinds = [
+    input.sourceKind,
+    ...list(input.evidence).flatMap(item => [item?.releaseType, item?.sourceKind]),
+  ].filter(Boolean).map(kind => String(kind).toLowerCase().trim());
+  return kinds.some(kind => /^(?:official-release|official-release-notes?|official-game-update|steam-game-news|security-advisory|security-release|official-security(?:-advisory|-release)?)(?:$|\b)/.test(kind));
+}
+
 function hasDocumentedSecurityEvidence(input) {
   const criticality = input.securityCriticality || {};
   if (list(criticality.cves).length > 0) return true;
@@ -160,9 +174,17 @@ function deriveDeterministicScoreBreakdown(input = {}) {
     !isResolvedStatement(risk) && !isNegativeKnownIssueStatement(risk)
   ));
   const resolvedChangeCount = changelog.filter(isResolvedStatement).length;
+  const documentedBenefitCount = changelog.filter(isDocumentedBenefitStatement).length;
   const securityLevel = String(input.securityCriticality?.level || '').toLowerCase();
   const cveCount = list(input.securityCriticality?.cves).length;
   const securityDocumented = hasDocumentedSecurityEvidence(input);
+  const stableReleaseChannel = documentedReleaseChannel(input) === 'stable';
+  const cleanDocumentedRelease = sources > 0
+    && hasFullReleaseNotes(input)
+    && stableReleaseChannel
+    && documentedBenefitCount >= 2
+    && unresolvedIssues.length === 0
+    && unresolvedRisks.length === 0;
 
   const components = {
     baseline: 6.7,
@@ -188,12 +210,16 @@ function deriveDeterministicScoreBreakdown(input = {}) {
     security: securityDocumented
       ? (SECURITY_BONUSES[securityLevel] || 0) + Math.min(0.25, cveCount * 0.02)
       : 0,
-    documentedFixes: Math.min(0.28, resolvedChangeCount * 0.04),
+    // Concrete shipped fixes/features are positive install-confidence evidence,
+    // not mere upbeat wording. This gives clean, well-documented releases room
+    // to reach STABLE while remaining bounded by source and issue gates.
+    documentedBenefits: Math.min(0.9, documentedBenefitCount * 0.15),
+    cleanReleaseConfidence: cleanDocumentedRelease ? 0.45 : 0,
     changeSurface: -(
       Math.min(0.28, Math.max(0, changelog.length - 4) * 0.035)
       + Math.min(0.38, Math.max(0, noteCharacters - 500) / 3500)
     ),
-    releaseChannel: documentedReleaseChannel(input) === 'prerelease' ? -1.4 : 0,
+    releaseChannel: stableReleaseChannel ? 0 : -1.4,
   };
 
   let rawScore = Object.values(components).reduce((sum, value) => sum + value, 0);
@@ -201,7 +227,20 @@ function deriveDeterministicScoreBreakdown(input = {}) {
 
   const sourceKind = String(input.sourceKind || '').toLowerCase();
   if (/official-version|version-only/.test(sourceKind)) rawScore = Math.min(rawScore, 6.3);
-  if (input.knownIssuesAuthoritative !== true && !securityDocumented) rawScore = Math.min(rawScore, 7.4);
+  if (input.knownIssuesAuthoritative !== true && !securityDocumented) {
+    // Absence of an authoritative issue list still limits confidence. However,
+    // an official stable release with multiple concrete improvements and no
+    // captured risks is no longer artificially trapped below the green band.
+    const confidenceCap = cleanDocumentedRelease
+      ? 8.3
+      : (sources > 0 && hasFullReleaseNotes(input) && documentedBenefitCount > 0 ? 7.6 : 7.4);
+    rawScore = Math.min(rawScore, confidenceCap);
+  }
+  if (!securityDocumented && (unresolvedIssues.length > 0 || unresolvedRisks.length > 0)) {
+    // A long list of positive changes cannot erase a vendor-documented active
+    // defect. Non-security releases with any unresolved risk remain CAUTION.
+    rawScore = Math.min(rawScore, 7.4);
+  }
 
   const score = requireValidScore(clamp(rawScore, 1, 9.2), 'deterministic score');
   return {
@@ -215,6 +254,8 @@ function deriveDeterministicScoreBreakdown(input = {}) {
       unresolvedIssues: unresolvedIssues.length,
       unresolvedRisks: unresolvedRisks.length,
       resolvedChanges: resolvedChangeCount,
+      documentedBenefits: documentedBenefitCount,
+      cleanDocumentedRelease,
       securityLevel: securityDocumented ? securityLevel || 'documented' : 'none',
       cveCount,
       releaseChannel: documentedReleaseChannel(input),
@@ -260,6 +301,7 @@ module.exports = {
   requireValidScore,
   isResolvedStatement,
   isNegativeKnownIssueStatement,
+  isDocumentedBenefitStatement,
   issuePenaltyForStatement,
   deriveDeterministicScoreBreakdown,
   deriveDeterministicScore,

@@ -5,6 +5,7 @@ const {
   requireValidScore,
   isResolvedStatement,
   isNegativeKnownIssueStatement,
+  isDocumentedBenefitStatement,
   deriveDeterministicScoreBreakdown,
   deriveDeterministicScore,
   deriveDeterministicImpactScore,
@@ -87,6 +88,103 @@ describe('deterministic update scoring', () => {
       riskFactors: [{ level: 'medium', text: 'A startup regression remains under investigation.' }],
     });
     expect(resolved).toBeGreaterThan(active);
+  });
+
+  test('lets clean official releases with concrete benefits reach the stable band', () => {
+    const cleanRelease = {
+      name: 'Vendor App 9.0',
+      sourceKind: 'official-release-notes',
+      changelog: [
+        'Added native support for the latest operating system.',
+        'Fixed a crash during application startup.',
+        'Improved rendering performance on supported hardware.',
+        'Resolved an installer reliability problem.',
+      ],
+      knownIssues: [],
+      riskFactors: [],
+      evidence: [{
+        source: 'Vendor release notes',
+        url: 'https://vendor.example/releases/9-0',
+        releaseType: 'official-release-notes',
+      }],
+    };
+
+    const breakdown = deriveDeterministicScoreBreakdown(cleanRelease);
+    expect(breakdown.score).toBeGreaterThanOrEqual(7.5);
+    expect(statusForScore(breakdown.score)).toBe('stable');
+    expect(breakdown.signals).toMatchObject({
+      documentedBenefits: 4,
+      cleanDocumentedRelease: true,
+    });
+  });
+
+  test('recognizes a generic official release as full notes without trusting version-only evidence', () => {
+    const cleanOfficialRelease = {
+      sourceKind: 'official-release',
+      changelog: [
+        'Added support for a new controller family.',
+        'Improved download reliability.',
+        'Fixed a crash while applying updates.',
+      ],
+      knownIssues: [],
+      riskFactors: [],
+      evidence: [{ source: 'Vendor', url: 'https://vendor.example/release', releaseType: 'official-release' }],
+    };
+    expect(deriveDeterministicScore(cleanOfficialRelease)).toBeGreaterThanOrEqual(7.5);
+
+    const versionOnly = {
+      ...cleanOfficialRelease,
+      sourceKind: 'official-version',
+      evidence: [{ source: 'Vendor', url: 'https://vendor.example/version', releaseType: 'official-version' }],
+    };
+    expect(deriveDeterministicScore(versionOnly)).toBeLessThanOrEqual(6.3);
+  });
+
+  test('does not reward upbeat prose without official evidence or concrete shipped changes', () => {
+    expect(isDocumentedBenefitStatement('An amazing update with a fantastic experience.')).toBe(false);
+    const ungrounded = deriveDeterministicScore({
+      changelog: ['An amazing update with a fantastic experience.'],
+      knownIssues: [],
+      riskFactors: [],
+      evidence: [],
+    });
+    expect(ungrounded).toBeLessThanOrEqual(6.4);
+  });
+
+  test('documented unresolved issues keep an otherwise positive release out of false-green territory', () => {
+    const risky = deriveDeterministicScore({
+      name: 'Vendor App 9.1',
+      sourceKind: 'official-release-notes',
+      changelog: [
+        'Added a new renderer.',
+        'Improved startup performance.',
+        'Fixed an installer crash.',
+        'Resolved display flickering.',
+      ],
+      knownIssues: ['The application may still crash during startup on supported devices.'],
+      knownIssuesAuthoritative: true,
+      riskFactors: [{ level: 'high', text: 'A startup regression remains under investigation.' }],
+      evidence: [{ source: 'Vendor', url: 'https://vendor.example/releases/9-1', releaseType: 'official-release-notes' }],
+    });
+    expect(risky).toBeLessThan(7.5);
+  });
+
+  test('even a low unresolved risk blocks non-security releases from the stable band', () => {
+    const risky = deriveDeterministicScore({
+      name: 'Vendor Driver 10.0',
+      sourceKind: 'official-release-notes',
+      changelog: [
+        'Added support for seven new games.',
+        'Improved frame pacing.',
+        'Fixed display flickering.',
+        'Resolved an installer crash.',
+        'Enhanced application performance.',
+      ],
+      knownIssues: ['Notebook vendors may provide a more compatible certified driver.'],
+      riskFactors: [{ level: 'low', text: 'Notebook compatibility remains vendor-dependent.' }],
+      evidence: [{ source: 'Vendor', url: 'https://vendor.example/releases/10', releaseType: 'official-release-notes' }],
+    });
+    expect(risky).toBeLessThan(7.5);
   });
 
   test('adds security urgency only when official security evidence is documented', () => {
