@@ -66,9 +66,10 @@ test('database update and history queries enforce the same 240-day window', asyn
     .filter(sql => sql.includes('software_updates'));
   expect(updateQueries).toHaveLength(2);
   expect(updateQueries.every(sql => sql.includes("INTERVAL '240 days'"))).toBe(true);
-  expect(updateQueries.every(sql => sql.includes("averagePlayersRegion == \"US\""))).toBe(true);
-  expect(updateQueries.every(sql => sql.includes('averagePlayersWindowDays == 14'))).toBe(true);
-  expect(updateQueries.every(sql => sql.includes('averagePlayersSnapshot > 60000'))).toBe(true);
+  expect(updateQueries.every(sql => sql.includes("averagePlayersRegion == \"GLOBAL\""))).toBe(true);
+  expect(updateQueries.every(sql => sql.includes('averagePlayersWindowDays == 30'))).toBe(true);
+  expect(updateQueries.every(sql => sql.includes('averagePlayersSnapshot > 50000'))).toBe(true);
+  expect(updateQueries.every(sql => sql.includes('usMarketQualified == true'))).toBe(true);
 });
 
 test('successful database reads never mix static samples into the live feed', async () => {

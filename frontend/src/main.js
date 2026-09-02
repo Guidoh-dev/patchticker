@@ -2805,7 +2805,7 @@ async function renderDashboard({ focusId = null } = {}) {
             <div class="dash-panel-head dash-panel-head--compact">
               <div><p class="dash-section-kicker">Pro</p><h2>Follow my games</h2></div>
             </div>
-            <p class="dash-side-copy">Choose from ${FOLLOWABLE_STEAM_GAMES.length} reviewed Steam games above ${Number(STEAM_GAME_CANDIDATE_META.minimumAveragePlayers).toLocaleString()} average players. Routine hotfixes stay out of the feed.</p>
+            <p class="dash-side-copy">Choose from ${FOLLOWABLE_STEAM_GAMES.length} reviewed Steam games above ${Number(STEAM_GAME_CANDIDATE_META.minimumAveragePlayers).toLocaleString()} global 30-day average players and active in the US market. Routine hotfixes stay out of the feed.</p>
             <div class="follow-games-box">
               <div class="follow-games-search">
                 <input class="dash-search" id="follow-game-input" type="search" placeholder="Search Steam games…" autocomplete="off" />

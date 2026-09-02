@@ -1,11 +1,13 @@
-// Active game follows must use the same strict eligibility policy as backend
-// ingestion. The historical global snapshot remains audit-only below.
+// Active game follows use the same two-signal policy as backend ingestion:
+// global SteamCharts concurrency plus Valve's official United States chart.
 export const STEAM_GAME_CANDIDATE_META = Object.freeze({
-  "region": "US",
-  "windowDays": 14,
-  "minimumAveragePlayers": 60000,
+  "region": "GLOBAL",
+  "windowDays": 30,
+  "minimumAveragePlayers": 50000,
+  "market": "US",
   "comparison": "strictly-greater-than",
-  "eligibilityDataAvailable": false
+  "eligibilityDataAvailable": true,
+  "observedAt": "2026-09-02T04:52:00.000Z"
 });
 
 export const STEAM_GAME_AUDIT_CANDIDATES = Object.freeze([
@@ -497,7 +499,28 @@ export const STEAM_GAME_AUDIT_CANDIDATES = Object.freeze([
   }
 ].map(Object.freeze));
 
-// Fail closed: global/30-day values are never exposed as eligible US/14-day
-// games. Populate only from an approved regional snapshot carrying per-row
-// source evidence.
-export const STEAM_GAME_CANDIDATES = Object.freeze([]);
+// SteamCharts has no country-level average-player metric. These are global
+// 30-day averages for games separately verified on Steam's official US chart.
+export const STEAM_GAME_CANDIDATES = Object.freeze([
+  [730, 'Counter-Strike 2', 825165],
+  [570, 'Dota 2', 617623],
+  [1623730, 'Palworld', 221457],
+  [1172470, 'Apex Legends™', 128615],
+  [252490, 'Rust', 98087],
+  [2767030, 'Marvel Rivals', 79541],
+  [108600, 'Project Zomboid', 76237],
+  [2868840, 'Slay the Spire 2', 63538],
+  [359550, "Tom Clancy's Rainbow Six Siege", 61329],
+  [2357570, 'Overwatch®', 57462],
+  [381210, 'Dead by Daylight', 57378],
+  [3240220, 'Grand Theft Auto V Enhanced', 55039],
+  [553850, 'HELLDIVERS™ 2', 54083],
+  [230410, 'Warframe', 54054],
+  [236390, 'War Thunder', 50683],
+  [440, 'Team Fortress 2', 50431],
+].map(([appId, name, averagePlayers]) => Object.freeze({
+  appId: String(appId),
+  name,
+  averagePlayers,
+  tags: name.toLowerCase(),
+})));

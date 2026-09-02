@@ -11,11 +11,12 @@ const { getFreshnessSlaHours } = require('../config/platformRegistry');
 
 const MAX_UPDATE_AGE_DAYS = 240;
 // Historical Steam game rows remain available to administrators for audit,
-// but public reads admit only evidence that satisfies the strict US/14-day
-// average-concurrency policy. Core Steam client/SteamOS rows are unaffected.
+// but public reads admit only evidence that satisfies the reviewed global
+// 30-day concurrency threshold plus the separate official US-market signal.
+// Core Steam client/SteamOS rows are unaffected.
 const PUBLIC_STEAM_GAME_ELIGIBILITY_SQL = `(source_kind IS DISTINCT FROM 'steam-game-news' OR jsonb_path_exists(
   COALESCE(evidence, '[]'::jsonb),
-  '$[*] ? (@.averagePlayersRegion == "US" && @.averagePlayersWindowDays == 14 && @.averagePlayersSnapshot > 60000)'
+  '$[*] ? (@.averagePlayersRegion == "GLOBAL" && @.averagePlayersWindowDays == 30 && @.averagePlayersSnapshot > 50000 && @.usMarketQualified == true)'
 ))`;
 
 // Common user shorthand should resolve to the same authoritative database

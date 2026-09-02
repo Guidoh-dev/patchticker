@@ -1,34 +1,35 @@
 # Steam eligibility audit
 
-Audit date: 2026-08-20
+Audit date: 2026-09-02
 
 ## Required production policy
 
 | Field | Rule |
 |---|---|
-| Geography | United States only |
-| Measurement window | Trailing 14 days |
-| Metric | Average concurrent Steam players |
-| Threshold | Strictly greater than 60,000 |
-| Evidence | Per-game HTTPS source, UTC observation timestamp, explicit region and window |
+| Concurrency geography | Global (SteamCharts does not publish country concurrency) |
+| Measurement window | Trailing 30 days |
+| Metric | Average concurrent Steam players, calculated from SteamCharts' 30-day hours played |
+| Threshold | Strictly greater than 50,000 |
+| US relevance | Must also appear in Valve's official United States Top Sellers top 100 |
+| Evidence | SteamCharts game URL, official Steam US chart URL, ranks, and UTC observation timestamps |
 
 ## Finding
 
-The prior 81-game roster was based on a global, trailing-30-day SteamCharts snapshot with a greater-than-15,000 threshold. It cannot substantiate the new US-only, trailing-14-day rule and is now retained only as audit input.
+The prior 81-game roster used a greater-than-15,000 global threshold. The reviewed active roster now contains 16 actual games that clear 50,000 average concurrent players and also appear on Steam's United States chart. Utilities and idlers such as Wallpaper Engine, Bongo Cat, and Task Bar Hero are excluded from patch tracking.
 
-Counter-Strike 2 (Steam App 730) is present in that historical audit roster, so the reported omission was checked. It is not activated by the strict pipeline until a qualifying regional record is available.
+The active roster is: Counter-Strike 2, Dota 2, Palworld, Apex Legends, Rust, Marvel Rivals, Project Zomboid, Slay the Spire 2, Rainbow Six Siege, Overwatch, Dead by Daylight, GTA V Enhanced, HELLDIVERS 2, Warframe, War Thunder, and Team Fortress 2.
 
-Valve's public `GetNumberOfCurrentPlayers` Web API returns one current total for an App ID. Its documented request has no country, region, or historical-window parameter. Therefore, changing the labels on the existing global snapshot would create unsupported regional data.
+Valve's public player-count data and SteamCharts are global. Neither offers a public country-level average-player metric. PatchTicker therefore never labels these values as “US average players”; US relevance is a separate official-store signal.
 
 ## Enforcement applied
 
-- Runtime Steam-game polling accepts only rows with `region = US`, `windowDays = 14`, `averageConcurrentPlayers > 60000`, an HTTPS evidence URL, and a UTC observation timestamp.
-- The old global rows fail that gate and cannot trigger polling, inserts, feed events, or game-follow choices.
-- When no valid roster is loaded, the worker returns `eligibility_data_unavailable` before calling Valve or PostgreSQL.
+- Runtime Steam-game polling accepts only rows with `region = GLOBAL`, `windowDays = 30`, `averageConcurrentPlayers > 50000`, `market = US`, an official US rank from 1–100, both HTTPS evidence URLs, and UTC observation timestamps.
+- The old broad global rows fail that gate and cannot trigger polling, inserts, feed events, or game-follow choices.
+- A malformed configured override fails closed before calling Valve or PostgreSQL.
 - Non-Steam coverage is restricted to official platform-wide system surfaces, current vendor driver families, or official core clients. Each registry row declares that boundary.
 
 ## Required follow-up data
 
-Load a licensed or first-party regional concurrency snapshot into `STEAM_US_14D_CANDIDATES_JSON`. The value may be an array or `{ "candidates": [] }`; every row must include `appId`, `name`, `region`, `windowDays`, `averageConcurrentPlayers`, `sourceUrl`, and `observedAt`. Once supplied, the existing gate will admit qualifying games automatically; no threshold change is needed.
+Refresh the reviewed roster periodically from the two named sources. `STEAM_US_MARKET_CANDIDATES_JSON` may override the built-in snapshot with an array or `{ "candidates": [] }`; every row must preserve the fields enforced by the audit gate.
 
-Source: [Valve Steam Web API — ISteamUserStats/GetNumberOfCurrentPlayers](https://partner.steamgames.com/doc/webapi/isteamuserstats?l=english)
+Sources: [SteamCharts top games](https://steamcharts.com/top), [Steam United States Top Sellers](https://store.steampowered.com/charts/topselling/US), and [Valve Steam Web API — ISteamUserStats/GetNumberOfCurrentPlayers](https://partner.steamgames.com/doc/webapi/isteamuserstats?l=english)

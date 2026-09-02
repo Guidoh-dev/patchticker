@@ -1,6 +1,8 @@
 // src/services/steamGamePipelineService.js
-// Tracks material game releases only for a verified US trailing-14-day roster
-// whose average concurrent players are strictly greater than 60,000.
+// Tracks material game releases whose global trailing-30-day SteamCharts
+// average is strictly greater than 50,000 and which also appear on Valve's
+// official United States Top Sellers chart. SteamCharts does not publish a
+// country-level concurrency metric, so these two facts remain distinct.
 //
 // Cost controls:
 //   - Uses Valve's public ISteamNews endpoint (no API key or paid service).
@@ -320,6 +322,10 @@ function toDatabaseUpdate(game, post, classification) {
     averagePlayersWindowDays: game.windowDays,
     averagePlayersObservedAt: game.observedAt,
     averagePlayersSource: game.sourceUrl,
+    usMarketQualified: game.market === STRICT_STEAM_GAME_POLICY.market,
+    usMarketRank: game.usMarketRank,
+    usMarketObservedAt: game.marketObservedAt,
+    usMarketSource: game.marketSourceUrl,
     ...(statedSize ? { sizeBytes: statedSize } : {}),
   }];
   const riskFactors = [
@@ -348,7 +354,7 @@ function toDatabaseUpdate(game, post, classification) {
     impactScore: deriveDeterministicImpactScore({ changelog: classification.changelog, riskFactors }),
     affects: `${game.name} on Steam / gameplay / compatibility / installation requirements`,
     verdict: 'This is a material game update, not a routine hotfix. Review the official gameplay and system-requirement changes before installing; a user rating appears only after real votes are recorded.',
-    reasoning: `PatchTicker tracks this release because ${game.name} exceeded ${STRICT_STEAM_GAME_POLICY.minimumAverageConcurrentPlayers.toLocaleString('en-US')} average concurrent Steam players in the verified US trailing-${STRICT_STEAM_GAME_POLICY.windowDays}-day snapshot and its first-party notes document material ${classification.signals.join(', ')} changes. ${sizeSentence}`,
+    reasoning: `PatchTicker tracks this release because ${game.name} exceeded ${STRICT_STEAM_GAME_POLICY.minimumAverageConcurrentPlayers.toLocaleString('en-US')} global average concurrent Steam players over ${STRICT_STEAM_GAME_POLICY.windowDays} days and appeared on Valve's official United States Top Sellers chart. Its first-party notes document material ${classification.signals.join(', ')} changes. ${sizeSentence}`,
     changelog: classification.changelog,
     knownIssues,
     riskFactors,
@@ -524,6 +530,7 @@ async function run(options = {}) {
     threshold: STRICT_STEAM_GAME_POLICY.minimumAverageConcurrentPlayers,
     region: STRICT_STEAM_GAME_POLICY.region,
     windowDays: STRICT_STEAM_GAME_POLICY.windowDays,
+    market: STRICT_STEAM_GAME_POLICY.market,
     observedAt: candidates[0]?.observedAt || null,
     material: results.filter(result => ['inserted', 'refreshed', 'material_dry_run'].includes(result.status)).length,
     inserted: results.filter(result => result.status === 'inserted').length,

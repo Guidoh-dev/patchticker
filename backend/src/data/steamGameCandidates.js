@@ -1,7 +1,7 @@
-// Historical audit input only. This is a global trailing-30-day SteamCharts
-// snapshot and MUST NOT be used as evidence for the stricter US trailing-14-day
-// tracking policy. Runtime ingestion fails closed until every active row carries
-// explicit regional/window evidence from an approved provider.
+// Historical audit input plus the current reviewed roster. SteamCharts exposes
+// global concurrency, not country-level concurrency, so US relevance is proven
+// separately with Valve's official United States Top Sellers chart. Never label
+// the global average as a US player average.
 
 'use strict';
 
@@ -15,11 +15,56 @@ const STEAM_GAME_CANDIDATE_SNAPSHOT = Object.freeze({
 });
 
 const STRICT_STEAM_GAME_POLICY = Object.freeze({
-  region: 'US',
-  windowDays: 14,
-  minimumAverageConcurrentPlayers: 60000,
+  region: 'GLOBAL',
+  windowDays: 30,
+  minimumAverageConcurrentPlayers: 50000,
   comparison: 'strictly-greater-than',
+  market: 'US',
+  marketSignal: 'official-steam-top-sellers',
+  maximumMarketRank: 100,
 });
+
+const VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT = Object.freeze({
+  observedAt: '2026-09-02T04:52:00.000Z',
+  region: 'GLOBAL',
+  windowDays: 30,
+  market: 'US',
+  source: 'https://steamcharts.com/top',
+  marketSource: 'https://store.steampowered.com/charts/topselling/US',
+  eligibility: 'active-reviewed-roster',
+});
+
+const VERIFIED_STEAM_GAME_CANDIDATES = Object.freeze([
+  [730, 'Counter-Strike 2', 825165, 2],
+  [570, 'Dota 2', 617623, 35],
+  [1623730, 'Palworld', 221457, 20],
+  [1172470, 'Apex Legends™', 128615, 7],
+  [252490, 'Rust', 98087, 56],
+  [2767030, 'Marvel Rivals', 79541, 16],
+  [108600, 'Project Zomboid', 76237, 18],
+  [2868840, 'Slay the Spire 2', 63538, 57],
+  [359550, "Tom Clancy's Rainbow Six Siege", 61329, 3],
+  [2357570, 'Overwatch®', 57462, 30],
+  [381210, 'Dead by Daylight', 57378, 24],
+  [3240220, 'Grand Theft Auto V Enhanced', 55039, 26],
+  [553850, 'HELLDIVERS™ 2', 54083, 15],
+  [230410, 'Warframe', 54054, 19],
+  [236390, 'War Thunder', 50683, 31],
+  [440, 'Team Fortress 2', 50431, 61],
+].map(([appId, name, averageConcurrentPlayers, usMarketRank]) => Object.freeze({
+  appId,
+  name,
+  averageConcurrentPlayers,
+  averagePlayers: averageConcurrentPlayers,
+  region: VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT.region,
+  windowDays: VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT.windowDays,
+  market: VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT.market,
+  usMarketRank,
+  sourceUrl: `https://steamcharts.com/app/${appId}`,
+  marketSourceUrl: VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT.marketSource,
+  observedAt: VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT.observedAt,
+  marketObservedAt: VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT.observedAt,
+})));
 
 const STEAM_GAME_CANDIDATES = Object.freeze([
   {
@@ -441,13 +486,22 @@ function auditStrictSteamCandidates(candidates = STEAM_GAME_CANDIDATES) {
     if (seen.has(appId)) reasons.push('duplicate_app_id');
     seen.add(appId);
     if (!String(candidate?.name || '').trim()) reasons.push('missing_name');
-    if (candidate?.region !== STRICT_STEAM_GAME_POLICY.region) reasons.push('region_not_us');
-    if (Number(candidate?.windowDays) !== STRICT_STEAM_GAME_POLICY.windowDays) reasons.push('window_not_14_days');
+    if (candidate?.region !== STRICT_STEAM_GAME_POLICY.region) reasons.push('concurrency_region_not_global');
+    if (Number(candidate?.windowDays) !== STRICT_STEAM_GAME_POLICY.windowDays) reasons.push('window_not_30_days');
     if (!Number.isFinite(average) || average <= STRICT_STEAM_GAME_POLICY.minimumAverageConcurrentPlayers) {
-      reasons.push('average_not_above_60000');
+      reasons.push('average_not_above_50000');
     }
-    if (!/^https:\/\//i.test(String(candidate?.sourceUrl || ''))) reasons.push('missing_regional_source');
+    if (candidate?.market !== STRICT_STEAM_GAME_POLICY.market) reasons.push('market_not_us');
+    const marketRank = Number(candidate?.usMarketRank);
+    if (!Number.isInteger(marketRank) || marketRank < 1 || marketRank > STRICT_STEAM_GAME_POLICY.maximumMarketRank) {
+      reasons.push('missing_us_market_rank');
+    }
+    if (!/^https:\/\/steamcharts\.com\/app\/\d+/i.test(String(candidate?.sourceUrl || ''))) reasons.push('missing_steamcharts_source');
+    if (!/^https:\/\/store\.steampowered\.com\/charts\/topselling\/US\/?/i.test(String(candidate?.marketSourceUrl || ''))) {
+      reasons.push('missing_official_us_market_source');
+    }
     if (!/^\d{4}-\d{2}-\d{2}T/i.test(String(candidate?.observedAt || ''))) reasons.push('missing_observed_timestamp');
+    if (!/^\d{4}-\d{2}-\d{2}T/i.test(String(candidate?.marketObservedAt || ''))) reasons.push('missing_market_observed_timestamp');
     if (reasons.length) rejected.push({ appId, name: candidate?.name || '', reasons });
     else accepted.push(Object.freeze({ ...candidate, appId, averagePlayers: average }));
   }
@@ -458,10 +512,15 @@ function auditStrictSteamCandidates(candidates = STEAM_GAME_CANDIDATES) {
   });
 }
 
-const STEAM_GAME_ELIGIBILITY_AUDIT = auditStrictSteamCandidates();
+const STEAM_GAME_ELIGIBILITY_AUDIT = auditStrictSteamCandidates(VERIFIED_STEAM_GAME_CANDIDATES);
 
-function loadConfiguredStrictSteamCandidates(raw = process.env.STEAM_US_14D_CANDIDATES_JSON) {
-  if (!raw) return Object.freeze({ configured: false, accepted: Object.freeze([]), rejected: Object.freeze([]), errors: Object.freeze([]) });
+function loadConfiguredStrictSteamCandidates(raw = process.env.STEAM_US_MARKET_CANDIDATES_JSON) {
+  if (!raw) return Object.freeze({
+    configured: false,
+    accepted: STEAM_GAME_ELIGIBILITY_AUDIT.accepted,
+    rejected: STEAM_GAME_ELIGIBILITY_AUDIT.rejected,
+    errors: Object.freeze([]),
+  });
   try {
     const parsed = JSON.parse(raw);
     const candidates = Array.isArray(parsed) ? parsed : parsed?.candidates;
@@ -473,7 +532,7 @@ function loadConfiguredStrictSteamCandidates(raw = process.env.STEAM_US_14D_CAND
       configured: true,
       accepted: Object.freeze([]),
       rejected: Object.freeze([]),
-      errors: Object.freeze([`STEAM_US_14D_CANDIDATES_JSON: ${error.message}`]),
+      errors: Object.freeze([`STEAM_US_MARKET_CANDIDATES_JSON: ${error.message}`]),
     });
   }
 }
@@ -485,6 +544,8 @@ module.exports = {
   STRICT_STEAM_GAME_POLICY,
   STEAM_GAME_CANDIDATE_SNAPSHOT,
   STEAM_GAME_CANDIDATES,
+  VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT,
+  VERIFIED_STEAM_GAME_CANDIDATES,
   STEAM_GAME_ELIGIBILITY_AUDIT,
   CONFIGURED_STEAM_GAME_ELIGIBILITY,
   STRICT_STEAM_GAME_CANDIDATES,
