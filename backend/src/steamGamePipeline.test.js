@@ -28,8 +28,8 @@ describe('material Steam game update pipeline', () => {
     expect(STEAM_GAME_CANDIDATES.map(game => game.name)).not.toEqual(expect.arrayContaining([
       'Wallpaper Engine', 'OBS Studio', 'Crosshair X', 'Spacewar', 'FiveM', 'tModLoader',
     ]));
-    expect(VERIFIED_STEAM_GAME_CANDIDATES).toHaveLength(16);
-    expect(STRICT_STEAM_GAME_CANDIDATES).toHaveLength(16);
+    expect(VERIFIED_STEAM_GAME_CANDIDATES).toHaveLength(17);
+    expect(STRICT_STEAM_GAME_CANDIDATES).toHaveLength(17);
     expect(STEAM_GAME_ELIGIBILITY_AUDIT.rejected).toHaveLength(0);
     expect(STEAM_GAME_ELIGIBILITY_AUDIT.accepted).toEqual(expect.arrayContaining([
       expect.objectContaining({ appId: 730, region: 'GLOBAL', market: 'US' }),

@@ -15,9 +15,9 @@ Audit date: 2026-09-02
 
 ## Finding
 
-The prior 81-game roster used a greater-than-15,000 global threshold. The reviewed active roster now contains 16 actual games that clear 50,000 average concurrent players and also appear on Steam's United States chart. Utilities and idlers such as Wallpaper Engine, Bongo Cat, and Task Bar Hero are excluded from patch tracking.
+The prior 81-game roster used a greater-than-15,000 global threshold. The reviewed active fallback roster now contains 17 actual games that clear 50,000 average concurrent players and also appear on Steam's United States chart. Utilities and idlers such as Wallpaper Engine, Bongo Cat, and Task Bar Hero are excluded from patch tracking.
 
-The active roster is: Counter-Strike 2, Dota 2, Palworld, Apex Legends, Rust, Marvel Rivals, Project Zomboid, Slay the Spire 2, Rainbow Six Siege, Overwatch, Dead by Daylight, GTA V Enhanced, HELLDIVERS 2, Warframe, War Thunder, and Team Fortress 2.
+The fallback roster is: Counter-Strike 2, Dota 2, Palworld, Apex Legends, Rust, Marvel Rivals, Project Zomboid, Slay the Spire 2, Rainbow Six Siege, Overwatch, Dead by Daylight, GTA V Enhanced, HELLDIVERS 2, Warframe, How to Fish, War Thunder, and Team Fortress 2. Production refreshes the roster from both charts every 12 hours and preserves this reviewed list if either source is unavailable or malformed.
 
 Valve's public player-count data and SteamCharts are global. Neither offers a public country-level average-player metric. PatchTicker therefore never labels these values as “US average players”; US relevance is a separate official-store signal.
 

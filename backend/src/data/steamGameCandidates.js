@@ -25,7 +25,7 @@ const STRICT_STEAM_GAME_POLICY = Object.freeze({
 });
 
 const VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT = Object.freeze({
-  observedAt: '2026-09-02T04:52:00.000Z',
+  observedAt: '2026-09-05T06:01:29.631Z',
   region: 'GLOBAL',
   windowDays: 30,
   market: 'US',
@@ -35,22 +35,23 @@ const VERIFIED_STEAM_GAME_CANDIDATE_SNAPSHOT = Object.freeze({
 });
 
 const VERIFIED_STEAM_GAME_CANDIDATES = Object.freeze([
-  [730, 'Counter-Strike 2', 825165, 2],
-  [570, 'Dota 2', 617623, 35],
-  [1623730, 'Palworld', 221457, 20],
-  [1172470, 'Apex Legends™', 128615, 7],
-  [252490, 'Rust', 98087, 56],
-  [2767030, 'Marvel Rivals', 79541, 16],
-  [108600, 'Project Zomboid', 76237, 18],
-  [2868840, 'Slay the Spire 2', 63538, 57],
-  [359550, "Tom Clancy's Rainbow Six Siege", 61329, 3],
-  [2357570, 'Overwatch®', 57462, 30],
-  [381210, 'Dead by Daylight', 57378, 24],
-  [3240220, 'Grand Theft Auto V Enhanced', 55039, 26],
-  [553850, 'HELLDIVERS™ 2', 54083, 15],
-  [230410, 'Warframe', 54054, 19],
-  [236390, 'War Thunder', 50683, 31],
-  [440, 'Team Fortress 2', 50431, 61],
+  [730, 'Counter-Strike 2', 823267, 6],
+  [570, 'Dota 2', 618792, 57],
+  [1623730, 'Palworld', 196523, 23],
+  [1172470, 'Apex Legends™', 129100, 11],
+  [252490, 'Rust', 96951, 25],
+  [2767030, 'Marvel Rivals', 77957, 10],
+  [108600, 'Project Zomboid', 74707, 28],
+  [2868840, 'Slay the Spire 2', 63424, 59],
+  [359550, "Tom Clancy's Rainbow Six Siege", 62540, 14],
+  [2357570, 'Overwatch®', 58398, 42],
+  [553850, 'HELLDIVERS™ 2', 56281, 15],
+  [381210, 'Dead by Daylight', 55940, 33],
+  [3240220, 'Grand Theft Auto V Enhanced', 54690, 30],
+  [230410, 'Warframe', 53355, 16],
+  [4001890, 'How to Fish', 52031, 8],
+  [236390, 'War Thunder', 50714, 31],
+  [440, 'Team Fortress 2', 50514, 65],
 ].map(([appId, name, averageConcurrentPlayers, usMarketRank]) => Object.freeze({
   appId,
   name,

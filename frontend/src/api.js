@@ -155,6 +155,9 @@ export async function fetchUpdates({ platform, status, sort, search, signal } = 
   const qs = params.toString();
   return request(`/updates${qs ? `?${qs}` : ''}`, { skipAuth: true, ...(signal ? { signal } : {}) });
 }
+export async function fetchSteamGameRoster() {
+  return request('/updates/steam-games/eligibility', { skipAuth: true });
+}
 // ── Community feed ────────────────────────────────────────────────────────────
 
 export async function fetchRecentPosts() {

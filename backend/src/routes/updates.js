@@ -23,6 +23,7 @@ const {
 } = require('../validators/schemas');
 const { getUpdates, getUpdateById, getSentimentSummary, getUpdateHistory, buildFeedMeta } = require('../services/updatesService');
 const aiService        = require('../services/aiAnalysisService');
+const { refreshSteamGameRoster } = require('../services/steamGameEligibilityService');
 const db               = require('../config/db');
 const logger           = require('../utils/logger');
 const { aiAnalysisLimiter } = require('../middleware/rateLimiter');
@@ -95,6 +96,32 @@ router.get('/summary', async (req, res, next) => {
   try {
     const summary = await getSentimentSummary();
     res.json({ data: summary });
+  } catch (err) { next(err); }
+});
+
+// ── GET /api/updates/steam-games/eligibility ─────────────────────────────────
+
+router.get('/steam-games/eligibility', ratingsReadLimiter, async (req, res, next) => {
+  try {
+    const roster = await refreshSteamGameRoster();
+    res.set('Cache-Control', 'public, max-age=900, stale-while-revalidate=3600');
+    res.json({
+      data: roster.candidates.map(game => ({
+        appId: String(game.appId),
+        name: game.name,
+        averagePlayers: game.averagePlayers,
+        usMarketRank: game.usMarketRank,
+      })),
+      meta: {
+        region: roster.policy.region,
+        windowDays: roster.policy.windowDays,
+        minimumAveragePlayers: roster.policy.minimumAverageConcurrentPlayers,
+        market: roster.policy.market,
+        source: roster.source,
+        refreshedAt: roster.refreshedAt,
+        stale: roster.stale,
+      },
+    });
   } catch (err) { next(err); }
 });
 

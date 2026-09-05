@@ -7,7 +7,7 @@
 // Cost controls:
 //   - Uses Valve's public ISteamNews endpoint (no API key or paid service).
 //   - Never calls the Anthropic analysis service.
-//   - Polls a fixed, reviewed game roster with bounded concurrency.
+//   - Polls a cached, evidence-qualified game roster with bounded concurrency.
 //
 // Editorial controls:
 //   - Only first-party Steam Community announcements are considered.
@@ -35,8 +35,8 @@ const { normaliseReleaseText } = require('../utils/releaseText');
 const {
   STRICT_STEAM_GAME_POLICY,
   STEAM_GAME_ELIGIBILITY_AUDIT,
-  STRICT_STEAM_GAME_CANDIDATES,
 } = require('../data/steamGameCandidates');
+const { refreshSteamGameRoster } = require('./steamGameEligibilityService');
 
 const STEAM_NEWS_URL = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/';
 const OFFICIAL_FEED = 'steam_community_announcements';
@@ -391,7 +391,7 @@ async function fetchGameNews(game, options = {}) {
     // Ask Valve only for the official announcement lane and cap each article.
     // Twelve thousand characters is ample for classification and the curated
     // changelog while bounding Render transfer to roughly 10 MB/scan worst-case
-    // for the current 81-game roster instead of accepting unbounded bodies.
+    // for the bounded qualified roster instead of accepting unbounded bodies.
     params: {
       appid: game.appId,
       count: postCount,
@@ -464,7 +464,14 @@ async function run(options = {}) {
     return { status: 'db_unavailable', candidates: 0, material: 0, inserted: 0, failed: 0, results: [] };
   }
 
-  if (!STRICT_STEAM_GAME_CANDIDATES.length) {
+  const eligibility = await refreshSteamGameRoster({
+    force: options.forceEligibilityRefresh === true,
+    ...(options.fetchEligibilityHtml ? { fetchHtml: options.fetchEligibilityHtml } : {}),
+    ...(options.now ? { now: options.now } : {}),
+  });
+  const eligibleCandidates = eligibility.candidates;
+
+  if (!eligibleCandidates.length) {
     logger.error('[steam-games] Strict eligibility roster unavailable; scan stopped before vendor polling', {
       policy: STRICT_STEAM_GAME_POLICY,
       rejectedCandidates: STEAM_GAME_ELIGIBILITY_AUDIT.rejected.length,
@@ -485,10 +492,10 @@ async function run(options = {}) {
     };
   }
 
-  const limit = boundedInteger(options.limit || process.env.STEAM_GAME_CANDIDATE_LIMIT, STRICT_STEAM_GAME_CANDIDATES.length, 1, STRICT_STEAM_GAME_CANDIDATES.length);
+  const limit = boundedInteger(options.limit || process.env.STEAM_GAME_CANDIDATE_LIMIT, eligibleCandidates.length, 1, eligibleCandidates.length);
   const concurrency = boundedInteger(options.concurrency || process.env.STEAM_GAME_CONCURRENCY, DEFAULT_CONCURRENCY, 1, 8);
   const lookbackDays = boundedInteger(options.lookbackDays || process.env.STEAM_GAME_LOOKBACK_DAYS, DEFAULT_LOOKBACK_DAYS, 1, 60);
-  const candidates = STRICT_STEAM_GAME_CANDIDATES.slice(0, limit);
+  const candidates = eligibleCandidates.slice(0, limit);
   const results = [];
 
   for (let index = 0; index < candidates.length; index += concurrency) {
@@ -532,6 +539,8 @@ async function run(options = {}) {
     windowDays: STRICT_STEAM_GAME_POLICY.windowDays,
     market: STRICT_STEAM_GAME_POLICY.market,
     observedAt: candidates[0]?.observedAt || null,
+    eligibilitySource: eligibility.source,
+    eligibilityStale: eligibility.stale,
     material: results.filter(result => ['inserted', 'refreshed', 'material_dry_run'].includes(result.status)).length,
     inserted: results.filter(result => result.status === 'inserted').length,
     failed: results.filter(result => result.status === 'failed').length,

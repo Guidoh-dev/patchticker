@@ -145,7 +145,7 @@ function start() {
   });
 
   // Popular Steam games: every two hours at minute 45. This stays separate
-  // from the platform scan so 81 bounded public feed requests cannot delay a
+  // from the platform scan so bounded public feed requests cannot delay a
   // security lane or duplicate the full scan ten minutes earlier.
   _steamGameScanJob = cron.schedule('45 */2 * * *', runSteamGameScan, {
     scheduled: true,

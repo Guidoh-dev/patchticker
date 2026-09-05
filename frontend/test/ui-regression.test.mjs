@@ -10,6 +10,7 @@ const cssSource = await readFile(resolve(root, 'src/styles.css'), 'utf8');
 const apiSource = await readFile(resolve(root, 'src/api.js'), 'utf8');
 const routerSource = await readFile(resolve(root, 'src/router.js'), 'utf8');
 const filterLogicSource = await readFile(resolve(root, 'src/filterLogic.js'), 'utf8');
+const steamCandidatesSource = await readFile(resolve(root, 'src/steamGameCandidates.js'), 'utf8');
 
 test('router resolves exact and dynamic update directories', () => {
   const updatesHandler = () => 'updates';
@@ -549,6 +550,16 @@ test('Steam game cards explain tracking relevance with verified audience evidenc
   assert.match(mainSource, /Avg players at scan/);
   assert.match(mainSource, /class="steam-audience-signal"/);
   assert.match(cssSource, /\.steam-audience-signal\s*\{[^}]*min-height:\s*24px;[^}]*var\(--cyan\)/s);
+});
+
+test('Pro game follows hydrate from the current backend eligibility roster', () => {
+  assert.match(apiSource, /fetchSteamGameRoster\(\)[\s\S]*?\/updates\/steam-games\/eligibility/);
+  assert.match(mainSource, /let FOLLOWABLE_STEAM_GAMES = STEAM_GAME_CANDIDATES/);
+  assert.match(mainSource, /fetchSteamGameRoster\(\)\.then/);
+  assert.match(mainSource, /ACTIVE_STEAM_GAME_META/);
+  assert.match(mainSource, /global 30-day average players and active in the US market/);
+  assert.match(steamCandidatesSource, /"minimumAveragePlayers": 50000/);
+  assert.match(steamCandidatesSource, /\[4001890, 'How to Fish', 52031\]/);
 });
 
 test('update details continue into honestly ranked related releases', () => {

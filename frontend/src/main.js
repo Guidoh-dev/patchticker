@@ -14,7 +14,7 @@ import {
   getCaptchaConfig, getMe, verifyEmail as apiVerifyEmail, resendVerification,
   forgotPassword as apiForgotPassword, resetPassword as apiResetPassword,
   createCheckout, openBillingPortal, getBillingStatus,
-  fetchUpdates, fetchSummary, submitBugReport,
+  fetchUpdates, fetchSummary, fetchSteamGameRoster, submitBugReport,
   fetchUpdateById, fetchRecentPosts, submitPost, createFeedStreamTicket, openFeedStream,
 } from './api.js';
 import { restoreSession, setUser, signOut, getUser, isLoggedIn, hasRole, onAuthChange } from './auth.js';
@@ -1374,7 +1374,16 @@ const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam deck', 'steamdeck', 'steam os', 'steamos'], platform: 'Steam', sourceKind: 'steamos-news', label: 'SteamOS / Steam Deck' },
   { aliases: ['steam games', 'steam game'], platform: 'Steam', sourceKind: 'steam-game-news', label: 'Steam games' },
 ];
-const FOLLOWABLE_STEAM_GAMES = STEAM_GAME_CANDIDATES;
+let FOLLOWABLE_STEAM_GAMES = STEAM_GAME_CANDIDATES;
+let ACTIVE_STEAM_GAME_META = STEAM_GAME_CANDIDATE_META;
+
+function steamGameRosterDescription() {
+  const threshold = Number(ACTIVE_STEAM_GAME_META.minimumAveragePlayers).toLocaleString();
+  const freshness = ACTIVE_STEAM_GAME_META.refreshedAt
+    ? ` Roster checked ${timeAgo(ACTIVE_STEAM_GAME_META.refreshedAt)}.`
+    : '';
+  return `Choose from ${FOLLOWABLE_STEAM_GAMES.length} reviewed Steam games above ${threshold} global 30-day average players and active in the US market. Routine hotfixes stay out of the feed.${freshness}`;
+}
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
 function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy' })[p] || p; }
@@ -2805,7 +2814,7 @@ async function renderDashboard({ focusId = null } = {}) {
             <div class="dash-panel-head dash-panel-head--compact">
               <div><p class="dash-section-kicker">Pro</p><h2>Follow my games</h2></div>
             </div>
-            <p class="dash-side-copy">Choose from ${FOLLOWABLE_STEAM_GAMES.length} reviewed Steam games above ${Number(STEAM_GAME_CANDIDATE_META.minimumAveragePlayers).toLocaleString()} global 30-day average players and active in the US market. Routine hotfixes stay out of the feed.</p>
+            <p class="dash-side-copy" id="follow-games-copy">${H(steamGameRosterDescription())}</p>
             <div class="follow-games-box">
               <div class="follow-games-search">
                 <input class="dash-search" id="follow-game-input" type="search" placeholder="Search Steam games…" autocomplete="off" />
@@ -3503,6 +3512,25 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   renderFollowedGames();
+  fetchSteamGameRoster().then(payload => {
+    const candidates = Array.isArray(payload?.data) ? payload.data : [];
+    if (candidates.length) {
+      FOLLOWABLE_STEAM_GAMES = candidates.map(game => Object.freeze({
+        appId: String(game.appId),
+        name: String(game.name || '').trim(),
+        averagePlayers: Number(game.averagePlayers),
+        usMarketRank: Number(game.usMarketRank),
+        tags: String(game.name || '').toLowerCase(),
+      })).filter(game => game.appId && game.name);
+      ACTIVE_STEAM_GAME_META = Object.freeze({
+        ...STEAM_GAME_CANDIDATE_META,
+        ...(payload.meta || {}),
+      });
+      const copy = document.getElementById('follow-games-copy');
+      if (copy) copy.textContent = steamGameRosterDescription();
+      renderFollowedGames();
+    }
+  }).catch(() => { /* reviewed build-time roster remains available */ });
   document.getElementById('follow-game-add')?.addEventListener('click', () => {
     const input = document.getElementById('follow-game-input');
     const game = findSteamGame(input?.value || '');
