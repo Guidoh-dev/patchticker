@@ -1622,8 +1622,8 @@ function updateSearchRelevance(update, query) {
   return intentScore + Math.max(crossFieldCoverage, sameFieldStrength);
 }
 
-function searchMatchReason(update, query) {
-  const intent = searchIntentForQuery(query);
+function searchMatchReason(update, query, explicitPlatform = '') {
+  const intent = resolveSearchIntentForPlatform(searchIntentForQuery(query), explicitPlatform);
   const groups = searchTermGroups(intent.semanticQuery);
   if (!groups.length && intent.sourceKind && update?.sourceKind === intent.sourceKind) return `Release lane · ${intent.sourceLabel}`;
   if (!groups.length && intent.platform && update?.platform === intent.platform) return `Platform · ${platformLabel(intent.platform)}`;
@@ -2583,7 +2583,17 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
     .map(update => update.lastCheckedAt || update.updatedAt)
     .filter(Boolean)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
-  const matchedTermCount = search ? searchTermGroups(searchIntentForQuery(search).semanticQuery).length : 0;
+  const resolvedSearchIntent = search
+    ? resolveSearchIntentForPlatform(searchIntentForQuery(search), platform)
+    : null;
+  const matchedTermCount = search ? searchTermGroups(resolvedSearchIntent.semanticQuery).length : 0;
+  const resultScope = !search
+    ? 'Filtered verified releases'
+    : resolvedSearchIntent.productId
+      ? `Exact Steam product · App ${H(resolvedSearchIntent.productId)}`
+      : matchedTermCount > 1
+        ? `All ${H(String(matchedTermCount))} search terms matched`
+        : 'Verified database matches';
   const facets = search ? `
     <div class="search-result-facets" aria-label="Narrow search results by platform">
       <span>Results by platform</span>
@@ -2608,15 +2618,13 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
         <span>${H(labels.join(' · ') || 'Newest first')}</span>
       </header>
       <div class="filtered-feed-context">
-        <span>${search
-          ? (matchedTermCount > 1 ? `All ${H(String(matchedTermCount))} search terms matched` : 'Verified database matches')
-          : 'Filtered verified releases'}</span>
-        <time>${latestCheck ? `Sources checked ${H(timeAgo(latestCheck))}` : 'Verification time unavailable'}</time>
+        <span>${resultScope}</span>
+        <time>${latestCheck ? `Matching records verified ${H(timeAgo(latestCheck))}` : 'Record verification time unavailable'}</time>
       </div>
       ${facets}
       <div class="filtered-update-cards">${updates.map(update => renderUpdateCard({
         ...update,
-        matchReason: search ? searchMatchReason(update, search) : null,
+        matchReason: search ? searchMatchReason(update, search, platform) : null,
       })).join('')}</div>
     </section>
   `;
@@ -3112,8 +3120,13 @@ async function renderDashboard({ focusId = null } = {}) {
       el.className = 'dash-search-status is-error';
       return;
     }
-    const intent = searchIntentForQuery(_filterState.search);
-    el.textContent = intent.sourceKind
+    const intent = resolveSearchIntentForPlatform(
+      searchIntentForQuery(_filterState.search),
+      _filterState.platform
+    );
+    el.textContent = intent.productId
+      ? `Exact game · ${intent.sourceLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
+      : intent.sourceKind
       ? `Release lane · ${intent.sourceLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
       : intent.platform
       ? `Platform search · ${platformLabel(intent.platform)} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`

@@ -176,7 +176,7 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /function updateSearchRelevance\(update, query\)/);
   assert.match(mainSource, /exactQuery && haystack\.includes\(exactQuery\)[\s\S]*?weight \* 10/);
   assert.match(mainSource, /const crossFieldCoverage = groups\.reduce/);
-  assert.match(mainSource, /function searchMatchReason\(update, query\)/);
+  assert.match(mainSource, /function searchMatchReason\(update, query, explicitPlatform = ''\)/);
   assert.match(mainSource, /<option value="relevance">Best match<\/option>/);
   assert.match(mainSource, /relevance:\s+\(a, b\) => updateSearchRelevance\(b, search\) - updateSearchRelevance\(a, search\)/);
   assert.match(mainSource, /Matched in \$\{H\(u\.matchReason\)\}/);
@@ -209,7 +209,8 @@ test('multi-part searches use strict all-term matching without phrase-order fail
 test('search results expose staged platform facets, verification timing, and honest recovery actions', () => {
   assert.match(mainSource, /class="search-result-facets" aria-label="Narrow search results by platform"/);
   assert.match(mainSource, /data-result-platform="\$\{H\(resultPlatform\)\}"/);
-  assert.match(mainSource, /Sources checked \$\{H\(timeAgo\(latestCheck\)\)\}/);
+  assert.match(mainSource, /Matching records verified \$\{H\(timeAgo\(latestCheck\)\)\}/);
+  assert.match(mainSource, /Exact Steam product · App \$\{H\(resolvedSearchIntent\.productId\)\}/);
   assert.match(mainSource, /function suggestedPlatformForSearch\(query\)/);
   assert.match(mainSource, /no matching official release is inside PatchTicker’s 240-day window/);
   assert.match(mainSource, /data-empty-platform="\$\{H\(browsePlatform\)\}"/);
