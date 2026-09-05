@@ -8,6 +8,7 @@ const secrets = require('../config/secrets');
 const { validateScore, statusForScore } = require('../utils/updateScore');
 const { normaliseReleaseText, normaliseReleaseTextArray } = require('../utils/releaseText');
 const { getFreshnessSlaHours } = require('../config/platformRegistry');
+const { currentSteamGameRoster } = require('./steamGameEligibilityService');
 
 const MAX_UPDATE_AGE_DAYS = 240;
 // Historical Steam game rows remain available to administrators for audit,
@@ -74,6 +75,18 @@ const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam games', 'steam game'], platform: 'Steam', sourceKind: 'steam-game-news', label: 'Steam games' },
 ];
 
+const STEAM_GAME_SEARCH_ALIASES = new Map([
+  ['cs2', '730'],
+  ['counter strike 2', '730'],
+  ['gta v enhanced', '3240220'],
+  ['gta 5 enhanced', '3240220'],
+  ['rainbow six siege', '359550'],
+  ['r6 siege', '359550'],
+  ['dbd', '381210'],
+  ['tf2', '440'],
+  ['ow2', '2357570'],
+]);
+
 function exactPlatformForSearch(rawSearch) {
   const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
   return EXACT_PLATFORM_SEARCHES.get(query) || null;
@@ -82,6 +95,49 @@ function exactPlatformForSearch(rawSearch) {
 function stripIntentStopwords(value) {
   const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
   return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ');
+}
+
+function normaliseProductSearch(value) {
+  const tokens = String(value || '').toLowerCase().normalize('NFKD').match(/[a-z0-9]+/g) || [];
+  return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ').trim();
+}
+
+function exactSteamGameForSearch(rawSearch) {
+  const query = normaliseProductSearch(rawSearch);
+  if (!query) return null;
+  const roster = currentSteamGameRoster().candidates || [];
+  const aliasAppId = STEAM_GAME_SEARCH_ALIASES.get(query);
+  return roster.find(game => String(game.appId) === query)
+    || (aliasAppId ? roster.find(game => String(game.appId) === aliasAppId) : null)
+    || roster.find(game => normaliseProductSearch(game.name) === query)
+    || null;
+}
+
+function steamGameIntent(rawSearch) {
+  const game = exactSteamGameForSearch(rawSearch);
+  if (!game) return null;
+  return {
+    platform: 'Steam',
+    sourceKind: 'steam-game-news',
+    sourceLabel: game.name,
+    productId: String(game.appId),
+    productQuery: normaliseProductSearch(rawSearch),
+    semanticQuery: '',
+  };
+}
+
+function resolveSearchPlan(intent, explicitPlatform) {
+  const hasConflictingPlatform = intent.productId
+    && explicitPlatform
+    && String(explicitPlatform).toLowerCase() !== 'steam';
+  if (!hasConflictingPlatform) return intent;
+  return {
+    ...intent,
+    platform: null,
+    sourceKind: null,
+    productId: null,
+    semanticQuery: intent.productQuery,
+  };
 }
 
 /**
@@ -98,11 +154,13 @@ function parseSearchIntent(rawSearch) {
     const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
       .find(candidate => query === candidate || query.startsWith(`${candidate} `));
     if (!alias) continue;
-    return {
+    const remainder = query.slice(alias.length).trim();
+    const gameIntent = intent.sourceKind === 'steam-game-news' ? steamGameIntent(remainder) : null;
+    return gameIntent || {
       platform: intent.platform,
       sourceKind: intent.sourceKind,
       sourceLabel: intent.label,
-      semanticQuery: stripIntentStopwords(query.slice(alias.length).trim()),
+      semanticQuery: stripIntentStopwords(remainder),
     };
   }
 
@@ -116,13 +174,18 @@ function parseSearchIntent(rawSearch) {
     .find(([alias]) => query.startsWith(`${alias} `));
   if (platformAlias) {
     const [alias, platform] = platformAlias;
-    return {
+    const remainder = query.slice(alias.length).trim();
+    const gameIntent = platform === 'Steam' ? steamGameIntent(remainder) : null;
+    return gameIntent || {
       platform,
       sourceKind: null,
       sourceLabel: null,
-      semanticQuery: stripIntentStopwords(query.slice(alias.length).trim()),
+      semanticQuery: stripIntentStopwords(remainder),
     };
   }
+
+  const gameIntent = steamGameIntent(query);
+  if (gameIntent) return gameIntent;
 
   return {
     platform: null,
@@ -1170,7 +1233,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         params.push(status);
         query += ` AND status = $${params.length}`;
       }
-      const searchIntent = parseSearchIntent(search);
+      const searchIntent = resolveSearchPlan(parseSearchIntent(search), platform);
       const searchPlatform = searchIntent.platform;
       if (searchPlatform && (!platform || platform.toLowerCase() !== searchPlatform.toLowerCase())) {
         params.push(searchPlatform);
@@ -1179,6 +1242,10 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       if (searchIntent.sourceKind) {
         params.push(searchIntent.sourceKind);
         query += ` AND source_kind = $${params.length}`;
+      }
+      if (searchIntent.productId) {
+        params.push(searchIntent.productId);
+        query += ` AND product_id = $${params.length}`;
       }
       const searchGroups = buildSearchTermGroups(searchIntent.semanticQuery);
       if (searchGroups.length) {
@@ -1246,12 +1313,15 @@ async function getUpdates({ platform, status, sort, search } = {}) {
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
-    const searchIntent = parseSearchIntent(search);
+    const searchIntent = resolveSearchPlan(parseSearchIntent(search), platform);
     if (searchIntent.platform) {
       updates = updates.filter(u => u.platform.toLowerCase() === searchIntent.platform.toLowerCase());
     }
     if (searchIntent.sourceKind) {
       updates = updates.filter(u => u.sourceKind === searchIntent.sourceKind);
+    }
+    if (searchIntent.productId) {
+      updates = updates.filter(u => String(u.productId || '') === searchIntent.productId);
     }
     const groups = buildSearchTermGroups(searchIntent.semanticQuery);
     if (groups.length) {
@@ -1456,6 +1526,8 @@ module.exports = {
     buildSearchTermGroups,
     exactPlatformForSearch,
     parseSearchIntent,
+    exactSteamGameForSearch,
+    resolveSearchPlan,
     searchRelevanceScore,
   },
 };

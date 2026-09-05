@@ -404,6 +404,46 @@ test('exact multi-word product titles outrank the same phrase inside incidental 
   );
 });
 
+test('eligible Steam game titles resolve to exact App ID search intent', () => {
+  expect(updatesService.__test.parseSearchIntent('Marvel Rivals latest update')).toEqual(expect.objectContaining({
+    platform: 'Steam',
+    sourceKind: 'steam-game-news',
+    productId: '2767030',
+    semanticQuery: '',
+  }));
+  expect(updatesService.__test.parseSearchIntent('CS2')).toEqual(expect.objectContaining({
+    platform: 'Steam',
+    sourceKind: 'steam-game-news',
+    productId: '730',
+  }));
+});
+
+test('exact Steam game search binds App ID and excludes incidental product mentions', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'Marvel Rivals', sort: 'relevance' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$1\)/);
+  expect(sql).toMatch(/source_kind = \$2/);
+  expect(sql).toMatch(/product_id = \$3/);
+  expect(sql).not.toContain('search_group_0');
+  expect(params).toEqual(['Steam', 'steam-game-news', '2767030']);
+});
+
+test('explicit non-Steam platform keeps game title as compatibility-note search', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ platform: 'AMD', search: 'Marvel Rivals', sort: 'relevance' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect((sql.match(/LOWER\(platform\) = LOWER/g) || [])).toHaveLength(1);
+  expect(sql).not.toContain('source_kind =');
+  expect(sql).not.toContain('product_id =');
+  expect(sql).toContain('search_group_0');
+  expect(params.slice(0, 3)).toEqual(['AMD', ['marvel'], ['rivals']]);
+});
+
 test('monthly placeholders require official release metadata', () => {
   const base = { platform: 'GOG', version: '2026-08', releasedAt: '2026-08-05' };
   expect(updatesService.__test.isUpdateDisplayable({ ...base, evidence: [{ source: 'Support' }] })).toBe(false);

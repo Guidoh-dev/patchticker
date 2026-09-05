@@ -562,6 +562,14 @@ test('Pro game follows hydrate from the current backend eligibility roster', () 
   assert.match(steamCandidatesSource, /\[4001890, 'How to Fish', 52031\]/);
 });
 
+test('exact eligible Steam game searches bind to App IDs instead of incidental notes', () => {
+  assert.match(mainSource, /function exactSteamGameForSearch\(rawSearch\)/);
+  assert.match(mainSource, /sourceKind: 'steam-game-news'/);
+  assert.match(mainSource, /productId: String\(game\.appId\)/);
+  assert.match(mainSource, /String\(u\.productId \|\| ''\) === intent\.productId/);
+  assert.match(mainSource, /resolveSearchIntentForPlatform/);
+});
+
 test('update details continue into honestly ranked related releases', () => {
   assert.match(mainSource, /function renderRelatedReleaseCard\(update\)/);
   assert.match(mainSource, /'same-product': 'Same product'/);

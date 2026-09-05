@@ -1374,6 +1374,12 @@ const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam deck', 'steamdeck', 'steam os', 'steamos'], platform: 'Steam', sourceKind: 'steamos-news', label: 'SteamOS / Steam Deck' },
   { aliases: ['steam games', 'steam game'], platform: 'Steam', sourceKind: 'steam-game-news', label: 'Steam games' },
 ];
+const STEAM_GAME_SEARCH_ALIASES = new Map([
+  ['cs2', '730'], ['counter strike 2', '730'],
+  ['gta v enhanced', '3240220'], ['gta 5 enhanced', '3240220'],
+  ['rainbow six siege', '359550'], ['r6 siege', '359550'],
+  ['dbd', '381210'], ['tf2', '440'], ['ow2', '2357570'],
+]);
 let FOLLOWABLE_STEAM_GAMES = STEAM_GAME_CANDIDATES;
 let ACTIVE_STEAM_GAME_META = STEAM_GAME_CANDIDATE_META;
 
@@ -1493,6 +1499,45 @@ function stripSearchIntentStopwords(value) {
   return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ');
 }
 
+function normaliseProductSearch(value) {
+  const tokens = String(value || '').toLowerCase().normalize('NFKD').match(/[a-z0-9]+/g) || [];
+  return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ').trim();
+}
+
+function exactSteamGameForSearch(rawSearch) {
+  const query = normaliseProductSearch(rawSearch);
+  if (!query) return null;
+  const aliasAppId = STEAM_GAME_SEARCH_ALIASES.get(query);
+  return FOLLOWABLE_STEAM_GAMES.find(game => String(game.appId) === query)
+    || (aliasAppId ? FOLLOWABLE_STEAM_GAMES.find(game => String(game.appId) === aliasAppId) : null)
+    || FOLLOWABLE_STEAM_GAMES.find(game => normaliseProductSearch(game.name) === query)
+    || null;
+}
+
+function steamGameSearchIntent(rawSearch) {
+  const game = exactSteamGameForSearch(rawSearch);
+  if (!game) return null;
+  return {
+    platform: 'Steam',
+    sourceKind: 'steam-game-news',
+    sourceLabel: game.name,
+    productId: String(game.appId),
+    productQuery: normaliseProductSearch(rawSearch),
+    semanticQuery: '',
+  };
+}
+
+function resolveSearchIntentForPlatform(intent, explicitPlatform) {
+  if (!intent.productId || !explicitPlatform || explicitPlatform === 'Steam') return intent;
+  return {
+    ...intent,
+    platform: null,
+    sourceKind: null,
+    productId: null,
+    semanticQuery: intent.productQuery,
+  };
+}
+
 function searchIntentForQuery(raw) {
   const query = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
@@ -1501,11 +1546,13 @@ function searchIntentForQuery(raw) {
     const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
       .find(candidate => query === candidate || query.startsWith(`${candidate} `));
     if (!alias) continue;
-    return {
+    const remainder = query.slice(alias.length).trim();
+    const gameIntent = intent.sourceKind === 'steam-game-news' ? steamGameSearchIntent(remainder) : null;
+    return gameIntent || {
       platform: intent.platform,
       sourceKind: intent.sourceKind,
       sourceLabel: intent.label,
-      semanticQuery: stripSearchIntentStopwords(query.slice(alias.length).trim()),
+      semanticQuery: stripSearchIntentStopwords(remainder),
     };
   }
 
@@ -1517,13 +1564,19 @@ function searchIntentForQuery(raw) {
     .find(([alias]) => query.startsWith(`${alias} `));
   if (platformAlias) {
     const [alias, platform] = platformAlias;
-    return {
+    const remainder = query.slice(alias.length).trim();
+    const gameIntent = platform === 'Steam' ? steamGameSearchIntent(remainder) : null;
+    return gameIntent || {
       platform,
       sourceKind: null,
       sourceLabel: null,
-      semanticQuery: stripSearchIntentStopwords(query.slice(alias.length).trim()),
+      semanticQuery: stripSearchIntentStopwords(remainder),
     };
   }
+
+
+  const gameIntent = steamGameSearchIntent(query);
+  if (gameIntent) return gameIntent;
 
   return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: stripSearchIntentStopwords(query) };
 }
@@ -2987,9 +3040,10 @@ async function renderDashboard({ focusId = null } = {}) {
     filtered = filterUpdatesBySetup(filtered, setup);
     if (status)   filtered = filtered.filter(u => u.status   === status);
     if (search) {
-      const intent = searchIntentForQuery(search);
+      const intent = resolveSearchIntentForPlatform(searchIntentForQuery(search), platform);
       if (intent.platform) filtered = filtered.filter(u => u.platform === intent.platform);
       if (intent.sourceKind) filtered = filtered.filter(u => u.sourceKind === intent.sourceKind);
+      if (intent.productId) filtered = filtered.filter(u => String(u.productId || '') === intent.productId);
       const groups = searchTermGroups(intent.semanticQuery);
       if (groups.length) {
         filtered = filtered.filter(u => {
