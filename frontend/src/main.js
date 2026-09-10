@@ -247,9 +247,14 @@ function renderNav(user) {
 
   return `
     <nav class="nav">
-      <a class="nav-brand" href="#/">
-        <span class="brand-pulse">Patch</span>Ticker
-      </a>
+      <div class="nav-identity">
+        <a class="nav-brand" href="#/">
+          <span class="brand-pulse">Patch</span>Ticker
+        </a>
+        <span class="nav-system-status" aria-label="PatchTicker live source monitor active">
+          <i aria-hidden="true"></i><span>System</span><strong>Live</strong>
+        </span>
+      </div>
       <div class="nav-right">
         ${user ? `<a class="nav-link nav-link--updates" href="#/updates">Updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>${adminLink}` : `<a class="nav-link nav-link--updates" href="#/updates">Updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>`}
         <button class="nav-theme-toggle" id="nav-theme-toggle" type="button" aria-label="Switch to ${theme === 'dark' ? 'light' : 'dark'} theme" title="Switch appearance">${theme === 'dark' ? '☀' : '☾'}</button>
@@ -5081,7 +5086,10 @@ function renderFooter() {
   return `
     <footer class="site-footer">
       <div class="site-footer-inner">
-        <span class="site-footer-brand"><span class="brand-pulse">Patch</span>Ticker</span>
+        <div class="site-footer-identity">
+          <span class="site-footer-brand"><span class="brand-pulse">Patch</span>Ticker</span>
+          <span class="site-footer-status"><i aria-hidden="true"></i> Source monitor online</span>
+        </div>
         <nav class="site-footer-nav">
           <a href="#/" class="site-footer-link">Home</a>
           <a href="#/updates" class="site-footer-link">Updates</a>
@@ -5091,7 +5099,10 @@ function renderFooter() {
           <button class="site-footer-link site-footer-button" id="analytics-privacy-choices" type="button">Privacy choices</button>
           <a href="#/terms" class="site-footer-link">Terms of Service</a>
         </nav>
-        <span class="site-footer-copy">© ${new Date().getFullYear()} Dorn Ventures LLC. All rights reserved.</span>
+        <div class="site-footer-legal">
+          <span class="site-footer-label">Operator</span>
+          <span class="site-footer-copy">© ${new Date().getFullYear()} Dorn Ventures LLC. All rights reserved.</span>
+        </div>
       </div>
     </footer>
   `;
