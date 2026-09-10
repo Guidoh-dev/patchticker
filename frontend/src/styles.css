@@ -9598,8 +9598,29 @@ html[data-theme="light"] .dash-aside-toolbar { background-color: rgba(244,244,24
   .nav-right { gap: 4px; }
   .nav-link { display: none; }
   .nav-email { display: none; }
-  .nav-btn { min-height: 36px; padding-inline: 9px; }
-  .nav-theme-toggle { width: 36px; height: 36px; flex-basis: 36px; }
+  .nav-btn { min-height: 44px; padding-inline: 9px; }
+  .nav-theme-toggle { width: 44px; height: 44px; flex-basis: 44px; }
+  .dash-quickbar input,
+  .dash-quickbar select,
+  .dash-top-apply,
+  .dash-quickbar-toggle,
+  .topic-nav-link,
+  .setup-lens,
+  .dash-quickbar .chip,
+  .dash-category-jumps a,
+  .site-footer-link { min-height: 44px; }
+  body.dashboard-shell-active .dash-quickbar .topic-nav-link,
+  body.dashboard-shell-active .dash-quickbar .dash-clear-link,
+  body.dashboard-shell-active .dash-quickbar .setup-lens,
+  body.dashboard-shell-active .dash-aside-tab,
+  body.dashboard-shell-active .dash-aside-collapse { min-height: 44px; }
+  body.dashboard-shell-active .dash-aside-collapse { min-width: 44px; }
+  .dash-chat-gate a,
+  .dash-side-copy a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
   .dash-layout,
   .dash-layout.is-aside-collapsed { grid-template-columns: minmax(0, 1fr); }
   .dash-aside { height: auto; border-top: 1px solid var(--border); border-left: 0; }

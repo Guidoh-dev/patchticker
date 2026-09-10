@@ -113,14 +113,15 @@ async function fetchHtml(url) {
   return response.data;
 }
 
-function currentSteamGameRoster() {
+function currentSteamGameRoster(now = Date.now()) {
+  const evaluatedAt = Number.isFinite(Number(now)) ? Number(now) : Date.now();
   return Object.freeze({
     candidates: cache.candidates,
     policy: STRICT_STEAM_GAME_POLICY,
     source: cache.source,
     refreshedAt: cache.refreshedAt,
     attemptedAt: cache.attemptedAt,
-    stale: Date.now() - Date.parse(cache.refreshedAt || 0) > CACHE_TTL_MS,
+    stale: evaluatedAt - Date.parse(cache.refreshedAt || 0) > CACHE_TTL_MS,
     error: cache.error,
   });
 }
@@ -130,7 +131,7 @@ async function refreshSteamGameRoster(options = {}) {
   const force = options.force === true;
   const cacheAge = now - Date.parse(cache.refreshedAt || 0);
   if (!force && cache.source === 'live_charts' && cacheAge >= 0 && cacheAge < CACHE_TTL_MS) {
-    return currentSteamGameRoster();
+    return currentSteamGameRoster(now);
   }
   if (refreshPromise) return refreshPromise;
 
@@ -173,7 +174,7 @@ async function refreshSteamGameRoster(options = {}) {
         error: error.message,
       });
     }
-    return currentSteamGameRoster();
+    return currentSteamGameRoster(now);
   })().finally(() => { refreshPromise = null; });
 
   return refreshPromise;
