@@ -6,6 +6,7 @@ const {
   isResolvedStatement,
   isNegativeKnownIssueStatement,
   isDocumentedBenefitStatement,
+  issuePenaltyForStatement,
   deriveDeterministicScoreBreakdown,
   deriveDeterministicScore,
   deriveDeterministicImpactScore,
@@ -88,6 +89,12 @@ describe('deterministic update scoring', () => {
       riskFactors: [{ level: 'medium', text: 'A startup regression remains under investigation.' }],
     });
     expect(resolved).toBeGreaterThan(active);
+  });
+
+  test('penalizes vendor-described service and device failures by their concrete wording', () => {
+    expect(issuePenaltyForStatement('USB audio devices might fail to start or produce no sound.')).toBe(0.65);
+    expect(issuePenaltyForStatement('Host folder shares might be unavailable.')).toBe(0.35);
+    expect(issuePenaltyForStatement('Remote Desktop Services might stop responding.')).toBe(0.65);
   });
 
   test('lets clean official releases with concrete benefits reach the stable band', () => {
@@ -232,5 +239,35 @@ describe('deterministic update scoring', () => {
       riskFactors: [{ level: 'high', text: 'Vendor-documented regression.' }],
     });
     expect(preview).toBeLessThan(stable);
+  });
+
+  test('treats Non-WHQL as uncertified without applying the full beta penalty', () => {
+    const base = {
+      sourceKind: 'official-release-notes',
+      changelog: ['Added support for a new game.'],
+      knownIssues: ['A game may crash during startup.'],
+      evidence: [{ source: 'Vendor', url: 'https://vendor.example/release', releaseType: 'official-release-notes' }],
+    };
+    const uncertified = deriveDeterministicScoreBreakdown({ ...base, name: 'Driver 12.1 Non-WHQL' });
+    const beta = deriveDeterministicScoreBreakdown({ ...base, name: 'Driver 12.1 Beta' });
+    expect(uncertified.signals.releaseChannel).toBe('uncertified');
+    expect(uncertified.score).toBeGreaterThan(beta.score);
+  });
+
+  test('recognizes structured material game evidence without guessing from promotional prose', () => {
+    const breakdown = deriveDeterministicScoreBreakdown({
+      sourceKind: 'steam-game-news',
+      changelog: Array.from({ length: 10 }, (_, index) => `Season section ${index + 1} documents the publisher's release contents.`),
+      knownIssues: [],
+      riskFactors: [],
+      evidence: [{
+        source: 'Official Steam announcement',
+        url: 'https://store.steampowered.com/news/app/1/view/2',
+        releaseType: 'official-game-update',
+        materialSignals: ['gameplay', 'major-release', 'substantial-notes'],
+      }],
+    });
+    expect(breakdown.signals.materialGameEvidence).toBe(true);
+    expect(breakdown.score).toBeGreaterThanOrEqual(7.5);
   });
 });

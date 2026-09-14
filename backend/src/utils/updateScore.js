@@ -114,16 +114,27 @@ function documentedReleaseChannel(input) {
 
   // These are vendor-authored release-channel labels, not inferred sentiment.
   const identity = `${input?.name || ''} ${input?.version || ''}`.toLowerCase();
-  if (/\b(?:preview|beta|insider|canary|experimental|non-whql)\b/.test(identity)) return 'prerelease';
+  if (/\bnon-whql\b/.test(identity)) return 'uncertified';
+  if (/\b(?:preview|beta|insider|canary|experimental)\b/.test(identity)) return 'prerelease';
   return 'stable';
+}
+
+function hasMaterialGameEvidence(input) {
+  return list(input.evidence).some(item => {
+    const releaseType = String(item?.releaseType || '').toLowerCase();
+    const signals = list(item?.materialSignals).map(signal => String(signal).toLowerCase());
+    return releaseType === 'official-game-update'
+      && signals.includes('substantial-notes')
+      && signals.some(signal => ['gameplay', 'requirements', 'major-release'].includes(signal));
+  });
 }
 
 function issuePenaltyForStatement(value) {
   const text = textValue(value);
   if (!text || isResolvedStatement(text) || isNegativeKnownIssueStatement(text)) return 0;
   if (/\b(?:data loss|save corruption|bricked?|boot loop|cannot boot|security bypass|privilege escalation|remote code execution)\b/i.test(text)) return 0.95;
-  if (/\b(?:crash|freeze|hang|bsod|blue screen|install(?:ation)? fail|driver timeout|corrupt|cannot launch|failed to launch)\b/i.test(text)) return 0.65;
-  if (/\b(?:stutter|flicker|performance|display|network|disconnect|controller|overlay|audio|latency|disabled|degraded)\b/i.test(text)) return 0.35;
+  if (/\b(?:crash|freeze|hang|bsod|blue screen|install(?:ation)? fail|driver timeout|corrupt|cannot launch|failed to launch|fail(?:s|ed)? to start|stop(?:s|ped)? responding)\b/i.test(text)) return 0.65;
+  if (/\b(?:stutter|flicker|performance|display|network|disconnect|controller|overlay|audio|latency|disabled|degraded|unavailable|no sound|cannot be accessed?|do(?:es)? not appear)\b/i.test(text)) return 0.35;
   return 0.22;
 }
 
@@ -178,11 +189,13 @@ function deriveDeterministicScoreBreakdown(input = {}) {
   const securityLevel = String(input.securityCriticality?.level || '').toLowerCase();
   const cveCount = list(input.securityCriticality?.cves).length;
   const securityDocumented = hasDocumentedSecurityEvidence(input);
-  const stableReleaseChannel = documentedReleaseChannel(input) === 'stable';
+  const releaseChannel = documentedReleaseChannel(input);
+  const stableReleaseChannel = releaseChannel === 'stable';
+  const materialGameEvidence = hasMaterialGameEvidence(input);
   const cleanDocumentedRelease = sources > 0
     && hasFullReleaseNotes(input)
     && stableReleaseChannel
-    && documentedBenefitCount >= 2
+    && (documentedBenefitCount >= 2 || materialGameEvidence)
     && unresolvedIssues.length === 0
     && unresolvedRisks.length === 0;
 
@@ -213,13 +226,13 @@ function deriveDeterministicScoreBreakdown(input = {}) {
     // Concrete shipped fixes/features are positive install-confidence evidence,
     // not mere upbeat wording. This gives clean, well-documented releases room
     // to reach STABLE while remaining bounded by source and issue gates.
-    documentedBenefits: Math.min(0.9, documentedBenefitCount * 0.15),
+    documentedBenefits: Math.min(0.9, (documentedBenefitCount * 0.15) + (materialGameEvidence ? 0.6 : 0)),
     cleanReleaseConfidence: cleanDocumentedRelease ? 0.45 : 0,
     changeSurface: -(
       Math.min(0.28, Math.max(0, changelog.length - 4) * 0.035)
       + Math.min(0.38, Math.max(0, noteCharacters - 500) / 3500)
     ),
-    releaseChannel: stableReleaseChannel ? 0 : -1.4,
+    releaseChannel: releaseChannel === 'stable' ? 0 : releaseChannel === 'uncertified' ? -0.7 : -1.4,
   };
 
   let rawScore = Object.values(components).reduce((sum, value) => sum + value, 0);
@@ -255,10 +268,11 @@ function deriveDeterministicScoreBreakdown(input = {}) {
       unresolvedRisks: unresolvedRisks.length,
       resolvedChanges: resolvedChangeCount,
       documentedBenefits: documentedBenefitCount,
+      materialGameEvidence,
       cleanDocumentedRelease,
       securityLevel: securityDocumented ? securityLevel || 'documented' : 'none',
       cveCount,
-      releaseChannel: documentedReleaseChannel(input),
+      releaseChannel,
     },
   };
 }

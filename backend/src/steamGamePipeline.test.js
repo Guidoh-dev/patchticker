@@ -261,6 +261,7 @@ describe('material Steam game update pipeline', () => {
     expect(update.name).toBe('NARAKA: BLADEPOINT Update – August 13th, 2026');
     expect(update.name).not.toMatch(/[\r\n]/);
     expect(update.evidence[0].checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(update.evidence[0].materialSignals).toEqual(['gameplay']);
   });
 
   test('keeps resolved crash fixes out of the active known-issues list', () => {

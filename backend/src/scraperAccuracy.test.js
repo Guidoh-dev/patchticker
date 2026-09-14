@@ -30,6 +30,19 @@ describe('scraper accuracy guards', () => {
     ]);
   });
 
+  test('Nintendo security index parser captures only a dated official advisory asset', () => {
+    expect(__test.parseNintendoSecurityNoticeIndex(`
+      <ul><li class="section-news-listitem">
+        <div class="section-news-date">2026.9.10</div>
+        <div class="section-news-text"><a href="../assets/pdf/20260910e.pdf">Potential console information leak</a></div>
+      </li></ul>
+    `)).toEqual({
+      title: 'Potential console information leak',
+      date: '2026-09-10',
+      url: 'https://www.nintendo.com/security-advisories/assets/pdf/20260910e.pdf',
+    });
+  });
+
   test('Microsoft KB classification distinguishes security releases from unclassified previews', () => {
     expect(__test.microsoftSecurityCriticality(
       'August 11, 2026—KB5121000 (OS Build 28000.2704)',
@@ -59,6 +72,30 @@ describe('scraper accuracy guards', () => {
       ],
       knownIssues: [],
     });
+  });
+
+  test('Windows parser keeps one complete entry per disclosure-style known issue', () => {
+    const $ = require('cheerio').load(`
+      <h2>Known issues in this update</h2>
+      <details>
+        <summary>USB audio devices might fail to start</summary>
+        <p>&#8203;&#8203; <strong>Symptoms</strong></p>
+        <p>After installing KB5124012, some USB Audio Class 1.0 devices might produce no sound.</p>
+        <ul><li>No audio output.</li><li>Volume controls remain at zero.</li></ul>
+        <p><strong>Next steps</strong></p><p>Microsoft is working on a resolution.</p>
+      </details>
+      <details>
+        <summary>Host folder shares might be unavailable</summary>
+        <p><strong>Symptoms</strong></p>
+        <p>Linux VM host folders shared using Plan9 might not appear.</p>
+      </details>
+      <h2>How to get this update</h2>
+    `);
+
+    expect(__test.parseWindowsKnownIssues($)).toEqual([
+      'USB audio devices might fail to start: After installing KB5124012, some USB Audio Class 1.0 devices might produce no sound.',
+      'Host folder shares might be unavailable: Linux VM host folders shared using Plan9 might not appear.',
+    ]);
   });
 
   test('PS5 parser fingerprints the official system package instead of the CMS revision', () => {
@@ -222,6 +259,23 @@ describe('scraper accuracy guards', () => {
       'CVE-2026-65002',
     ]);
     expect(parsed.changelog[0]).toMatch(/^WebKit:.*arbitrary code execution.*CVE-2026-65001/);
+  });
+
+  test('Apple index parser preserves an unlinked no-CVE release as a clean identity', () => {
+    const rows = __test.parseAppleSecurityIndex(`
+      <table><tr>
+        <td><p>iOS 26.6.2 and iPadOS 26.6.2</p><div class="note"><p>This update has no published CVE entries.</p></div></td>
+        <td><p>iPhone 11 and later</p></td>
+        <td><p>08 Sep 2026</p></td>
+      </tr></table>
+    `);
+
+    expect(rows).toEqual([{
+      product: 'iOS 26.6.2 and iPadOS 26.6.2',
+      link: '',
+      note: 'This update has no published CVE entries.',
+      date: '08 Sep 2026',
+    }]);
   });
 
   test('Apple advisory parser raises actively exploited releases above routine security updates', () => {

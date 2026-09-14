@@ -150,7 +150,8 @@ describe('pipeline source metadata preservation', () => {
     };
 
     const score = __test.deriveInitialScore('Intel', detected, context);
-    expect(score).toBe(1);
+    expect(score).toBeGreaterThan(1);
+    expect(score).toBeLessThan(2);
     expect(__test.deriveInitialStatus(score)).toBe('avoid');
   });
 

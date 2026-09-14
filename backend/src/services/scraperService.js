@@ -440,13 +440,39 @@ function microsoftSecurityCriticality(title, sourceUrl = '') {
 
 function normalizeWindowsDetailNotes(changelog = [], knownIssues = []) {
   const usefulChanges = unique(changelog, 520).filter(text =>
-    !/^[A-Z][a-z]+\s+\d{1,2},\s+\d{4}—KB\d+/i.test(text)
+    !/^[A-Z][a-z]+\s+\d{1,2},\s+\d{4}\s*[-—]\s*KB\d+/i.test(text)
     && !/^This update includes new features and quality improvements that were part of the following update:?$/i.test(text)
   );
   const unresolvedIssues = unique(knownIssues, 650).filter(text =>
     !/not currently aware of any issues|no known issues/i.test(text)
   );
   return { changelog: usefulChanges, knownIssues: unresolvedIssues };
+}
+
+function parseWindowsKnownIssues($, max = 8) {
+  const heading = $('h2,h3').filter((_, element) => /known issues in this update/i.test(cleanText($(element).text(), 120))).first();
+  if (!heading.length) return [];
+
+  const issues = [];
+  heading.nextUntil('h2').filter('details').each((_, detail) => {
+    const node = $(detail);
+    const title = cleanText(node.children('summary').first().text(), 220);
+    const symptom = node.children('p').filter((__, paragraph) => {
+      const text = cleanText($(paragraph).text(), 700);
+      const label = cleanText($(paragraph).find('strong').first().text(), 80);
+      return text
+        && !/^(?:symptoms?|next steps?|resolution|microsoft support)\b/i.test(label)
+        && !/^(?:symptoms?|next steps?|resolution|microsoft support)\b/i.test(text.replace(/^[^A-Za-z]+/, ''));
+    }).first();
+    const description = cleanText(symptom.text(), 520);
+    const combined = title && description && !description.toLowerCase().startsWith(title.toLowerCase())
+      ? `${title}: ${description}`
+      : title || description;
+    if (combined) issues.push(combined);
+  });
+
+  // Older KB templates publish ordinary lists instead of disclosure panels.
+  return unique(issues.length ? issues : sectionBullets($, ['Known issues'], max), 650).slice(0, max);
 }
 
 function parseGogRemoteConfig(config, installerLastModified) {
@@ -633,6 +659,32 @@ function parseAppleSecurityAdvisory(html) {
       activelyExploited,
     },
   };
+}
+
+function parseAppleSecurityIndex(html) {
+  const $ = cheerio.load(String(html || ''));
+  const rows = [];
+  $('tr').each((_, row) => {
+    const cells = $(row).find('td');
+    if (cells.length < 2) return;
+
+    // Apple sometimes publishes a release directly in the index without an
+    // advisory link (for example when there are no published CVE entries).
+    // Read only the leading product paragraph so the adjacent note does not
+    // become part of the release name/version identity.
+    const productCell = cells.eq(0);
+    const product = cleanText(
+      productCell.find(':scope > p').first().text()
+        || productCell.find('a').first().text()
+        || productCell.clone().children('.note').remove().end().text(),
+      160
+    );
+    const link = productCell.find('a').first().attr('href') || '';
+    const note = cleanText(productCell.find('.note').first().text(), 240);
+    const date = cleanText(cells.eq(2).text() || cells.eq(1).text(), 80);
+    if (product) rows.push({ product, link, note, date });
+  });
+  return rows;
 }
 
 function parseSteamReleaseNotes(html) {
@@ -1010,6 +1062,21 @@ function parseSwitchReleasePage(html) {
   };
 }
 
+function parseNintendoSecurityNoticeIndex(html, baseUrl = 'https://www.nintendo.com/security-advisories/en/index.html') {
+  const $ = cheerio.load(String(html || ''));
+  const notices = $('.section-news-listitem').map((_, item) => {
+    const node = $(item);
+    const date = toIsoDate(cleanText(node.find('.section-news-date').first().text(), 40).replace(/\./g, '-'));
+    const link = node.find('.section-news-text a').first();
+    const title = cleanText(link.text(), 220);
+    const url = absoluteUrl(link.attr('href'), baseUrl);
+    return date && title && /^https:\/\/www\.nintendo\.com\/security-advisories\/assets\/pdf\//i.test(url)
+      ? { title, date, url }
+      : null;
+  }).get().filter(Boolean);
+  return notices.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0] || null;
+}
+
 function parsePs5SupportPage(html) {
   const $ = cheerio.load(html);
   const artifactUrl = $('a[href*="pc.ps5.update.playstation.net"][href$="PS5UPDATE.PUP"]')
@@ -1104,7 +1171,7 @@ async function detectWindows() {
       const detailHtml = await fetchHtml(update.sourceUrl);
       const detail = cheerio.load(detailHtml);
       changelog = sectionBullets(detail, ['Highlights', 'Improvements', 'This update'], 5);
-      knownIssues = sectionBullets(detail, ['Known issues'], 4);
+      knownIssues = parseWindowsKnownIssues(detail, 8);
       if (!changelog.length) {
         const firstBody = cleanText(detail('main p, article p').first().text(), 260);
         if (firstBody) changelog = [firstBody];
@@ -1259,46 +1326,66 @@ async function detectAmd() {
 async function parseAppleSecurityRelease(kind) {
   const url = 'https://support.apple.com/en-us/100100';
   const html = await fetchHtml(url);
-  const $ = cheerio.load(html);
-  const rows = [];
-  $('tr').each((_, row) => {
-    const cells = $(row).find('td');
-    const product = cleanText(cells.eq(0).text(), 160);
-    const link = cells.eq(0).find('a').attr('href') || '';
-    const date = cleanText(cells.eq(2).text() || cells.eq(1).text(), 80);
-    if (product) rows.push({ product, link, date });
-  });
+  const rows = parseAppleSecurityIndex(html);
   const match = rows.find(r => kind === 'ios'
     ? /iOS|iPadOS/i.test(r.product)
     : /macOS/i.test(r.product));
   if (!match) return null;
   const version = firstVersion(match.product) || match.product;
   const sourceUrl = match.link ? (match.link.startsWith('http') ? match.link : `https://support.apple.com${match.link}`) : url;
+  const releasedAt = toIsoDate(match.date);
   const advisory = sourceUrl !== url ? parseAppleSecurityAdvisory(await fetchHtml(sourceUrl)) : null;
-  if (!advisory || advisory.releasedAt !== toIsoDate(match.date)) {
+  const noPublishedCves = /no published CVE entries/i.test(match.note || '');
+  if ((!advisory && !noPublishedCves) || (advisory && advisory.releasedAt !== releasedAt)) {
     throw new Error(`Apple ${kind} advisory did not match the security release index`);
   }
-  const security = advisory.securityCriticality;
+  const security = advisory?.securityCriticality || {
+    level: 'none',
+    label: 'Apple reports no published CVE entries for this release',
+    cves: [],
+    totalCves: 0,
+    activelyExploited: false,
+  };
+  const entries = advisory?.entries || [];
   const cveSummary = security.totalCves
-    ? `${security.totalCves} CVE${security.totalCves === 1 ? '' : 's'} across ${advisory.entries.length} documented security component${advisory.entries.length === 1 ? '' : 's'}`
-    : `${advisory.entries.length} documented security component${advisory.entries.length === 1 ? '' : 's'}`;
+    ? `${security.totalCves} CVE${security.totalCves === 1 ? '' : 's'} across ${entries.length} documented security component${entries.length === 1 ? '' : 's'}`
+    : noPublishedCves
+      ? 'no published CVE entries'
+      : `${entries.length} documented security component${entries.length === 1 ? '' : 's'}`;
   return {
     platform: kind === 'ios' ? 'Apple' : 'macOS',
     name: match.product.slice(0, 100),
     version,
-    releasedAt: toIsoDate(match.date),
+    releasedAt,
     affects: kind === 'ios'
       ? 'iPhone / iPad / WebKit / system security / app compatibility'
       : 'Mac / macOS / Safari-WebKit / system security / device stability',
-    changelog: advisory.changelog,
+    changelog: advisory?.changelog || [
+      `${match.product} is listed by Apple as released on ${match.date}.`,
+      match.note,
+    ].filter(Boolean),
     knownIssues: [],
     securityCriticality: security,
     riskFactors: [{ level: 'low', text: 'Security updates are usually recommended quickly, but older devices and managed fleets should verify app compatibility first.' }],
     verdict: security.activelyExploited
       ? 'Install promptly after confirming device compatibility; Apple identifies at least one issue in this release as exploited in the wild.'
-      : `Install promptly after confirming device compatibility; Apple documents ${cveSummary} in this release.`,
-    reasoning: `PatchTicker matched Apple’s release index to the full security advisory and prioritized the highest-impact entries. The advisory documents ${cveSummary}; the update brief links each displayed risk back to Apple’s published CVE record.`,
-    evidence: sourceEvidence('Apple Security Advisory', sourceUrl, `${match.product}: ${cveSummary}.`, { dateBasis: 'released', releaseType: 'official-security-advisory', publishedAt: advisory.releasedAt, cveCount: security.totalCves }),
+      : noPublishedCves
+        ? 'Install after confirming device compatibility; Apple lists this release without published CVE entries.'
+        : `Install promptly after confirming device compatibility; Apple documents ${cveSummary} in this release.`,
+    reasoning: advisory
+      ? `PatchTicker matched Apple’s release index to the full security advisory and prioritized the highest-impact entries. The advisory documents ${cveSummary}; the update brief links each displayed risk back to Apple’s published CVE record.`
+      : `PatchTicker verified this release and date in Apple’s security releases index. Apple states that the update has ${cveSummary}, so PatchTicker does not infer undocumented security fixes.`,
+    evidence: sourceEvidence(
+      advisory ? 'Apple Security Advisory' : 'Apple Security Releases',
+      sourceUrl,
+      `${match.product}: ${cveSummary}.`,
+      {
+        dateBasis: 'released',
+        releaseType: advisory ? 'official-security-advisory' : 'official-security-index',
+        publishedAt: advisory?.releasedAt || releasedAt,
+        cveCount: security.totalCves,
+      }
+    ),
     sourceUrl,
   };
 }
@@ -1408,12 +1495,35 @@ async function detectSteamDeck() {
  */
 async function detectSwitch() {
   const sourceUrl = 'https://en-americas-support.nintendo.com/app/answers/detail/a_id/22525';
+  const securityIndexUrl = 'https://www.nintendo.com/security-advisories/en/index.html';
   try {
     const parsed = parseSwitchReleasePage(await fetchHtml(sourceUrl));
     if (!parsed) return null;
-    const changelog = parsed.changelog.length
+    let securityNotice = null;
+    try {
+      const candidate = parseNintendoSecurityNoticeIndex(await fetchHtml(securityIndexUrl), securityIndexUrl);
+      const daysAfterRelease = candidate
+        ? (Date.parse(candidate.date) - Date.parse(parsed.releasedAt)) / 86_400_000
+        : Number.POSITIVE_INFINITY;
+      if (daysAfterRelease >= 0 && daysAfterRelease <= 7) securityNotice = candidate;
+    } catch (securityErr) {
+      logger.warn('[scraper] Nintendo security notice parse failed', { error: securityErr.message });
+    }
+    const releaseNotes = parsed.changelog.length
       ? parsed.changelog
       : ['Nintendo published a system stability and feature update for supported Switch consoles.'];
+    const changelog = unique([
+      ...releaseNotes,
+      ...(securityNotice ? [`Security: ${securityNotice.title}.`] : []),
+    ], 520).slice(0, 8);
+    const evidence = [
+      ...sourceEvidence('Nintendo Support', sourceUrl, `${parsed.heading}. ${changelog[0]}`, { dateBasis: 'released', releaseType: 'official-release' }),
+      ...(securityNotice ? sourceEvidence('Nintendo Security Advisory', securityNotice.url, securityNotice.title, {
+        dateBasis: 'published',
+        releaseType: 'official-security-advisory',
+        publishedAt: securityNotice.date,
+      }) : []),
+    ];
 
     return {
       platform:   'Switch',
@@ -1422,7 +1532,14 @@ async function detectSwitch() {
       releasedAt: parsed.releasedAt,
       affects:    'Nintendo Switch / Switch OLED / Switch Lite / system firmware / eShop / online services',
       changelog,
-      evidence:   sourceEvidence('Nintendo Support', sourceUrl, `${parsed.heading}. ${changelog[0]}`, { dateBasis: 'released', releaseType: 'official-release' }),
+      securityCriticality: securityNotice ? {
+        level: 'unclassified',
+        label: 'Nintendo links this system version to a published security advisory; severity is not stated on the index',
+        cves: [],
+        totalCves: null,
+        activelyExploited: false,
+      } : null,
+      evidence,
       sourceUrl,
     };
   } catch (err) {
@@ -1852,5 +1969,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
 };

@@ -313,6 +313,7 @@ function toDatabaseUpdate(game, post, classification) {
     text: `${stripSteamMarkup(post.title || 'Update')}; material signals: ${classification.signals.join(', ')}.`,
     dateBasis: 'published',
     releaseType: 'official-game-update',
+    materialSignals: classification.signals,
     checkedAt,
     publishedAt: publishedAt.toISOString(),
     steamAppId: game.appId,
