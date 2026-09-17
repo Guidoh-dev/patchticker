@@ -9573,6 +9573,7 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
 .detail-section-title { padding-bottom: 11px; border-bottom: 1px solid var(--border); }
 .detail-list { gap: 1px; padding: 1px; background: var(--border); }
 .detail-list-item { border: 0; border-radius: 0; background: var(--bg-deep); }
+.detail-list-item[hidden] { display: none !important; }
 .detail-list-toggle {
   width: 100%;
   min-height: 44px;

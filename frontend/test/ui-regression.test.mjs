@@ -721,6 +721,7 @@ test('every update detail exposes a source-backed compatibility workspace and cl
   assert.match(mainSource, /data-detail-list-toggle="detail-issues-list"/);
   assert.match(mainSource, /list\.querySelectorAll\('\[data-detail-overflow\]'\)/);
   assert.match(cssSource, /\.detail-list-toggle\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(cssSource, /\.detail-list-item\[hidden\]\s*\{\s*display:\s*none !important;/);
   assert.match(compatibilitySource, /PatchTicker will not guess from the product name/);
   assert.match(cssSource, /\.detail-compatibility-layout\s*\{[\s\S]*?grid-template-columns/);
   assert.match(cssSource, /\.detail-compatibility-checks\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
