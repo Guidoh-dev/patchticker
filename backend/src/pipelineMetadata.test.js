@@ -104,6 +104,35 @@ describe('pipeline source metadata preservation', () => {
     expect(params[17]).toMatch(/^ps5-system:1eb4b184/);
   });
 
+  test('documented PS5 improvements without vendor issues remain a stable evidence-backed release', () => {
+    const detected = {
+      name: 'PS5 System Software 26.06-14.00.00',
+      version: 'PUP-2026.09.15-1eb4b184',
+      displayVersion: '26.06-14.00.00',
+      sourceKind: 'official-release-notes',
+    };
+    const context = {
+      changelog: [
+        'Enhance PSSR Image Quality is enabled by default on PS5 Pro. Enhanced PSSR is used even for games that support the previous model, and Sony documents the exact Screen and Video setting used to disable it.',
+        'Voice chat now identifies the active speaker. Sony documents how to enable Display Names and choose the on-screen position from the voice-chat card.',
+        'The Community Activity widget adds Trending Now and Top 10 views. Trending Now highlights multiplayer games with surging popularity, while Top 10 covers the most popular games for the user’s region.',
+        'Bluetooth-off behavior changed for supported regional and esports-venue configurations, including documented rest-mode and HDMI Device Link effects.',
+        'System software performance and stability were improved.',
+      ],
+      knownIssues: [],
+      riskFactors: [],
+      evidence: [
+        { source: 'PlayStation package', url: 'https://www.playstation.com/en-us/support/hardware/ps5/system-software/', releaseType: 'official-artifact', checkedAt: '2026-09-17T12:00:00Z' },
+        { source: 'PlayStation notes', url: 'https://www.playstation.com/en-us/support/hardware/ps5/system-software-info/', releaseType: 'official-release-notes', checkedAt: '2026-09-17T12:00:00Z' },
+      ],
+    };
+
+    const score = __test.deriveInitialScore('PS5', detected, context);
+    expect(score).toBeGreaterThanOrEqual(7.5);
+    expect(score).toBeLessThanOrEqual(8.3);
+    expect(__test.deriveInitialStatus(score)).toBe('stable');
+  });
+
   test('authoritative source refreshes can clear a resolved known-issue list', async () => {
     db.query.mockResolvedValue({ rows: [] });
 

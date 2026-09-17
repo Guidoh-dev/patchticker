@@ -2711,15 +2711,15 @@ async function detectPs5() {
       sourceKind: hasOfficialNotes ? 'official-release-notes' : 'official-artifact',
       sourceRef: `ps5-system:${parsed.artifactHash}`,
       releasedAt,
-      affects: 'PlayStation 5 / system software / online services / controller and game compatibility',
+      affects: hasOfficialNotes && changelog.some(note => /PS5 Pro|PSSR/i.test(note))
+        ? 'All PlayStation 5 consoles / system software / online services; PSSR image-quality changes apply only to PS5 Pro'
+        : 'PlayStation 5 / system software / online services / controller and game compatibility',
       changelog,
       knownIssues: [],
-      riskFactors: [
-        { level: 'low', text: 'System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.' },
-        ...(hasOfficialNotes && changelog.some(note => /PS5 Pro|PSSR/i.test(note))
-          ? [{ level: 'low', text: 'Some graphics changes apply only to PS5 Pro; standard PS5 consoles do not receive those model-specific features.' }]
-          : []),
-      ],
+      riskFactors: hasOfficialNotes ? [] : [{
+        level: 'low',
+        text: 'Sony’s detailed notes could not be read during this check, so feature and issue coverage is limited to the verified system package metadata.',
+      }],
       verdict: 'Install for online play and system security unless early user reports flag a PS5-specific regression.',
       reasoning: hasOfficialNotes
         ? `Sony identifies the current public build as ${displayVersion}. PatchTicker pairs those official release notes with Sony’s current signed package fingerprint and publication timestamp, rather than treating the support page’s unrelated CMS revision as firmware.`
