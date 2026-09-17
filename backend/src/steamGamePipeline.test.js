@@ -190,6 +190,25 @@ describe('material Steam game update pipeline', () => {
     expect(requirements.packageSizeBytes).toBeGreaterThan(4 * 1024 ** 3);
   });
 
+  test('anti-cheat enforcement alone does not invent a hardware requirement', () => {
+    const result = __test.classifyMaterialUpdate({
+      feedname: 'steam_community_announcements',
+      title: 'Season Midpoint Gameplay Update',
+      contents: `${list([
+        'Rebalanced legend abilities and ranked rewards.',
+        'Adjusted healing loot and long-range weapon balance.',
+        'Added systems to detect unauthorized controller hardware or software on all platforms.',
+        'Players who trigger the anti-cheat detections may be banned after review.',
+        'Improved map rotations, combat readability, and matchmaking.',
+      ])} ${'Detailed gameplay and balance notes. '.repeat(120)}`,
+    });
+
+    expect(result.eligible).toBe(true);
+    expect(result.signals).toContain('gameplay');
+    expect(result.signals).not.toContain('requirements');
+    expect(result.requirements).toBe(false);
+  });
+
   test('counts HTML release-note lists as material scope', () => {
     const result = __test.classifyMaterialUpdate({
       feedname: 'steam_community_announcements',

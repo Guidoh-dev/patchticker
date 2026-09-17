@@ -56,7 +56,10 @@ const TITLE_RELEASE_RE = /\b(?:patch(?: notes?)?|gameplay patch|content update|m
 const BODY_RELEASE_RE = /\b(?:patch notes?|update (?:is )?(?:now )?(?:live|available|out now)|has been released|stable (?:build )?released|version \d+(?:\.\d+)+ (?:is )?(?:now )?(?:live|available))\b/i;
 const MAJOR_RELEASE_RE = /\b(?:major (?:gameplay )?update|gameplay patch|content update|title update|new season|season \d|expansion|new chapter|chapter \d|overhaul|rework|launch update|update (?:is )?(?:live|available|out now))\b/i;
 const GAMEPLAY_RE = /\b(?:gameplay|game mode|map|level|weapon|hero|character|class|ability|skill|quest|mission|boss|enemy|vehicle|combat|movement|physics|matchmaking|progression|economy|crafting|building|ranked|balance|rework|overhaul|new biome|new area|new faction|new mechanic|loot|inventory|level cap)\b/i;
-const REQUIREMENTS_RE = /\b(?:system requirements?|minimum specs?|recommended specs?|directx\s*1[12]|vulkan|64-bit|windows\s*(?:10|11)|macos|linux|steam deck|anti-cheat|kernel driver|engine upgrade|unreal engine\s*5|dropped support|no longer support|now requires?|hardware requirement)\b/i;
+// Treat concrete runtime/install changes as compatibility requirements. A
+// publisher merely discussing anti-cheat enforcement or unauthorized hardware
+// is not evidence that the patch installs a driver or changes requirements.
+const REQUIREMENTS_RE = /\b(?:system requirements?|minimum specs?|recommended specs?|directx\s*1[12]|vulkan|64-bit|windows\s*(?:10|11)|macos|linux|steam deck|kernel driver|engine upgrade|unreal engine\s*5|dropped support|no longer support|now requires?|hardware requirement)\b/i;
 const STABILITY_RISK_RE = /\b(?:known issue|crash|data loss|save corruption|rollback|disabled|degraded|performance regression|stutter|disconnect|cannot launch|failed to launch)\b/i;
 
 function boundedInteger(value, fallback, min, max) {
@@ -440,9 +443,15 @@ function toDatabaseUpdate(game, post, classification) {
     ...(statedSize ? { sizeBytes: statedSize } : {}),
   }, ...(classification.supplementalEvidence || []).map(item => ({ ...item, checkedAt }))];
   const riskFactors = [
-    ...(classification.requirements ? [{ level: 'medium', text: 'The release changes or discusses platform, hardware, anti-cheat, or system requirements; confirm compatibility before updating.' }] : []),
+    ...(classification.requirements ? [{ level: 'medium', text: 'The release changes platform, hardware, runtime, or system requirements; confirm compatibility before updating.' }] : []),
     ...knownIssues.slice(0, 2).map(text => ({ level: 'medium', text })),
   ];
+  const updateScope = classification.requirements
+    ? 'gameplay, compatibility, and installation requirements'
+    : 'gameplay, balance, and online play';
+  const reviewScope = classification.requirements
+    ? 'compatibility and gameplay changes'
+    : 'gameplay changes';
   const score = deriveDeterministicScore({
     name: releaseTitle(game.name, post.title),
     version,
@@ -463,8 +472,8 @@ function toDatabaseUpdate(game, post, classification) {
     status: statusForScore(score),
     score,
     impactScore: deriveDeterministicImpactScore({ changelog: classification.changelog, riskFactors }),
-    affects: `${game.name} on Steam / gameplay / compatibility / installation requirements`,
-    verdict: 'This is a material game update, not a routine hotfix. Review the official gameplay and system-requirement changes before installing; a user rating appears only after real votes are recorded.',
+    affects: `${game.name} on Steam / ${updateScope}`,
+    verdict: `This is a material game update, not a routine hotfix. Review the official ${reviewScope} before installing; a user rating appears only after real votes are recorded.`,
     reasoning: `PatchTicker tracks this release because ${game.name} exceeded ${STRICT_STEAM_GAME_POLICY.minimumAverageConcurrentPlayers.toLocaleString('en-US')} global average concurrent Steam players over ${STRICT_STEAM_GAME_POLICY.windowDays} days and appeared on Valve's official United States Top Sellers chart. Its first-party notes document material ${classification.signals.join(', ')} changes. ${sizeSentence}`,
     changelog: classification.changelog,
     knownIssues,
