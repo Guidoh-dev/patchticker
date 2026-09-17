@@ -471,6 +471,36 @@ test('exact multi-word product titles outrank the same phrase inside incidental 
   );
 });
 
+test('official compatibility tables outrank incidental hardware mentions', () => {
+  const compatibleRelease = {
+    platform: 'Intel',
+    name: 'Intel Arc Graphics Driver',
+    evidence: [{
+      compatibility: {
+        vendor: 'Intel',
+        operatingSystems: ['Windows 11 64-bit versions 21H2 through 25H2'],
+        hardware: [{
+          label: 'Intel Arc A770 Graphics',
+          aliases: ['intel arc a770', 'arc a770', 'a770'],
+          category: 'graphics',
+        }],
+      },
+    }],
+  };
+  const incidentalRelease = {
+    platform: 'Steam',
+    name: 'Unrelated game update',
+    changelog: ['Resolved an overlay issue reported on Intel Arc A770 systems.'],
+  };
+
+  expect(updatesService.__test.compatibilitySearchText(compatibleRelease)).toContain('Intel Arc A770 Graphics');
+  expect(updatesService.__test.searchRelevanceScore(compatibleRelease, 'Arc A770')).toBe(700);
+  expect(updatesService.__test.searchRelevanceScore(incidentalRelease, 'Arc A770')).toBe(300);
+  expect(updatesService.__test.searchRelevanceScore(compatibleRelease, 'Arc A770')).toBeGreaterThan(
+    updatesService.__test.searchRelevanceScore(incidentalRelease, 'Arc A770')
+  );
+});
+
 test('eligible Steam game titles resolve to exact App ID search intent', () => {
   expect(updatesService.__test.parseSearchIntent('Marvel Rivals latest update')).toEqual(expect.objectContaining({
     platform: 'Steam',

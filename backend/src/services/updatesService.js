@@ -324,6 +324,25 @@ function compareScores(direction = 'desc') {
   };
 }
 
+function compatibilitySearchText(update) {
+  return jsonArray(update?.evidence)
+    .map(item => item?.compatibility)
+    .filter(profile => profile && typeof profile === 'object')
+    .flatMap(profile => [
+      profile.vendor,
+      profile.scope,
+      profile.guidance,
+      ...(Array.isArray(profile.operatingSystems) ? profile.operatingSystems : []),
+      ...(Array.isArray(profile.hardware) ? profile.hardware.flatMap(device => [
+        device?.label,
+        device?.category,
+        ...(Array.isArray(device?.aliases) ? device.aliases : []),
+      ]) : []),
+    ])
+    .filter(Boolean)
+    .join(' ');
+}
+
 function searchRelevanceScore(update, queryOrTerms = []) {
   const fields = [
     [update?.name, 100],
@@ -331,6 +350,9 @@ function searchRelevanceScore(update, queryOrTerms = []) {
     [update?.version, 80],
     [update?.internalVersion, 80],
     [update?.productId, 80],
+    // Vendor-published device and OS tables are stronger search evidence than
+    // an incidental product mention in release prose.
+    [compatibilitySearchText(update), 70],
     [update?.affects, 60],
     [update?.verdict, 40],
     [update?.reasoning, 35],
@@ -1388,6 +1410,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         const document = [
           u.name, u.platform, u.version, u.internalVersion, u.productId,
           u.affects, u.verdict, u.reasoning,
+          compatibilitySearchText(u),
           JSON.stringify(u.changelog || []), JSON.stringify(u.knownIssues || []),
           JSON.stringify(u.riskFactors || []), JSON.stringify(u.evidence || []),
         ].filter(Boolean).join(' ').toLowerCase();
@@ -1587,6 +1610,7 @@ module.exports = {
     parseSearchIntent,
     exactSteamGameForSearch,
     resolveSearchPlan,
+    compatibilitySearchText,
     searchRelevanceScore,
   },
 };

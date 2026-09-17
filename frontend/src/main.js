@@ -1369,6 +1369,9 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['amd', 'AMD'], ['radeon', 'AMD'], ['nvidia', 'NVIDIA'], ['geforce', 'NVIDIA'], ['intel', 'Intel'],
   ['apple', 'Apple'], ['ios', 'Apple'],
   ['macos', 'macOS'], ['mac os', 'macOS'],
+  ['chrome', 'Chrome'], ['google chrome', 'Chrome'],
+  ['firefox', 'Firefox'], ['mozilla firefox', 'Firefox'],
+  ['edge', 'Edge'], ['microsoft edge', 'Edge'],
   ['windows', 'Windows'], ['steam', 'Steam'], ['discord', 'Discord'],
   ['battle.net', 'BattleNet'], ['battle net', 'BattleNet'], ['battlenet', 'BattleNet'],
   ['gog', 'GOG'], ['gog galaxy', 'GOG'],
@@ -1441,12 +1444,33 @@ function searchableTextForUpdate(u) {
     ...(u.evidence || []).map(e => `${e.source || ''} ${e.text || ''}`),
     u.securityCriticality?.label || '',
     ...(u.securityCriticality?.cves || []),
+    compatibilitySearchText(u),
   ];
   return [
     u.id, u.platform, u.name, u.version, u.internalVersion, u.productId,
     u.sourceKind, releaseLaneLabel(u), u.affects, u.verdict, u.reasoning,
     ...nested,
   ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function compatibilitySearchText(update) {
+  return (update?.evidence || [])
+    .map(item => item?.compatibility)
+    .filter(profile => profile && typeof profile === 'object')
+    .flatMap(profile => [
+      profile.vendor,
+      profile.scope,
+      profile.guidance,
+      ...(Array.isArray(profile.operatingSystems) ? profile.operatingSystems : []),
+      ...(Array.isArray(profile.hardware) ? profile.hardware.flatMap(device => [
+        device?.label,
+        device?.category,
+        ...(Array.isArray(device?.aliases) ? device.aliases : []),
+      ]) : []),
+    ])
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
 }
 
 function releaseLaneLabel(update) {
@@ -1617,6 +1641,7 @@ function updateSearchRelevance(update, query) {
     [update?.version, 80],
     [update?.internalVersion, 80],
     [update?.productId, 80],
+    [compatibilitySearchText(update), 70],
     [update?.affects, 60],
     [update?.verdict, 40],
     [update?.reasoning, 35],
@@ -1657,6 +1682,7 @@ function searchMatchReason(update, query, explicitPlatform = '') {
   if (matchesAll(update?.name)) return 'Product name or alias';
   if (matchesAll(`${update?.version || ''} ${update?.internalVersion || ''} ${update?.productId || ''}`)) return 'Version or App ID';
   if (matchesAll(`${update?.platform || ''} ${releaseLaneLabel(update)}`)) return 'Platform match';
+  if (matchesAll(compatibilitySearchText(update))) return 'Official compatibility table';
   if (matchesAll(update?.affects)) return 'Device or setup';
   if (matchesAll(JSON.stringify(update?.knownIssues || []))) return 'Known issue';
   if (matchesAll(JSON.stringify(update?.changelog || []))) return 'Release notes';
@@ -2617,13 +2643,25 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
     ? resolveSearchIntentForPlatform(searchIntentForQuery(search), platform)
     : null;
   const matchedTermCount = search ? searchTermGroups(resolvedSearchIntent.semanticQuery).length : 0;
-  const resultScope = !search
-    ? 'Filtered verified releases'
-    : resolvedSearchIntent.productId
-      ? `Exact Steam product · App ${H(resolvedSearchIntent.productId)}`
-      : matchedTermCount > 1
-        ? `All ${H(String(matchedTermCount))} search terms matched`
-        : 'Verified database matches';
+  const compatibilityMatchCount = search
+    ? updates.filter(update => searchMatchReason(update, search, platform) === 'Official compatibility table').length
+    : 0;
+  let resultScope = 'Filtered verified releases';
+  if (search) {
+    if (resolvedSearchIntent.productId) {
+      resultScope = `Exact Steam product · App ${H(resolvedSearchIntent.productId)}`;
+    } else if (resolvedSearchIntent.sourceKind && !matchedTermCount) {
+      resultScope = `Release lane · ${H(resolvedSearchIntent.sourceLabel || releaseLaneLabel(updates[0]))}`;
+    } else if (resolvedSearchIntent.platform && !matchedTermCount) {
+      resultScope = `Platform releases · ${H(platformLabel(resolvedSearchIntent.platform))}`;
+    } else if (compatibilityMatchCount && compatibilityMatchCount === updates.length) {
+      resultScope = `Official compatibility table · all ${H(String(matchedTermCount))} terms matched`;
+    } else if (matchedTermCount > 1) {
+      resultScope = `All ${H(String(matchedTermCount))} search terms matched`;
+    } else {
+      resultScope = 'Verified database matches';
+    }
+  }
   const facets = search ? `
     <div class="search-result-facets" aria-label="Narrow search results by platform">
       <span>Results by platform</span>
@@ -3064,6 +3102,9 @@ async function renderDashboard({ focusId = null } = {}) {
       ['Discord', /discord/],
       ['BattleNet', /battle\.?net|blizzard/],
       ['GOG', /gog|galaxy/],
+      ['Chrome', /chrome|chromium/],
+      ['Firefox', /firefox|mozilla|gecko/],
+      ['Edge', /microsoft edge|edge stable|\bedge\b/],
     ];
     return suggestions.find(([, pattern]) => pattern.test(q))?.[0] || '';
   }

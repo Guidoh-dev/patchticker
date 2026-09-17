@@ -204,6 +204,9 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /relevance:\s+\(a, b\) => updateSearchRelevance\(b, search\) - updateSearchRelevance\(a, search\)/);
   assert.match(mainSource, /Matched in \$\{H\(u\.matchReason\)\}/);
   assert.match(mainSource, /search && _draftFilterState\.sort === 'date_desc'[\s\S]*?'relevance'/);
+  assert.match(mainSource, /function compatibilitySearchText\(update\)/);
+  assert.match(mainSource, /\[compatibilitySearchText\(update\), 70\]/);
+  assert.match(mainSource, /return 'Official compatibility table'/);
   assert.match(cssSource, /\.decision-match-reason\s*\{[^}]*color:\s*var\(--cyan\)/s);
 });
 
@@ -223,6 +226,9 @@ test('platform and release-lane search intent excludes incidental mentions', () 
   assert.match(mainSource, /\['macbook', 'macOS'\]/);
   assert.match(mainSource, /\['radeon', 'AMD'\]/);
   assert.match(mainSource, /\['geforce', 'NVIDIA'\]/);
+  assert.match(mainSource, /\['chrome', 'Chrome'\]/);
+  assert.match(mainSource, /\['firefox', 'Firefox'\]/);
+  assert.match(mainSource, /\['edge', 'Edge'\]/);
   assert.match(mainSource, /const AMD_MODEL_VARIANT_TERMS = new Set\(\['xt', 'xtx', 'gre'\]\)/);
   assert.match(mainSource, /platform === 'AMD'[\s\S]*?AMD_MODEL_VARIANT_TERMS\.has\(token\)/);
 });
@@ -241,6 +247,8 @@ test('search results expose staged platform facets, verification timing, and hon
   assert.match(mainSource, /data-result-platform="\$\{H\(resultPlatform\)\}"/);
   assert.match(mainSource, /Matching records verified \$\{H\(timeAgo\(latestCheck\)\)\}/);
   assert.match(mainSource, /Exact Steam product · App \$\{H\(resolvedSearchIntent\.productId\)\}/);
+  assert.match(mainSource, /Platform releases · \$\{H\(platformLabel\(resolvedSearchIntent\.platform\)\)\}/);
+  assert.match(mainSource, /Official compatibility table · all \$\{H\(String\(matchedTermCount\)\)\} terms matched/);
   assert.match(mainSource, /function suggestedPlatformForSearch\(query\)/);
   assert.match(mainSource, /const browsePlatform = platform \|\| emptyIntent\.platform \|\| suggestedPlatformForSearch\(search\)/);
   assert.match(mainSource, /PatchTicker found the exact Steam product \(App \$\{emptyIntent\.productId\}\)/);
