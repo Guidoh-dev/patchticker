@@ -219,6 +219,21 @@ function parseSearchIntent(rawSearch) {
   };
 }
 
+function hardwareCompatibilitySearchPlatform(rawSearch, explicitPlatform = null) {
+  const query = normaliseSearchDocument(rawSearch);
+  if (!query) return null;
+  let inferred = null;
+  if (/\b(?:geforce )?(?:rtx|gtx|mx) \d{3,4}\b/.test(query)) inferred = 'NVIDIA';
+  else if (/\b(?:radeon )?rx \d{3,4}\b|\bradeon pro w\d{3,4}\b/.test(query)) inferred = 'AMD';
+  else if (/\b(?:intel )?arc (?:[ab]\s*)?\d{2,4}\b|\bintel (?:uhd|iris) \d{2,4}\b|\bintel core ultra\b/.test(query)) inferred = 'Intel';
+
+  const explicit = ['NVIDIA', 'AMD', 'Intel'].find(platform =>
+    String(explicitPlatform || '').toLowerCase() === platform.toLowerCase()
+  ) || null;
+  if (explicit && inferred && explicit !== inferred) return null;
+  return explicit || inferred;
+}
+
 function expandSearchTerms(rawSearch) {
   const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
   if (!query) return [];
@@ -1391,6 +1406,25 @@ async function getUpdates({ platform, status, sort, search } = {}) {
 
       const rows = await db.query(query, params);
       let updates = dedupeArticleReleases(rows.rows.map(rowToUpdate).filter(isUpdateDisplayable));
+      const compatibilityFallbackPlatform = !status
+        ? hardwareCompatibilitySearchPlatform(search, platform || searchPlatform)
+        : null;
+      if (!updates.length && compatibilityFallbackPlatform && searchGroups.length) {
+        const fallback = await db.query(
+          `SELECT *
+           FROM software_updates
+           WHERE released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+             AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
+             AND LOWER(platform) = LOWER($1)
+           ORDER BY released_at DESC, created_at DESC
+           LIMIT 1`,
+          [compatibilityFallbackPlatform]
+        );
+        updates = fallback.rows
+          .map(rowToUpdate)
+          .filter(isUpdateDisplayable)
+          .map(update => ({ ...update, compatibilitySearchFallback: true }));
+      }
       const sorters = {
         date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
         date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
@@ -1407,7 +1441,8 @@ async function getUpdates({ platform, status, sort, search } = {}) {
 
   // Development/test fixtures only. Production returns an honest empty feed.
   if (!canUseStaticUpdates()) return [];
-  let updates = dedupeArticleReleases(getStaticUpdates().map(sanitizeUpdateScores).filter(isUpdateDisplayable));
+  const availableUpdates = dedupeArticleReleases(getStaticUpdates().map(sanitizeUpdateScores).filter(isUpdateDisplayable));
+  let updates = [...availableUpdates];
   if (platform) updates = updates.filter(u => u.platform.toLowerCase() === platform.toLowerCase());
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
@@ -1433,6 +1468,15 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         ].filter(Boolean).join(' ').toLowerCase();
         return groups.every(group => group.some(term => searchDocumentContains(document, term)));
       });
+    }
+    const compatibilityFallbackPlatform = !status
+      ? hardwareCompatibilitySearchPlatform(search, platform || searchIntent.platform)
+      : null;
+    if (!updates.length && compatibilityFallbackPlatform && groups.length) {
+      const current = availableUpdates
+        .filter(update => update.platform.toLowerCase() === compatibilityFallbackPlatform.toLowerCase())
+        .sort((left, right) => Date.parse(right.releasedAt) - Date.parse(left.releasedAt))[0];
+      if (current) updates = [{ ...current, compatibilitySearchFallback: true }];
     }
   }
   const sorters = {
@@ -1625,6 +1669,7 @@ module.exports = {
     buildSearchTermGroups,
     exactPlatformForSearch,
     parseSearchIntent,
+    hardwareCompatibilitySearchPlatform,
     exactSteamGameForSearch,
     resolveSearchPlan,
     compatibilitySearchText,

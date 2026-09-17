@@ -354,6 +354,13 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
   expect(updatesService.__test.parseSearchIntent('AMD XTX')).toEqual(expect.objectContaining({
     platform: 'AMD', semanticQuery: 'xtx', sourceKind: null,
   }));
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('GeForce GTX 1060')).toBe('NVIDIA');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon RX 580')).toBe('AMD');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Intel UHD 630')).toBe('Intel');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Intel Arc B380')).toBe('Intel');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Arc A310')).toBe('Intel');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon RX 580', 'Intel')).toBeNull();
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('driver crash')).toBeNull();
   expect(updatesService.__test.parseSearchIntent('iOS 26.6')).toEqual(expect.objectContaining({
     platform: 'Apple', semanticQuery: '26.6', sourceKind: null,
   }));
@@ -375,6 +382,41 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
   expect(updatesService.__test.parseSearchIntent('security update')).toEqual(expect.objectContaining({
     platform: null, semanticQuery: 'security', sourceKind: null,
   }));
+});
+
+test('unsupported hardware searches return the current vendor release for an explicit compatibility check', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  const amdRow = {
+    id: 'amd-26-9-1', platform: 'AMD', name: 'AMD Software 26.9.1', version: '26.9.1',
+    released_at: '2026-08-10', status: 'caution', score: '6.2', impact_score: '6.0', bug_count: 0,
+    affects: 'AMD Radeon graphics', verdict: 'Review support', reasoning: 'Official notes loaded.',
+    changelog: [], known_issues: [], risk_factors: [], security_criticality: null, subreddits: [],
+    evidence: [{
+      source: 'AMD Release Notes', url: 'https://www.amd.com/release', releaseType: 'official-release-notes',
+      compatibility: {
+        schemaVersion: 1, vendor: 'AMD', authoritative: true,
+        hardware: [{ label: 'Radeon RX 7900 Series', aliases: ['radeon rx 7900', 'rx 7900'] }],
+        operatingSystems: ['Windows 11 version 21H2 and later'],
+      },
+    }],
+    created_at: '2026-08-10T12:00:00Z', updated_at: '2026-08-11T11:00:00Z',
+  };
+  mockQuery.mockImplementation(async sql => {
+    if (sql.includes('FROM update_ratings')) return { rows: [] };
+    if (sql.includes('search_group_0')) return { rows: [] };
+    return { rows: [amdRow] };
+  });
+
+  const updates = await updatesService.getUpdates({ search: 'Radeon RX 580', sort: 'relevance' });
+
+  expect(updates).toHaveLength(1);
+  expect(updates[0]).toMatchObject({
+    id: 'amd-26-9-1',
+    platform: 'AMD',
+    compatibilitySearchFallback: true,
+  });
+  expect(mockQuery.mock.calls[1][0]).not.toContain('search_group_0');
+  expect(mockQuery.mock.calls[1][1]).toEqual(['AMD']);
 });
 
 test('AMD board suffix searches retain strict family matching without requiring marketing variants', async () => {

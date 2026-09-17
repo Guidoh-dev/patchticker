@@ -1713,6 +1713,16 @@ function updateSearchRelevance(update, query) {
 function searchMatchReason(update, query, explicitPlatform = '') {
   const intent = resolveSearchIntentForPlatform(searchIntentForQuery(query), explicitPlatform);
   const groups = searchTermGroups(intent.semanticQuery);
+  if (update?.compatibilitySearchFallback) {
+    const profile = compatibilityProfileFromUpdate(update);
+    const result = evaluateCompatibility(profile, {
+      hardware: intent.semanticQuery || query,
+      operatingSystem: 'not-sure',
+    });
+    if (result.status === 'unsupported') return 'Compatibility check · not listed by vendor';
+    if (result.status === 'supported') return 'Official compatibility table';
+    return 'Compatibility check · verify exact model';
+  }
   if (!groups.length && intent.sourceKind && update?.sourceKind === intent.sourceKind) return `Release lane · ${intent.sourceLabel}`;
   if (!groups.length && intent.platform && update?.platform === intent.platform) return `Platform · ${platformLabel(intent.platform)}`;
   const matchesAll = value => {
@@ -2432,7 +2442,7 @@ function renderUpdateCard(u) {
             ${securitySignal ? `<span class="security-signal security-signal--${H(securitySignal.tone)}"><i aria-hidden="true">◆</i>${H(securitySignal.label)}</span>` : ''}
             ${driverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(driverImpact.label)}</span>` : ''}
             ${steamAudience?.compactPlayers ? `<span class="steam-audience-signal" title="${H(steamAudience.detail)}"><i aria-hidden="true">◎</i>${H(steamAudience.label)}</span>` : ''}
-            ${u.matchReason ? `<span class="decision-match-reason">Matched in ${H(u.matchReason)}</span>` : ''}
+            ${u.matchReason ? `<span class="decision-match-reason">${u.compatibilitySearchFallback ? H(u.matchReason) : `Matched in ${H(u.matchReason)}`}</span>` : ''}
             <span class="decision-card-checked">${H(freshness.detail)}</span>
             <span class="decision-card-source-count">${H(sourceLabel)}</span>
             <span class="source-depth-signal source-depth-signal--${H(methodMeta.tone)}">${H(methodMeta.label)}</span>
@@ -2705,6 +2715,9 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
   const compatibilityMatchCount = search
     ? updates.filter(update => searchMatchReason(update, search, platform) === 'Official compatibility table').length
     : 0;
+  const compatibilityFallbackCount = search
+    ? updates.filter(update => update.compatibilitySearchFallback).length
+    : 0;
   let resultScope = 'Filtered verified releases';
   if (search) {
     if (resolvedSearchIntent.productId) {
@@ -2713,6 +2726,8 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
       resultScope = `Release lane · ${H(resolvedSearchIntent.sourceLabel || releaseLaneLabel(updates[0]))}`;
     } else if (resolvedSearchIntent.platform && !matchedTermCount) {
       resultScope = `Platform releases · ${H(platformLabel(resolvedSearchIntent.platform))}`;
+    } else if (compatibilityFallbackCount && compatibilityFallbackCount === updates.length) {
+      resultScope = 'Compatibility check · current vendor release';
     } else if (compatibilityMatchCount && compatibilityMatchCount === updates.length) {
       resultScope = `Official compatibility table · all ${H(String(matchedTermCount))} terms matched`;
     } else if (matchedTermCount > 1) {
@@ -3189,7 +3204,8 @@ async function renderDashboard({ focusId = null } = {}) {
       if (groups.length) {
         filtered = filtered.filter(u => {
           const haystack = searchableTextForUpdate(u);
-          return groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
+          return u.compatibilitySearchFallback
+            || groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
         });
       }
     }

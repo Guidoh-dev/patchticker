@@ -228,6 +228,9 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /function compatibilitySearchText\(update\)/);
   assert.match(mainSource, /\[compatibilitySearchText\(update\), 70\]/);
   assert.match(mainSource, /return 'Official compatibility table'/);
+  assert.match(mainSource, /if \(update\?\.compatibilitySearchFallback\)/);
+  assert.match(mainSource, /return 'Compatibility check · not listed by vendor'/);
+  assert.match(mainSource, /u\.compatibilitySearchFallback \? H\(u\.matchReason\) : `Matched in/);
   assert.match(cssSource, /\.decision-match-reason\s*\{[^}]*color:\s*var\(--cyan\)/s);
 });
 
@@ -270,6 +273,8 @@ test('search results expose staged platform facets, verification timing, and hon
   assert.match(mainSource, /Exact Steam product · App \$\{H\(resolvedSearchIntent\.productId\)\}/);
   assert.match(mainSource, /Platform releases · \$\{H\(platformLabel\(resolvedSearchIntent\.platform\)\)\}/);
   assert.match(mainSource, /Official compatibility table · all \$\{H\(String\(matchedTermCount\)\)\} terms matched/);
+  assert.match(mainSource, /Compatibility check · current vendor release/);
+  assert.match(mainSource, /return u\.compatibilitySearchFallback[\s\S]*?groups\.every/);
   assert.match(mainSource, /function suggestedPlatformForSearch\(query\)/);
   assert.match(mainSource, /const browsePlatform = platform \|\| emptyIntent\.platform \|\| suggestedPlatformForSearch\(search\)/);
   assert.match(mainSource, /PatchTicker found the exact Steam product \(App \$\{emptyIntent\.productId\}\)/);
