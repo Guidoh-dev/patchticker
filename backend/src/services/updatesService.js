@@ -251,56 +251,62 @@ function parseSearchIntent(rawSearch) {
   const query = correctSearchQuery(rawSearch);
   if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
 
-  for (const intent of SOURCE_SEARCH_INTENTS) {
-    const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
-      .find(candidate => query === candidate || query.startsWith(`${candidate} `));
-    if (!alias) continue;
-    const remainder = query.slice(alias.length).trim();
-    const gameIntent = intent.sourceKind === 'steam-game-news' ? steamGameIntent(remainder) : null;
-    return gameIntent || {
-      platform: intent.platform,
-      sourceKind: intent.sourceKind,
-      sourceLabel: intent.label,
-      semanticQuery: stripIntentStopwords(remainder, intent.platform),
-    };
-  }
+  // First preserve the exact query, then try a navigation-only form with
+  // generic request words removed. This lets "latest Windows update" resolve
+  // to the Windows lane without turning "crash on NVIDIA" into navigation.
+  const intentQueries = [...new Set([query, stripIntentStopwords(query)].filter(Boolean))];
+  for (const intentQuery of intentQueries) {
+    for (const intent of SOURCE_SEARCH_INTENTS) {
+      const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
+        .find(candidate => intentQuery === candidate || intentQuery.startsWith(`${candidate} `));
+      if (!alias) continue;
+      const remainder = intentQuery.slice(alias.length).trim();
+      const gameIntent = intent.sourceKind === 'steam-game-news' ? steamGameIntent(remainder) : null;
+      return gameIntent || {
+        platform: intent.platform,
+        sourceKind: intent.sourceKind,
+        sourceLabel: intent.label,
+        semanticQuery: stripIntentStopwords(remainder, intent.platform),
+      };
+    }
 
-  for (const intent of CATEGORY_SEARCH_INTENTS) {
-    const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
-      .find(candidate => query === candidate || query.startsWith(`${candidate} `));
-    if (!alias) continue;
-    return {
-      platform: null,
-      sourceKind: null,
-      sourceLabel: null,
-      categoryLabel: intent.label,
-      lanes: intent.lanes,
-      semanticQuery: stripIntentStopwords(query.slice(alias.length).trim()),
-    };
-  }
+    for (const intent of CATEGORY_SEARCH_INTENTS) {
+      const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
+        .find(candidate => intentQuery === candidate || intentQuery.startsWith(`${candidate} `));
+      if (!alias) continue;
+      return {
+        platform: null,
+        sourceKind: null,
+        sourceLabel: null,
+        categoryLabel: intent.label,
+        lanes: intent.lanes,
+        semanticQuery: stripIntentStopwords(intentQuery.slice(alias.length).trim()),
+      };
+    }
 
-  const exactPlatform = exactPlatformForSearch(query);
-  if (exactPlatform) {
-    return { platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' };
-  }
+    const exactPlatform = exactPlatformForSearch(intentQuery);
+    if (exactPlatform) {
+      return { platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' };
+    }
 
-  const platformAlias = [...EXACT_PLATFORM_SEARCHES.entries()]
-    .sort(([a], [b]) => b.length - a.length)
-    .find(([alias]) => query.startsWith(`${alias} `));
-  if (platformAlias) {
-    const [alias, platform] = platformAlias;
-    const remainder = query.slice(alias.length).trim();
-    const gameIntent = platform === 'Steam' ? steamGameIntent(remainder) : null;
-    return gameIntent || {
-      platform,
-      sourceKind: null,
-      sourceLabel: null,
-      semanticQuery: stripIntentStopwords(remainder, platform),
-    };
-  }
+    const platformAlias = [...EXACT_PLATFORM_SEARCHES.entries()]
+      .sort(([a], [b]) => b.length - a.length)
+      .find(([alias]) => intentQuery.startsWith(`${alias} `));
+    if (platformAlias) {
+      const [alias, platform] = platformAlias;
+      const remainder = intentQuery.slice(alias.length).trim();
+      const gameIntent = platform === 'Steam' ? steamGameIntent(remainder) : null;
+      return gameIntent || {
+        platform,
+        sourceKind: null,
+        sourceLabel: null,
+        semanticQuery: stripIntentStopwords(remainder, platform),
+      };
+    }
 
-  const gameIntent = steamGameIntent(query);
-  if (gameIntent) return gameIntent;
+    const gameIntent = steamGameIntent(intentQuery);
+    if (gameIntent) return gameIntent;
+  }
 
   return {
     platform: null,

@@ -464,6 +464,30 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
   }));
 });
 
+test('natural latest and current queries route to one explicit release lane', () => {
+  expect(updatesService.__test.parseSearchIntent('latest Windows update')).toMatchObject({
+    platform: 'Windows', semanticQuery: '',
+  });
+  expect(updatesService.__test.parseSearchIntent('current Windows 11 patch')).toMatchObject({
+    platform: 'Windows', semanticQuery: '11',
+  });
+  expect(updatesService.__test.parseSearchIntent('current AMD driver')).toMatchObject({
+    platform: 'AMD', semanticQuery: '',
+  });
+  expect(updatesService.__test.parseSearchIntent('newest Xbox update')).toMatchObject({
+    platform: 'Xbox', semanticQuery: '',
+  });
+  expect(updatesService.__test.parseSearchIntent('latest Steam Deck update')).toMatchObject({
+    platform: 'Steam', sourceKind: 'steamos-news', semanticQuery: '',
+  });
+  expect(updatesService.__test.parseSearchIntent('latest browser updates')).toMatchObject({
+    categoryLabel: 'Web browsers', semanticQuery: '',
+  });
+  expect(updatesService.__test.parseSearchIntent('crash on NVIDIA')).toMatchObject({
+    platform: null, semanticQuery: 'crash on nvidia',
+  });
+});
+
 test('category searches select explicit ecosystem lanes instead of incidental prose mentions', async () => {
   expect(updatesService.__test.parseSearchIntent('browser updates')).toEqual(expect.objectContaining({
     categoryLabel: 'Web browsers', semanticQuery: '',
