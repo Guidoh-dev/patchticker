@@ -237,6 +237,10 @@ test('searches preserve precise terms, rank best matches, and explain each resul
 test('platform and release-lane search intent excludes incidental mentions', () => {
   assert.match(mainSource, /const EXACT_PLATFORM_SEARCHES = new Map/);
   assert.match(mainSource, /const SEARCH_QUERY_CORRECTIONS = \[/);
+  assert.match(mainSource, /\\bnividia\\b/);
+  assert.match(mainSource, /\\bwindows\\s\*11\\b/);
+  assert.match(mainSource, /\\bplaystation\\s\*5\\b/);
+  assert.match(mainSource, /\\bmac\\s\+book\\b/);
   assert.match(mainSource, /function correctSearchQuery\(raw\)/);
   assert.match(mainSource, /function searchCorrection\(raw\)/);
   assert.match(mainSource, /Interpreted as “\$\{correctedSearch\}”/);

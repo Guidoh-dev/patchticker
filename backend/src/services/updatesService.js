@@ -44,10 +44,22 @@ const SEARCH_ALIAS_GROUPS = [
 const SEARCH_QUERY_CORRECTIONS = [
   [/\bnvida\b/g, 'nvidia'],
   [/\bnivdia\b/g, 'nvidia'],
+  [/\bnividia\b/g, 'nvidia'],
+  [/\bnvidea\b/g, 'nvidia'],
   [/\bge\s+force\b/g, 'geforce'],
   [/\bfire\s+fox\b/g, 'firefox'],
+  [/\bfirefos\b/g, 'firefox'],
   [/\bmozila\b/g, 'firefox'],
+  [/\bchome\b/g, 'chrome'],
+  [/\bsteem\b/g, 'steam'],
+  [/\bintell\b/g, 'intel'],
+  [/\bmac\s+book\b/g, 'macbook'],
+  [/\bwindow\s*11\b/g, 'windows 11'],
+  [/\bwindows\s*11\b/g, 'windows 11'],
   [/\bplay\s+station\s+5\b/g, 'playstation 5'],
+  [/\bplaystation\s*5\b/g, 'playstation 5'],
+  [/\bx\s+box\b/g, 'xbox'],
+  [/\bnintedo\s+switch\b/g, 'nintendo switch'],
 ];
 
 function correctSearchQuery(rawSearch) {

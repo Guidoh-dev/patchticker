@@ -293,17 +293,37 @@ test('search shorthand expands to authoritative product-name aliases', () => {
 test('common platform-name mistakes are corrected without fuzzy matching release data', () => {
   expect(updatesService.__test.correctSearchQuery('nvida')).toBe('nvidia');
   expect(updatesService.__test.correctSearchQuery('nivdia latest driver')).toBe('nvidia latest driver');
+  expect(updatesService.__test.correctSearchQuery('nividia')).toBe('nvidia');
+  expect(updatesService.__test.correctSearchQuery('nvidea driver')).toBe('nvidia driver');
   expect(updatesService.__test.correctSearchQuery('Ge Force RTX 5090')).toBe('geforce rtx 5090');
   expect(updatesService.__test.correctSearchQuery('fire fox security')).toBe('firefox security');
+  expect(updatesService.__test.correctSearchQuery('firefos')).toBe('firefox');
   expect(updatesService.__test.correctSearchQuery('mozila')).toBe('firefox');
+  expect(updatesService.__test.correctSearchQuery('google chome')).toBe('google chrome');
+  expect(updatesService.__test.correctSearchQuery('steem')).toBe('steam');
+  expect(updatesService.__test.correctSearchQuery('intell arc')).toBe('intel arc');
+  expect(updatesService.__test.correctSearchQuery('mac book')).toBe('macbook');
+  expect(updatesService.__test.correctSearchQuery('window 11')).toBe('windows 11');
+  expect(updatesService.__test.correctSearchQuery('windows11')).toBe('windows 11');
   expect(updatesService.__test.correctSearchQuery('play station 5')).toBe('playstation 5');
+  expect(updatesService.__test.correctSearchQuery('playstation5')).toBe('playstation 5');
+  expect(updatesService.__test.correctSearchQuery('x box')).toBe('xbox');
+  expect(updatesService.__test.correctSearchQuery('nintedo switch')).toBe('nintendo switch');
   expect(updatesService.__test.correctSearchQuery('driver crsh')).toBe('driver crsh');
 
   expect(updatesService.__test.exactPlatformForSearch('nvida')).toBe('NVIDIA');
+  expect(updatesService.__test.exactPlatformForSearch('steem')).toBe('Steam');
+  expect(updatesService.__test.exactPlatformForSearch('windows11')).toBeNull();
   expect(updatesService.__test.exactPlatformForSearch('fire fox')).toBe('Firefox');
+  expect(updatesService.__test.exactPlatformForSearch('firefos')).toBe('Firefox');
   expect(updatesService.__test.exactPlatformForSearch('play station 5')).toBe('PS5');
+  expect(updatesService.__test.exactPlatformForSearch('playstation5')).toBe('PS5');
+  expect(updatesService.__test.exactPlatformForSearch('mac book')).toBe('macOS');
   expect(updatesService.__test.parseSearchIntent('Ge Force RTX 5090')).toEqual(expect.objectContaining({
     platform: 'NVIDIA', semanticQuery: 'rtx 5090', sourceKind: null,
+  }));
+  expect(updatesService.__test.parseSearchIntent('window 11')).toEqual(expect.objectContaining({
+    platform: 'Windows', semanticQuery: '11', sourceKind: null,
   }));
 });
 
