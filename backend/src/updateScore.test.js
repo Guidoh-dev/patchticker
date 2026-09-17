@@ -66,6 +66,30 @@ describe('deterministic update scoring', () => {
     expect(breakdown.signals).toMatchObject({ unresolvedIssues: 0, resolvedChanges: 1 });
   });
 
+  test('source-provenance notes never change install confidence', () => {
+    const input = {
+      name: 'Vendor Driver 42.2 Non-WHQL',
+      sourceKind: 'official-release-notes',
+      changelog: ['Added support for a documented game.'],
+      knownIssues: ['The application may crash during startup.'],
+      riskFactors: [{ level: 'medium', text: 'This package is not WHQL certified.' }],
+      evidence: [{
+        source: 'Vendor release notes',
+        url: 'https://vendor.example/releases/42-2',
+        releaseType: 'official-release-notes',
+      }],
+    };
+    const baseline = deriveDeterministicScore(input);
+    const withProvenance = deriveDeterministicScore({
+      ...input,
+      evidence: input.evidence.map(item => ({
+        ...item,
+        provenanceNote: 'The catalog and release document publish different dates.',
+      })),
+    });
+    expect(withProvenance).toBe(baseline);
+  });
+
   test('does not treat resolved defects or negative issue acknowledgements as active defects', () => {
     expect(isResolvedStatement('Fixed a bug that caused the game to crash.')).toBe(true);
     expect(isResolvedStatement('Reduced the crash rate on Nintendo Switch.')).toBe(true);

@@ -2621,10 +2621,6 @@ async function detectIntel() {
       knownIssues: parsed.knownIssues,
       knownIssuesAuthoritative: Boolean(releasePdfText),
       riskFactors: [
-        ...(sourceDates.hasDiscrepancy ? [{
-          level: 'low',
-          text: `Intel's download catalog is dated ${sourceDates.catalogDate}, while the release-notes document is dated ${sourceDates.releaseNotesDate}. PatchTicker uses the explicit release-notes date and preserves both source dates for review.`,
-        }] : []),
         ...(!isWhql ? [{ level: 'medium', text: 'This is a Non-WHQL driver; it has not completed Microsoft’s WHQL certification path.' }] : []),
         { level: 'low', text: 'Intel warns that its generic package overwrites OEM-customized graphics drivers; laptops and prebuilt systems should check the manufacturer’s validated build first.' },
       ],
@@ -2647,6 +2643,9 @@ async function detectIntel() {
           releaseType: 'official-release-notes',
           ...impactMeta,
           compatibility: compatibility || undefined,
+          provenanceNote: sourceDates.hasDiscrepancy
+            ? `Intel's catalog metadata is dated ${sourceDates.catalogDate}, while this release-notes document is dated ${sourceDates.releaseNotesDate}. PatchTicker uses the document's explicit release date.`
+            : undefined,
         }) : []),
       ],
       sourceUrl: url,
