@@ -849,6 +849,86 @@ function parseAppleSecurityIndex(html) {
   return rows;
 }
 
+const APPLE_MACOS_COMPATIBILITY_URLS = Object.freeze({
+  27: 'https://support.apple.com/en-us/127255',
+});
+
+function appleMacAliases(label) {
+  const normalized = cleanText(label, 180)
+    .replace(/[®™]/g, '')
+    .replace(/[()]/g, ' ')
+    .replace(/\b(?:inch|four ports|two ports)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return unique([
+    label,
+    normalized,
+    normalized.replace(/\b\d{2}\s+(?=m\d|\d{4})/i, ''),
+  ], 180);
+}
+
+function parseAppleMacCompatibility(html, expectedMajor, sourceUrl) {
+  const $ = cheerio.load(String(html || ''));
+  const title = cleanText($('h1').first().text(), 180);
+  const osName = title.replace(/\s+is compatible with these computers.*$/i, '').trim();
+  const major = Number(title.match(/\bmacOS\s+(\d{1,2})\b/i)?.[1]);
+  if (!Number.isInteger(major) || major !== Number(expectedMajor) || !/compatible with these computers/i.test(title)) {
+    return null;
+  }
+
+  const allowedFamilies = new Set(['MacBook Pro', 'MacBook Air', 'MacBook Neo', 'iMac', 'Mac mini', 'Mac Studio', 'Mac Pro']);
+  const hardware = [];
+  $('h2').each((_, heading) => {
+    const family = cleanText($(heading).text(), 80);
+    if (!allowedFamilies.has(family)) return;
+    let node = $(heading).next();
+    let guard = 0;
+    while (node.length && guard++ < 8 && !/^h[23]$/i.test(node[0]?.tagName || '')) {
+      node.find('li').each((__, item) => {
+        const label = cleanText($(item).text(), 180);
+        if (!label || !label.toLowerCase().startsWith(family.toLowerCase())) return;
+        hardware.push({
+          label,
+          category: family.toLowerCase().replace(/\s+/g, '-'),
+          matchType: 'exact-model',
+          aliases: appleMacAliases(label),
+        });
+      });
+      node = node.next();
+    }
+  });
+  if (!hardware.length) return null;
+
+  const pageText = cleanText($('#sections').text() || $('main').text(), 30_000);
+  if (/Mac with Apple silicon/i.test(pageText)) {
+    const siliconFamilies = ['MacBook Pro', 'MacBook Air', 'iMac', 'Mac mini', 'Mac Studio', 'Mac Pro'];
+    const chipNames = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6'];
+    siliconFamilies.forEach(family => {
+      hardware.push({
+        label: `${family} with Apple silicon`,
+        category: family.toLowerCase().replace(/\s+/g, '-'),
+        matchType: 'family',
+        aliases: chipNames.flatMap(chip => [
+          `${family} ${chip}`,
+          `${chip} ${family}`,
+        ]),
+      });
+    });
+  }
+
+  return {
+    schemaVersion: 1,
+    vendor: 'Apple',
+    authoritative: true,
+    scope: title,
+    hardware,
+    operatingSystems: [osName],
+    exclusions: [],
+    guidance: `Apple says macOS ${major} supports Macs with Apple silicon. Confirm the exact model in About This Mac and back up before upgrading.`,
+    sourceUrls: [sourceUrl].filter(Boolean),
+  };
+}
+
 function parseSteamReleaseNotes(html) {
   const $ = cheerio.load(String(html || ''));
   const summary = [];
@@ -1806,6 +1886,27 @@ async function parseAppleSecurityRelease(kind) {
     activelyExploited: false,
   };
   const entries = advisory?.entries || [];
+  let compatibility = null;
+  let compatibilityUrl = null;
+  if (kind === 'macos') {
+    const major = Number(match.product.match(/\b(\d{1,2})(?:\.\d+)*\b/)?.[1]);
+    compatibilityUrl = APPLE_MACOS_COMPATIBILITY_URLS[major] || null;
+    if (compatibilityUrl) {
+      try {
+        compatibility = parseAppleMacCompatibility(await fetchHtml(compatibilityUrl), major, compatibilityUrl);
+        if (!compatibility) throw new Error(`Apple compatibility page did not match macOS ${major}`);
+      } catch (error) {
+        // The security update remains valid when Apple's separate model page
+        // is temporarily unavailable. Omit model-level answers rather than
+        // weakening the core release detector or carrying a stale table.
+        logger.warn('[scraper] Apple macOS compatibility enrichment failed', {
+          error: error.message,
+          major,
+        });
+        compatibility = null;
+      }
+    }
+  }
   const cveSummary = security.totalCves
     ? `${security.totalCves} CVE${security.totalCves === 1 ? '' : 's'} across ${entries.length} documented security component${entries.length === 1 ? '' : 's'}`
     : noPublishedCves
@@ -1834,17 +1935,29 @@ async function parseAppleSecurityRelease(kind) {
     reasoning: advisory
       ? `PatchTicker matched Apple’s release index to the full security advisory and prioritized the highest-impact entries. The advisory documents ${cveSummary}; the update brief links each displayed risk back to Apple’s published CVE record.`
       : `PatchTicker verified this release and date in Apple’s security releases index. Apple states that the update has ${cveSummary}, so PatchTicker does not infer undocumented security fixes.`,
-    evidence: sourceEvidence(
-      advisory ? 'Apple Security Advisory' : 'Apple Security Releases',
-      sourceUrl,
-      `${match.product}: ${cveSummary}.`,
-      {
-        dateBasis: 'released',
-        releaseType: advisory ? 'official-security-advisory' : 'official-security-index',
-        publishedAt: advisory?.releasedAt || releasedAt,
-        cveCount: security.totalCves,
-      }
-    ),
+    evidence: [
+      ...sourceEvidence(
+        advisory ? 'Apple Security Advisory' : 'Apple Security Releases',
+        sourceUrl,
+        `${match.product}: ${cveSummary}.`,
+        {
+          dateBasis: 'released',
+          releaseType: advisory ? 'official-security-advisory' : 'official-security-index',
+          publishedAt: advisory?.releasedAt || releasedAt,
+          cveCount: security.totalCves,
+        }
+      ),
+      ...(compatibility ? sourceEvidence(
+        'Apple macOS Compatibility',
+        compatibilityUrl,
+        `${compatibility.hardware.length} official model and Apple-silicon family entries checked for ${compatibility.operatingSystems[0]}.`,
+        {
+          dateBasis: 'checked',
+          releaseType: 'official-compatibility',
+          compatibility,
+        }
+      ) : []),
+    ],
     sourceUrl,
   };
 }
@@ -2982,5 +3095,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
 };

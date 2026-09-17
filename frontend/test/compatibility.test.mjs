@@ -56,6 +56,28 @@ const nvidiaProfile = {
   guidance: 'Notebook owners should check the computer manufacturer driver first.',
 };
 
+const appleProfile = {
+  schemaVersion: 1,
+  vendor: 'Apple',
+  authoritative: true,
+  hardware: [{
+    label: 'MacBook Pro (16-inch, 2024)',
+    matchType: 'exact-model',
+    aliases: ['MacBook Pro (16-inch, 2024)', 'MacBook Pro 16 2024'],
+  }, {
+    label: 'MacBook Pro with Apple silicon',
+    matchType: 'family',
+    aliases: ['MacBook Pro M1', 'MacBook Pro M2', 'MacBook Pro M3', 'MacBook Pro M4', 'M4 MacBook Pro'],
+  }, {
+    label: 'MacBook Air (15-inch, M4, 2025)',
+    matchType: 'exact-model',
+    aliases: ['MacBook Air 15 M4 2025', 'MacBook Air M4'],
+  }],
+  operatingSystems: ['macOS 27 Golden Gate'],
+  exclusions: [],
+  guidance: 'Back up before upgrading.',
+};
+
 test('AMD compatibility uses the official model family instead of fuzzy vendor guessing', () => {
   const supported = evaluateCompatibility(amdProfile, {
     hardware: 'AMD Radeon RX 7900 XTX',
@@ -150,6 +172,25 @@ test('NVIDIA compatibility separates desktop and laptop models using the officia
     hardware: 'GeForce RTX 4050',
     operatingSystem: 'windows-11',
   }).status, 'unsupported');
+});
+
+test('Apple compatibility resolves documented Apple-silicon Macs without accepting omitted Intel models', () => {
+  const supported = evaluateCompatibility(appleProfile, { hardware: 'MacBook Pro M4' });
+  assert.equal(supported.status, 'supported');
+  assert.equal(supported.matchedLabel, 'MacBook Pro with Apple silicon');
+  assert.match(supported.detail, /official compatibility entry/i);
+
+  const exact = evaluateCompatibility(appleProfile, { hardware: 'MacBook Air 15 M4 2025' });
+  assert.equal(exact.status, 'supported');
+  assert.match(exact.title, /macOS update/i);
+
+  const unsupported = evaluateCompatibility(appleProfile, { hardware: 'MacBook Pro 2019' });
+  assert.equal(unsupported.status, 'unsupported');
+  assert.match(unsupported.detail, /does not match/i);
+
+  const ambiguous = evaluateCompatibility(appleProfile, { hardware: 'Apple laptop' });
+  assert.equal(ambiguous.status, 'unverified');
+  assert.match(ambiguous.detail, /MacBook Pro M4/i);
 });
 
 test('compatibility checks the selected Windows release against the official vendor range', () => {

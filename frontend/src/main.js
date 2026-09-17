@@ -4461,12 +4461,15 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
       : `Explore other verified ${platformLabel(u.platform)} releases inside the 240-day window.`;
   const compatibilityProfile = compatibilityProfileFromUpdate(u);
   const compatibilityVendor = compatibilityProfile?.vendor || platformLabel(u.platform);
+  const isAppleCompatibility = compatibilityProfile?.vendor === 'Apple';
   const compatibilityPlaceholder = compatibilityProfile?.vendor === 'AMD'
     ? 'Example: Radeon RX 7900 XTX'
     : compatibilityProfile?.vendor === 'Intel'
       ? 'Example: Intel Arc A770'
       : compatibilityProfile?.vendor === 'NVIDIA'
         ? 'Example: GeForce RTX 5090'
+        : isAppleCompatibility
+          ? 'Example: MacBook Pro M4'
       : 'Enter the exact hardware or device model';
   const compatibilityCheckedAt = compatibilityProfile?.checkedAt
     ? formatVerifiedMoment(compatibilityProfile.checkedAt)
@@ -4575,36 +4578,48 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
     ? 'Check hardware compatibility'
     : compatibilityFallback.title;
   const compatibilitySectionDescription = hasCompatibilityMatrix
-    ? 'PatchTicker compares the exact model and Windows release you enter with the compatibility table published by the vendor. No generated assumptions or browser fingerprint guesses are used.'
+    ? isAppleCompatibility
+      ? 'PatchTicker compares the Mac model or Apple chip you enter with Apple’s published macOS compatibility list. No generated assumptions or browser fingerprint guesses are used.'
+      : 'PatchTicker compares the exact model and Windows release you enter with the compatibility table published by the vendor. No generated assumptions or browser fingerprint guesses are used.'
     : 'No model result is inferred when the vendor does not publish a complete compatibility matrix for this exact release.';
   const compatibilityWorkspaceHTML = hasCompatibilityMatrix ? `
     <div class="detail-compatibility-checks" aria-label="Compatibility verification method">
-      <div><span>01</span><strong>Exact model</strong><small>Matches only a vendor-listed GPU model or family.</small></div>
-      <div><span>02</span><strong>Windows release</strong><small>Checks the selected OS against the published support range.</small></div>
-      <div><span>03</span><strong>OEM limits</strong><small>Preserves laptop, prebuilt, handheld, and Boot Camp caveats.</small></div>
+      ${isAppleCompatibility ? `
+        <div><span>01</span><strong>Mac model</strong><small>Matches Apple’s exact model list or documented Apple-silicon scope.</small></div>
+        <div><span>02</span><strong>macOS release</strong><small>Uses the compatibility page published for this major macOS version.</small></div>
+        <div><span>03</span><strong>Fail closed</strong><small>An absent or ambiguous model stays unverified instead of being guessed.</small></div>
+      ` : `
+        <div><span>01</span><strong>Exact model</strong><small>Matches only a vendor-listed GPU model or family.</small></div>
+        <div><span>02</span><strong>Windows release</strong><small>Checks the selected OS against the published support range.</small></div>
+        <div><span>03</span><strong>OEM limits</strong><small>Preserves laptop, prebuilt, handheld, and Boot Camp caveats.</small></div>
+      `}
     </div>
     <div class="detail-compatibility-layout">
-      <form class="detail-compatibility-form" id="compatibility-form">
-        <label for="compatibility-hardware">Graphics model from Device Manager</label>
+      <form class="detail-compatibility-form${isAppleCompatibility ? ' detail-compatibility-form--hardware-only' : ''}" id="compatibility-form">
+        <label for="compatibility-hardware">${isAppleCompatibility ? 'Mac model or Apple chip from About This Mac' : 'Graphics model from Device Manager'}</label>
         <div class="detail-compatibility-controls">
           <input id="compatibility-hardware" class="field-input" type="text" maxlength="120" autocomplete="off" list="compatibility-models" aria-describedby="compatibility-entry-help" placeholder="${H(compatibilityPlaceholder)}" value="${H(requestedHardware)}" />
           <datalist id="compatibility-models">${compatibilityModelOptionsHTML}</datalist>
-          <select id="compatibility-os" class="field-input" aria-label="Operating system">
-            <option value="not-sure">OS: Not sure</option>
-            <option value="windows-11-26h1">Windows 11 26H1</option>
-            <option value="windows-11-25h2">Windows 11 25H2</option>
-            <option value="windows-11-24h2">Windows 11 24H2</option>
-            <option value="windows-11-23h2">Windows 11 23H2</option>
-            <option value="windows-10-22h2">Windows 10 22H2</option>
-            <option value="windows-10-21h2">Windows 10 21H2</option>
-            <option value="other">macOS, Linux, or other</option>
-          </select>
+          ${isAppleCompatibility
+            ? '<input id="compatibility-os" type="hidden" value="not-sure" />'
+            : `<select id="compatibility-os" class="field-input" aria-label="Operating system">
+                <option value="not-sure">OS: Not sure</option>
+                <option value="windows-11-26h1">Windows 11 26H1</option>
+                <option value="windows-11-25h2">Windows 11 25H2</option>
+                <option value="windows-11-24h2">Windows 11 24H2</option>
+                <option value="windows-11-23h2">Windows 11 23H2</option>
+                <option value="windows-10-22h2">Windows 10 22H2</option>
+                <option value="windows-10-21h2">Windows 10 21H2</option>
+                <option value="other">macOS, Linux, or other</option>
+              </select>`}
           <button class="detail-compatibility-submit" type="submit">Check compatibility</button>
         </div>
         <p class="detail-compatibility-coverage" id="compatibility-entry-help">${H(compatibilityCoverage)} loaded from the linked vendor source.</p>
         <details class="detail-compatibility-help">
-          <summary>How to find the exact model</summary>
-          <p>On Windows, open Device Manager → Display adapters and copy the full graphics name. For laptops and prebuilt PCs, also check the manufacturer’s driver page before replacing its customized driver.</p>
+          <summary>${isAppleCompatibility ? 'How to find your Mac model' : 'How to find the exact model'}</summary>
+          <p>${isAppleCompatibility
+            ? 'Choose Apple menu → About This Mac and enter the model, year, or Apple chip shown there. PatchTicker checks only Apple’s linked compatibility list.'
+            : 'On Windows, open Device Manager → Display adapters and copy the full graphics name. For laptops and prebuilt PCs, also check the manufacturer’s driver page before replacing its customized driver.'}</p>
         </details>
         <p class="detail-compatibility-privacy">Runs locally in your browser. Your hardware entry is not transmitted or stored.</p>
       </form>
@@ -4620,11 +4635,17 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
     </div>
     <div class="detail-compatibility-result" id="compatibility-result" data-status="needs-input" aria-live="polite">
       <span class="detail-compatibility-result-icon" aria-hidden="true">◇</span>
-      <div><strong>Ready to check</strong><p>Enter the exact model—not only “Radeon,” “Arc,” or a computer brand.</p></div>
+      <div><strong>Ready to check</strong><p>${isAppleCompatibility
+        ? 'Enter the Mac family plus its year or Apple chip—for example, “MacBook Pro M4.”'
+        : 'Enter the exact model—not only “Radeon,” “Arc,” or a computer brand.'}</p></div>
     </div>
     <div class="detail-compatibility-legend" aria-label="Compatibility result meanings">
-      <div><span data-tone="supported">Supported</span><p>The entered model or family and selected Windows release appear in the vendor table.</p></div>
-      <div><span data-tone="unverified">Unverified</span><p>The source does not prove a yes or no. This includes Windows releases newer than the published table.</p></div>
+      <div><span data-tone="supported">Supported</span><p>${isAppleCompatibility
+        ? 'The entered Mac model or Apple-silicon family appears in Apple’s compatibility guidance.'
+        : 'The entered model or family and selected Windows release appear in the vendor table.'}</p></div>
+      <div><span data-tone="unverified">Unverified</span><p>${isAppleCompatibility
+        ? 'Apple’s source does not prove a yes or no for the entered description.'
+        : 'The source does not prove a yes or no. This includes Windows releases newer than the published table.'}</p></div>
       <div><span data-tone="unsupported">Unsupported</span><p>The package excludes the device, targets another vendor, or omits a model from a complete product list.</p></div>
     </div>` : `
     <div class="detail-compatibility-unavailable" role="note">

@@ -497,6 +497,38 @@ describe('scraper accuracy guards', () => {
     }]);
   });
 
+  test('Apple macOS compatibility parser preserves exact models and the documented Apple-silicon scope', () => {
+    const parsed = __test.parseAppleMacCompatibility(`
+      <main id="sections">
+        <h1>macOS 27 Golden Gate is compatible with these computers</h1>
+        <p>If you have a Mac with Apple silicon, you can upgrade to macOS 27.</p>
+        <h2>MacBook Pro</h2>
+        <ul>
+          <li>MacBook Pro (16-inch, 2024)</li>
+          <li>MacBook Pro (13-inch, M2, 2022)</li>
+        </ul>
+        <h2>MacBook Air</h2>
+        <ul><li>MacBook Air (15-inch, M4, 2025)</li></ul>
+        <h2>Mac Pro</h2>
+        <ul><li>Mac Pro (2023)</li></ul>
+      </main>
+    `, 27, 'https://support.apple.com/en-us/127255');
+
+    expect(parsed).toMatchObject({
+      vendor: 'Apple',
+      authoritative: true,
+      operatingSystems: ['macOS 27 Golden Gate'],
+      sourceUrls: ['https://support.apple.com/en-us/127255'],
+    });
+    expect(parsed.hardware).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'MacBook Pro (16-inch, 2024)', matchType: 'exact-model' }),
+      expect.objectContaining({ label: 'MacBook Pro with Apple silicon', matchType: 'family' }),
+    ]));
+    expect(parsed.hardware.find(item => item.label === 'MacBook Pro with Apple silicon').aliases)
+      .toContain('MacBook Pro M4');
+    expect(__test.parseAppleMacCompatibility('<h1>macOS 26 is compatible with these computers</h1>', 27, '')).toBeNull();
+  });
+
   test('Apple advisory parser raises actively exploited releases above routine security updates', () => {
     const parsed = __test.parseAppleSecurityAdvisory(`
       <div id="sections">

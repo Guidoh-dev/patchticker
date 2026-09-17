@@ -700,6 +700,31 @@ test('hardware searches require token boundaries instead of matching issue ident
   expect(updatesService.__test.searchRelevanceScore(oldIncidentalRelease, 'RTX 5090')).toBe(0);
 });
 
+test('Mac model searches rank the current release only with matching Apple compatibility evidence', () => {
+  const currentMacos = {
+    platform: 'macOS',
+    name: 'macOS Golden Gate 27',
+    evidence: [{
+      compatibility: {
+        vendor: 'Apple',
+        operatingSystems: ['macOS 27 Golden Gate'],
+        hardware: [{
+          label: 'MacBook Pro with Apple silicon',
+          aliases: ['MacBook Pro M4', 'M4 MacBook Pro'],
+        }],
+      },
+    }],
+  };
+  const unrelatedMacos = {
+    platform: 'macOS',
+    name: 'macOS Tahoe 26.6.2',
+    evidence: [{ source: 'Apple Security Advisory', text: 'Security fixes for Mac users.' }],
+  };
+
+  expect(updatesService.__test.searchRelevanceScore(currentMacos, 'pro m4')).toBeGreaterThan(0);
+  expect(updatesService.__test.searchRelevanceScore(unrelatedMacos, 'pro m4')).toBe(0);
+});
+
 test('eligible Steam game titles resolve to exact App ID search intent', () => {
   expect(updatesService.__test.parseSearchIntent('Marvel Rivals latest update')).toEqual(expect.objectContaining({
     platform: 'Steam',

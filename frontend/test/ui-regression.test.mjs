@@ -790,6 +790,9 @@ test('update details expose an evidence-aware compatibility workspace and clear 
   assert.match(mainSource, /list="compatibility-models"/);
   assert.match(mainSource, /Windows 11 26H1/);
   assert.match(mainSource, /Example: GeForce RTX 5090/);
+  assert.match(mainSource, /Example: MacBook Pro M4/);
+  assert.match(mainSource, /Mac model or Apple chip from About This Mac/);
+  assert.match(mainSource, /Apple’s published macOS compatibility list/);
   assert.match(mainSource, /Device Manager → Display adapters/);
   assert.match(mainSource, /Matches only a vendor-listed GPU model or family/);
   assert.match(mainSource, /Preserves laptop, prebuilt, handheld, and Boot Camp caveats/);
@@ -818,6 +821,7 @@ test('update details expose an evidence-aware compatibility workspace and clear 
   assert.match(cssSource, /\.detail-compatibility-checks\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
   assert.match(cssSource, /\.detail-compatibility-legend\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
   assert.match(cssSource, /\.detail-compatibility-controls\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(140px, 170px\);[^}]*min-width:\s*0;/s);
+  assert.match(cssSource, /\.detail-compatibility-form--hardware-only \.detail-compatibility-controls\s*\{\s*grid-template-columns:\s*minmax\(0, 1fr\);/s);
   assert.match(cssSource, /\.detail-compatibility-submit\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s);
   assert.match(cssSource, /\.detail-compatibility-unavailable\s*\{[^}]*grid-template-columns:/s);
   assert.match(cssSource, /@media \(max-width: 560px\)[\s\S]*?\.detail-compatibility-unavailable\s*\{\s*grid-template-columns:\s*1fr;/s);

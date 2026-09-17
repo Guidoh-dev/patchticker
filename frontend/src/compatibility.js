@@ -48,7 +48,15 @@ function looksLikeVendorModel(profile, hardware) {
   if (profile?.vendor === 'AMD') return /\b(?:rx|radeon pro)\b/.test(value) && /\d/.test(value);
   if (profile?.vendor === 'Intel') return /\b(?:arc|uhd|iris|[ab]\s?\d{2,4})\b/.test(value) && /\d/.test(value);
   if (profile?.vendor === 'NVIDIA') return /\b(?:rtx|gtx|mx)\b/.test(value) && /\d/.test(value);
+  if (profile?.vendor === 'Apple') {
+    return /\b(?:macbook pro|macbook air|macbook neo|imac|mac mini|mac studio|mac pro)\b/.test(value);
+  }
   return false;
+}
+
+function hardwareExample(profile) {
+  if (profile?.vendor === 'Apple') return 'Try the full Mac model, such as “MacBook Pro M4” or “MacBook Air 15-inch M4.”';
+  return 'Try the exact graphics model, such as “Radeon RX 7900 XTX,” “Intel Arc A770,” or “GeForce RTX 5090.”';
 }
 
 function compatibilityAliasMatches(profile, entry, hardware, alias) {
@@ -170,7 +178,9 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
     return {
       status: 'needs-input',
       title: 'Enter a hardware model',
-      detail: 'Use the exact GPU or graphics model shown in Windows Device Manager or your system specifications.',
+      detail: profile?.vendor === 'Apple'
+        ? 'Use the Mac model, year, or Apple chip shown in Apple menu → About This Mac.'
+        : 'Use the exact GPU or graphics model shown in Windows Device Manager or your system specifications.',
     };
   }
 
@@ -229,7 +239,9 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
     )[0];
     return {
       status: 'supported',
-      title: best.matchType === 'family' ? 'Supported hardware family' : 'Supported by this package',
+      title: best.matchType === 'family'
+        ? 'Supported hardware family'
+        : profile?.vendor === 'Apple' ? 'Supported by this macOS update' : 'Supported by this package',
       detail: [`Matched the vendor’s official compatibility entry: ${best.label}.`, osSupport.detail].filter(Boolean).join(' '),
       matchedLabel: best.label,
       guidance: profile.guidance || '',
@@ -247,6 +259,6 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
   return {
     status: 'unverified',
     title: 'Could not verify that model',
-    detail: 'Try the exact graphics model, such as “Radeon RX 7900 XTX,” “Intel Arc A770,” or “GeForce RTX 5090.” A missing match is not treated as proof of compatibility.',
+    detail: `${hardwareExample(profile)} A missing match is not treated as proof of compatibility.`,
   };
 }
