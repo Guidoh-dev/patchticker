@@ -2851,6 +2851,25 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const SOURCE_KIND_PRIORITY = Object.freeze([
+  'official-security-release',
+  'official-security-advisory',
+  'official-release-notes',
+  'official-game-update',
+  'official-release',
+  'official-artifact',
+  'official-version',
+]);
+
+function sourceKindFromEvidence(evidence) {
+  const kinds = new Set(
+    (Array.isArray(evidence) ? evidence : [])
+      .map(item => String(item?.releaseType || item?.sourceKind || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+  return SOURCE_KIND_PRIORITY.find(kind => kinds.has(kind)) || null;
+}
+
 function validateDetectedUpdate(platform, detected) {
   if (!detected || typeof detected !== 'object') {
     throw new Error('No update object returned');
@@ -2871,6 +2890,13 @@ function validateDetectedUpdate(platform, detected) {
   return {
     ...detected,
     platform: detected.platform || platform,
+    // Every detector already records how its official evidence was obtained.
+    // Persist that classification when the detector does not define a more
+    // specific public lane (for example Steam client vs Steam game). This
+    // keeps version-only manifests subject to the correct confidence cap and
+    // prevents null metadata from masquerading as full release notes later.
+    sourceKind: String(detected.sourceKind || '').trim()
+      || sourceKindFromEvidence(detected.evidence),
     releasedAt,
     changelog: Array.isArray(detected.changelog) ? detected.changelog.filter(Boolean).slice(0, 12) : [],
     knownIssues: Array.isArray(detected.knownIssues) ? detected.knownIssues.filter(Boolean).slice(0, 12) : [],
@@ -2956,5 +2982,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
 };

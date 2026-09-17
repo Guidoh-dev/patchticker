@@ -1013,4 +1013,24 @@ describe('scraper accuracy guards', () => {
     expect(() => __test.validateDetectedUpdate('Vendor', { ...base, releasedAt: '2026-08-10', sourceUrl: '' })).toThrow('no trustworthy HTTPS source');
     expect(() => __test.validateDetectedUpdate('Vendor', { ...base, releasedAt: '2026-08-20' })).toThrow('future-dated release');
   });
+
+  test('detectors persist the strongest evidence classification without replacing explicit lanes', () => {
+    const base = {
+      name: 'Vendor Update 1.2.3',
+      version: '1.2.3',
+      releasedAt: '2026-08-10',
+      sourceUrl: 'https://vendor.example/release',
+      evidence: [
+        { releaseType: 'official-version' },
+        { releaseType: 'official-release-notes' },
+        { releaseType: 'official-security-advisory' },
+      ],
+    };
+
+    expect(__test.validateDetectedUpdate('Vendor', base).sourceKind).toBe('official-security-advisory');
+    expect(__test.validateDetectedUpdate('Vendor', {
+      ...base,
+      sourceKind: 'vendor-stable-lane',
+    }).sourceKind).toBe('vendor-stable-lane');
+  });
 });
