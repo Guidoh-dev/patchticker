@@ -1360,7 +1360,7 @@ const SEARCH_ALIASES = {
   radeon: ['radeon', 'amd', 'rx 7900', 'adrenalin'],
 };
 const EXACT_PLATFORM_SEARCHES = new Map([
-  ['amd', 'AMD'], ['nvidia', 'NVIDIA'], ['intel', 'Intel'],
+  ['amd', 'AMD'], ['radeon', 'AMD'], ['nvidia', 'NVIDIA'], ['geforce', 'NVIDIA'], ['intel', 'Intel'],
   ['apple', 'Apple'], ['ios', 'Apple'],
   ['macos', 'macOS'], ['mac os', 'macOS'],
   ['windows', 'Windows'], ['steam', 'Steam'], ['discord', 'Discord'],
@@ -1501,9 +1501,15 @@ function exactPlatformForSearch(raw) {
   return EXACT_PLATFORM_SEARCHES.get(query) || null;
 }
 
-function stripSearchIntentStopwords(value) {
+const AMD_MODEL_VARIANT_TERMS = new Set(['xt', 'xtx', 'gre']);
+
+function stripSearchIntentStopwords(value, platform = null) {
   const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
-  return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ');
+  let filtered = tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token));
+  if (platform === 'AMD' && filtered.some(token => /^\d{3,4}[a-z]?$/.test(token))) {
+    filtered = filtered.filter(token => !AMD_MODEL_VARIANT_TERMS.has(token));
+  }
+  return filtered.join(' ');
 }
 
 function normaliseProductSearch(value) {
@@ -1559,7 +1565,7 @@ function searchIntentForQuery(raw) {
       platform: intent.platform,
       sourceKind: intent.sourceKind,
       sourceLabel: intent.label,
-      semanticQuery: stripSearchIntentStopwords(remainder),
+      semanticQuery: stripSearchIntentStopwords(remainder, intent.platform),
     };
   }
 
@@ -1577,7 +1583,7 @@ function searchIntentForQuery(raw) {
       platform,
       sourceKind: null,
       sourceLabel: null,
-      semanticQuery: stripSearchIntentStopwords(remainder),
+      semanticQuery: stripSearchIntentStopwords(remainder, platform),
     };
   }
 

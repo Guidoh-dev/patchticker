@@ -42,7 +42,9 @@ const SEARCH_ALIAS_GROUPS = [
 // because its release notes mention an NVIDIA-specific fix.
 const EXACT_PLATFORM_SEARCHES = new Map([
   ['amd', 'AMD'],
+  ['radeon', 'AMD'],
   ['nvidia', 'NVIDIA'],
+  ['geforce', 'NVIDIA'],
   ['intel', 'Intel'],
   ['apple', 'Apple'],
   ['ios', 'Apple'],
@@ -98,9 +100,19 @@ function exactPlatformForSearch(rawSearch) {
   return EXACT_PLATFORM_SEARCHES.get(query) || null;
 }
 
-function stripIntentStopwords(value) {
+const AMD_MODEL_VARIANT_TERMS = new Set(['xt', 'xtx', 'gre']);
+
+function stripIntentStopwords(value, platform = null) {
   const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
-  return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ');
+  let filtered = tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token));
+  // AMD's official compatibility tables commonly publish the GPU family
+  // (for example RX 7900 Series) rather than every board suffix (XT/XTX/GRE).
+  // Preserve the numeric family as a strict requirement, but remove only the
+  // known suffix when the query is already explicitly scoped to AMD.
+  if (platform === 'AMD' && filtered.some(token => /^\d{3,4}[a-z]?$/.test(token))) {
+    filtered = filtered.filter(token => !AMD_MODEL_VARIANT_TERMS.has(token));
+  }
+  return filtered.join(' ');
 }
 
 function normaliseProductSearch(value) {
@@ -166,7 +178,7 @@ function parseSearchIntent(rawSearch) {
       platform: intent.platform,
       sourceKind: intent.sourceKind,
       sourceLabel: intent.label,
-      semanticQuery: stripIntentStopwords(remainder),
+      semanticQuery: stripIntentStopwords(remainder, intent.platform),
     };
   }
 
@@ -186,7 +198,7 @@ function parseSearchIntent(rawSearch) {
       platform,
       sourceKind: null,
       sourceLabel: null,
-      semanticQuery: stripIntentStopwords(remainder),
+      semanticQuery: stripIntentStopwords(remainder, platform),
     };
   }
 

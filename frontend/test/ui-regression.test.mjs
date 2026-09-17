@@ -199,6 +199,10 @@ test('platform and release-lane search intent excludes incidental mentions', () 
   assert.match(mainSource, /\['battle net', 'BattleNet'\]/);
   assert.match(mainSource, /\['playstation', 'PS5'\]/);
   assert.match(mainSource, /\['macbook', 'macOS'\]/);
+  assert.match(mainSource, /\['radeon', 'AMD'\]/);
+  assert.match(mainSource, /\['geforce', 'NVIDIA'\]/);
+  assert.match(mainSource, /const AMD_MODEL_VARIANT_TERMS = new Set\(\['xt', 'xtx', 'gre'\]\)/);
+  assert.match(mainSource, /platform === 'AMD'[\s\S]*?AMD_MODEL_VARIANT_TERMS\.has\(token\)/);
 });
 
 test('multi-part searches use strict all-term matching without phrase-order failures', () => {

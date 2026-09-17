@@ -314,6 +314,8 @@ test('multi-part searches require every term while aliases remain alternatives',
 
 test('exact platform searches use platform equality instead of incidental note text', async () => {
   expect(updatesService.__test.exactPlatformForSearch('NVIDIA')).toBe('NVIDIA');
+  expect(updatesService.__test.exactPlatformForSearch('GeForce')).toBe('NVIDIA');
+  expect(updatesService.__test.exactPlatformForSearch('Radeon')).toBe('AMD');
   expect(updatesService.__test.exactPlatformForSearch('Battle.net')).toBe('BattleNet');
   expect(updatesService.__test.exactPlatformForSearch('battle net')).toBe('BattleNet');
   expect(updatesService.__test.exactPlatformForSearch('playstation')).toBe('PS5');
@@ -337,6 +339,15 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
   expect(updatesService.__test.parseSearchIntent('AMD Adrenalin 26.8.1')).toEqual(expect.objectContaining({
     platform: 'AMD', semanticQuery: 'adrenalin 26.8.1', sourceKind: null,
   }));
+  expect(updatesService.__test.parseSearchIntent('Radeon RX 7900 XTX')).toEqual(expect.objectContaining({
+    platform: 'AMD', semanticQuery: 'rx 7900', sourceKind: null,
+  }));
+  expect(updatesService.__test.parseSearchIntent('AMD 7900 GRE crash')).toEqual(expect.objectContaining({
+    platform: 'AMD', semanticQuery: '7900 crash', sourceKind: null,
+  }));
+  expect(updatesService.__test.parseSearchIntent('AMD XTX')).toEqual(expect.objectContaining({
+    platform: 'AMD', semanticQuery: 'xtx', sourceKind: null,
+  }));
   expect(updatesService.__test.parseSearchIntent('iOS 26.6')).toEqual(expect.objectContaining({
     platform: 'Apple', semanticQuery: '26.6', sourceKind: null,
   }));
@@ -358,6 +369,23 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
   expect(updatesService.__test.parseSearchIntent('security update')).toEqual(expect.objectContaining({
     platform: null, semanticQuery: 'security', sourceKind: null,
   }));
+});
+
+test('AMD board suffix searches retain strict family matching without requiring marketing variants', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'Radeon RX 7900 XTX', sort: 'relevance' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$1\)/);
+  expect(sql).toContain('search_group_0');
+  expect(sql).toContain('search_group_1');
+  expect(params).toEqual([
+    'AMD',
+    ['rx'],
+    ['7900'],
+    ['rx', '7900'],
+  ]);
 });
 
 test('date-sorted free-text searches bind only parameters present in SQL', async () => {
