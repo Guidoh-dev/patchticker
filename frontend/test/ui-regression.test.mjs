@@ -218,7 +218,7 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /q === 'switch oled' \|\| q === 'switch lite'/);
   assert.match(mainSource, /const exactAlias = Object\.entries\(SEARCH_ALIASES\)\.find/);
   assert.match(mainSource, /function updateSearchRelevance\(update, query\)/);
-  assert.match(mainSource, /exactQuery && haystack\.includes\(exactQuery\)[\s\S]*?weight \* 10/);
+  assert.match(mainSource, /exactQuery && searchDocumentContains\(haystack, exactQuery\)[\s\S]*?weight \* 10/);
   assert.match(mainSource, /const crossFieldCoverage = groups\.reduce/);
   assert.match(mainSource, /function searchMatchReason\(update, query, explicitPlatform = ''\)/);
   assert.match(mainSource, /<option value="relevance">Best match<\/option>/);
@@ -257,8 +257,8 @@ test('platform and release-lane search intent excludes incidental mentions', () 
 test('multi-part searches use strict all-term matching without phrase-order failures', () => {
   assert.match(mainSource, /function searchTermGroups\(raw\)/);
   assert.match(mainSource, /tokens\.length > 1[\s\S]*?map\(token => \[token\]\)/);
-  assert.match(mainSource, /groups\.every\(group => group\.some\(needle => haystack\.includes\(needle\)\)\)/);
-  assert.match(mainSource, /filtered = filtered\.filter\(u => \{[\s\S]*?groups\.every\(group => group\.some\(term => haystack\.includes\(term\)\)\)/);
+  assert.match(mainSource, /groups\.every\(group => group\.some\(needle => searchDocumentContains\(haystack, needle\)\)\)/);
+  assert.match(mainSource, /filtered = filtered\.filter\(u => \{[\s\S]*?groups\.every\(group => group\.some\(term => searchDocumentContains\(haystack, term\)\)\)/);
   assert.match(mainSource, /return 'Across update details'/);
   assert.match(mainSource, /All \$\{H\(String\(matchedTermCount\)\)\} search terms matched/);
 });
@@ -450,7 +450,7 @@ test('filter controls stage draft state and only update the feed through Apply',
   assert.match(mainSource, /getElementById\('dash-top-apply-filters'\)\?\.addEventListener\('click', applyDraftFilters\)/);
   assert.match(mainSource, /if \(platform\) filtered = filtered\.filter/);
   assert.match(mainSource, /if \(status\)\s+filtered = filtered\.filter/);
-  assert.match(mainSource, /groups\.every\(group => group\.some\(term => haystack\.includes\(term\)\)\)/);
+  assert.match(mainSource, /groups\.every\(group => group\.some\(term => searchDocumentContains\(haystack, term\)\)\)/);
   assert.doesNotMatch(mainSource, /setTimeout\(\(\) => runAuthoritativeSearch/);
 });
 
@@ -695,10 +695,14 @@ test('every update detail exposes a source-backed compatibility workspace and cl
   assert.match(mainSource, /Your hardware entry is not transmitted or stored/);
   assert.match(mainSource, /list="compatibility-models"/);
   assert.match(mainSource, /Windows 11 26H1/);
+  assert.match(mainSource, /Example: GeForce RTX 5090/);
   assert.match(mainSource, /Device Manager → Display adapters/);
+  assert.match(mainSource, /Matches only a vendor-listed GPU model or family/);
+  assert.match(mainSource, /Preserves laptop, prebuilt, handheld, and Boot Camp caveats/);
   assert.match(mainSource, /evaluateCompatibility\(compatibilityProfile/);
   assert.match(compatibilitySource, /PatchTicker will not guess from the product name/);
   assert.match(cssSource, /\.detail-compatibility-layout\s*\{[\s\S]*?grid-template-columns/);
+  assert.match(cssSource, /\.detail-compatibility-checks\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
   assert.match(cssSource, /\.detail-compatibility-controls\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(140px, 170px\);[^}]*min-width:\s*0;/s);
   assert.match(cssSource, /\.detail-compatibility-submit\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s);
   assert.match(cssSource, /\.detail-update-info-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);

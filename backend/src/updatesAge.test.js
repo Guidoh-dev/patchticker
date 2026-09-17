@@ -402,6 +402,8 @@ test('date-sorted free-text searches bind only parameters present in SQL', async
   const [sql, params] = mockQuery.mock.calls[0];
   expect(sql).toContain('search_group_0');
   expect(sql).toContain('search_group_1');
+  expect(sql).toContain('REGEXP_REPLACE');
+  expect(sql).toContain("CONCAT(' ', TRIM(");
   expect(sql).not.toContain('ranking_term');
   expect(params).toEqual([['terraria'], ['1.4.5.7']]);
 });
@@ -499,6 +501,30 @@ test('official compatibility tables outrank incidental hardware mentions', () =>
   expect(updatesService.__test.searchRelevanceScore(compatibleRelease, 'Arc A770')).toBeGreaterThan(
     updatesService.__test.searchRelevanceScore(incidentalRelease, 'Arc A770')
   );
+});
+
+test('hardware searches require token boundaries instead of matching issue identifiers', () => {
+  expect(updatesService.__test.searchDocumentContains('Open issue [5090018]', '5090')).toBe(false);
+  expect(updatesService.__test.searchDocumentContains('NVIDIA GeForce RTX 5090', 'RTX 5090')).toBe(true);
+
+  const currentCompatibleRelease = {
+    platform: 'NVIDIA',
+    name: 'NVIDIA Game Ready Driver 616.92',
+    evidence: [{
+      compatibility: {
+        vendor: 'NVIDIA',
+        hardware: [{ label: 'NVIDIA GeForce RTX 5090', aliases: ['geforce rtx 5090', 'rtx 5090'] }],
+      },
+    }],
+  };
+  const oldIncidentalRelease = {
+    platform: 'NVIDIA',
+    name: 'NVIDIA Game Ready Driver 610.88',
+    knownIssues: ['Open issue [5090018] may affect one application.'],
+  };
+
+  expect(updatesService.__test.searchRelevanceScore(currentCompatibleRelease, 'RTX 5090')).toBe(700);
+  expect(updatesService.__test.searchRelevanceScore(oldIncidentalRelease, 'RTX 5090')).toBe(0);
 });
 
 test('eligible Steam game titles resolve to exact App ID search intent', () => {

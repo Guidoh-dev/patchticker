@@ -20,13 +20,14 @@ const ALLOWED_EVENTS = new Set([
   'filters_applied', 'search_completed', 'watchlist_item_added', 'watchlist_item_removed',
   'notification_preference_changed', 'update_feedback_submitted',
   'signup_completed', 'login_completed', 'subscription_checkout_started',
+  'compatibility_checked',
 ]);
 const POSTHOG_INTERNAL_EVENTS = new Set(['$identify', '$pageview', '$pageleave']);
 
 const SAFE_PROPERTY_KEYS = new Set([
   'route', 'update_id', 'platform', 'status', 'sort', 'vote', 'source_type',
   'query_length', 'result_count', 'has_results', 'item_count', 'watchlist_type',
-  'enabled', 'has_search', 'plan', 'billing_period',
+  'enabled', 'has_search', 'plan', 'billing_period', 'vendor', 'operating_system', 'result',
 ]);
 const BLOCKED_VENDOR_PROPERTY = /(url|uri|href|referrer|pathname|search|query|string|token|secret|password|email|name|watchlist|webhook|endpoint|content|text)/i;
 const EMAIL_VALUE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;

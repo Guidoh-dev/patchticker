@@ -1555,6 +1555,21 @@ function searchTermGroups(raw) {
   return [[q]];
 }
 
+function normaliseSearchDocument(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function searchDocumentContains(haystack, needle) {
+  const document = normaliseSearchDocument(haystack);
+  const term = normaliseSearchDocument(needle);
+  return Boolean(document && term && ` ${document} `.includes(` ${term} `));
+}
+
 function exactPlatformForSearch(raw) {
   const query = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
   return EXACT_PLATFORM_SEARCHES.get(query) || null;
@@ -1677,19 +1692,19 @@ function updateSearchRelevance(update, query) {
     [JSON.stringify(update?.evidence || []), 20],
   ];
   const searchableFields = fields.map(([value, weight]) => ({
-    haystack: String(value || '').toLowerCase(),
+    haystack: normaliseSearchDocument(value),
     weight,
   }));
   const crossFieldCoverage = groups.reduce((total, group) => {
     const strongest = searchableFields.reduce((best, { haystack, weight }) => (
-      group.some(term => haystack.includes(term)) ? Math.max(best, weight) : best
+      group.some(term => searchDocumentContains(haystack, term)) ? Math.max(best, weight) : best
     ), 0);
     return total + strongest;
   }, 0);
   const sameFieldStrength = searchableFields.reduce((best, { haystack, weight }) => {
     if (!haystack) return best;
-    if (exactQuery && haystack.includes(exactQuery)) return Math.max(best, weight * 10);
-    const hasEveryGroup = groups.every(group => group.some(term => haystack.includes(term)));
+    if (exactQuery && searchDocumentContains(haystack, exactQuery)) return Math.max(best, weight * 10);
+    const hasEveryGroup = groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
     return Math.max(best, hasEveryGroup ? weight * 5 : 0);
   }, 0);
   return intentScore + Math.max(crossFieldCoverage, sameFieldStrength);
@@ -1701,8 +1716,8 @@ function searchMatchReason(update, query, explicitPlatform = '') {
   if (!groups.length && intent.sourceKind && update?.sourceKind === intent.sourceKind) return `Release lane · ${intent.sourceLabel}`;
   if (!groups.length && intent.platform && update?.platform === intent.platform) return `Platform · ${platformLabel(intent.platform)}`;
   const matchesAll = value => {
-    const haystack = String(value || '').toLowerCase();
-    return groups.every(group => group.some(needle => haystack.includes(needle)));
+    const haystack = normaliseSearchDocument(value);
+    return groups.every(group => group.some(needle => searchDocumentContains(haystack, needle)));
   };
   if (!groups.length) return null;
   if (matchesAll(update?.name)) return 'Product name or alias';
@@ -3174,7 +3189,7 @@ async function renderDashboard({ focusId = null } = {}) {
       if (groups.length) {
         filtered = filtered.filter(u => {
           const haystack = searchableTextForUpdate(u);
-          return groups.every(group => group.some(term => haystack.includes(term)));
+          return groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
         });
       }
     }
@@ -4213,6 +4228,8 @@ async function renderUpdateDetail(id) {
     ? 'Example: Radeon RX 7900 XTX'
     : compatibilityProfile?.vendor === 'Intel'
       ? 'Example: Intel Arc A770'
+      : compatibilityProfile?.vendor === 'NVIDIA'
+        ? 'Example: GeForce RTX 5090'
       : 'Enter the exact hardware or device model';
   const compatibilityCheckedAt = compatibilityProfile?.checkedAt
     ? formatVerifiedMoment(compatibilityProfile.checkedAt)
@@ -4229,6 +4246,13 @@ async function renderUpdateDetail(id) {
   const compatibilityCoverage = compatibilityProfile
     ? `${compatibilityModels.length} official model or family entr${compatibilityModels.length === 1 ? 'y' : 'ies'}`
     : 'No complete vendor table for this release';
+  const compatibilitySources = [...new Set([
+    ...(compatibilityProfile?.sourceUrls || []),
+    compatibilityProfile?.sourceUrl,
+  ].filter(Boolean))].slice(0, 3);
+  const compatibilitySourceLinksHTML = compatibilitySources
+    .map((url, index) => `<a href="${H(url)}" target="_blank" rel="noopener">${index ? `Open supporting table ${index + 1}` : 'Open primary compatibility source'} ↗</a>`)
+    .join('');
   const detailSectionHeading = (eyebrow, title, description = '') => `
     <header class="detail-section-heading">
       <p class="detail-section-eyebrow">${H(eyebrow)}</p>
@@ -4441,6 +4465,11 @@ async function renderUpdateDetail(id) {
 
           <section class="detail-section detail-compatibility" id="detail-compatibility">
             ${detailSectionHeading('05 · Device check', 'Will this update support your hardware?', 'PatchTicker compares the exact model and Windows release you enter with the compatibility table published by the vendor. No generated assumptions or browser fingerprint guesses are used.')}
+            <div class="detail-compatibility-checks" aria-label="Compatibility verification method">
+              <div><span>01</span><strong>Exact model</strong><small>Matches only a vendor-listed GPU model or family.</small></div>
+              <div><span>02</span><strong>Windows release</strong><small>Checks the selected OS against the published support range.</small></div>
+              <div><span>03</span><strong>OEM limits</strong><small>Preserves laptop, prebuilt, handheld, and Boot Camp caveats.</small></div>
+            </div>
             <div class="detail-compatibility-layout">
               <form class="detail-compatibility-form" id="compatibility-form">
                 <label for="compatibility-hardware">Graphics model from Device Manager</label>
@@ -4469,10 +4498,11 @@ async function renderUpdateDetail(id) {
               <aside class="detail-compatibility-proof ${compatibilityProfile ? 'is-verified' : 'is-limited'}">
                 <span>${compatibilityProfile ? 'Verified support table loaded' : 'Model table unavailable'}</span>
                 <strong>${H(compatibilityVendor)}</strong>
+                <small>${H(compatibilityProfile?.sourceLabel || 'No authoritative compatibility source attached')}</small>
                 <small>${H(compatibilityCoverage)}</small>
                 <small>Source checked ${H(compatibilityCheckedAt)}</small>
                 ${compatibilityOsHTML ? `<div class="detail-compatibility-os">${compatibilityOsHTML}</div>` : '<p>This page will return “unverified” rather than infer support from marketing text.</p>'}
-                ${compatibilityProfile?.sourceUrl ? `<a href="${H(compatibilityProfile.sourceUrl)}" target="_blank" rel="noopener">View compatibility source ↗</a>` : ''}
+                ${compatibilitySourceLinksHTML}
               </aside>
             </div>
             <div class="detail-compatibility-result" id="compatibility-result" data-status="needs-input" aria-live="polite">
@@ -4576,6 +4606,13 @@ async function renderUpdateDetail(id) {
     if (icon) icon.textContent = ({ supported: '✓', unsupported: '×', unverified: '?', 'needs-input': '◇' })[result.status] || '?';
     if (title) title.textContent = result.title;
     if (detail) detail.textContent = [result.detail, result.guidance].filter(Boolean).join(' ');
+    captureAnalytics('compatibility_checked', {
+      update_id: u.id,
+      platform: u.platform,
+      vendor: compatibilityProfile?.vendor || 'unavailable',
+      operating_system: operatingSystem,
+      result: result.status,
+    });
   });
 
   document.querySelector('.detail-source-primary[href]')?.addEventListener('click', () => {

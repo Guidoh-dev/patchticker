@@ -38,6 +38,24 @@ const intelProfile = {
   guidance: 'Prefer the computer manufacturer driver on managed systems.',
 };
 
+const nvidiaProfile = {
+  schemaVersion: 1,
+  vendor: 'NVIDIA',
+  authoritative: true,
+  hardware: [{
+    label: 'NVIDIA GeForce RTX 5090',
+    matchType: 'exact-model',
+    aliases: ['nvidia geforce rtx 5090', 'geforce rtx 5090', 'rtx 5090'],
+  }, {
+    label: 'NVIDIA GeForce RTX 5090 Laptop GPU',
+    matchType: 'exact-model',
+    aliases: ['nvidia geforce rtx 5090 laptop gpu', 'geforce rtx 5090 laptop gpu', 'rtx 5090 laptop gpu'],
+  }],
+  operatingSystems: ['Windows 10 64-bit', 'Windows 11'],
+  exclusions: [],
+  guidance: 'Notebook owners should check the computer manufacturer driver first.',
+};
+
 test('AMD compatibility uses the official model family instead of fuzzy vendor guessing', () => {
   const supported = evaluateCompatibility(amdProfile, {
     hardware: 'AMD Radeon RX 7900 XTX',
@@ -85,6 +103,31 @@ test('Intel compatibility validates Arc models and rejects unsupported graphics 
   }).status, 'supported');
   assert.equal(evaluateCompatibility(intelProfile, {
     hardware: 'Intel UHD 630',
+    operatingSystem: 'windows-11',
+  }).status, 'unsupported');
+});
+
+test('NVIDIA compatibility separates desktop and laptop models using the official product matrix', () => {
+  const desktop = evaluateCompatibility(nvidiaProfile, {
+    hardware: 'GeForce RTX 5090',
+    operatingSystem: 'windows-11',
+  });
+  assert.equal(desktop.status, 'supported');
+  assert.equal(desktop.matchedLabel, 'NVIDIA GeForce RTX 5090');
+
+  const notebook = evaluateCompatibility(nvidiaProfile, {
+    hardware: 'GeForce RTX 5090 Laptop GPU',
+    operatingSystem: 'windows-11',
+  });
+  assert.equal(notebook.status, 'supported');
+  assert.equal(notebook.matchedLabel, 'NVIDIA GeForce RTX 5090 Laptop GPU');
+
+  assert.equal(evaluateCompatibility(nvidiaProfile, {
+    hardware: 'Radeon RX 7900 XTX',
+    operatingSystem: 'windows-11',
+  }).status, 'unsupported');
+  assert.equal(evaluateCompatibility(nvidiaProfile, {
+    hardware: 'GeForce RTX 4050',
     operatingSystem: 'windows-11',
   }).status, 'unsupported');
 });
@@ -147,5 +190,6 @@ test('compatibility profile retains the exact evidence source and check time', (
   });
   assert.equal(profile.sourceLabel, 'AMD Release Notes');
   assert.equal(profile.sourceUrl, 'https://example.com/release-notes');
+  assert.deepEqual(profile.sourceUrls, ['https://example.com/release-notes']);
   assert.equal(profile.checkedAt, '2026-09-17T00:00:00.000Z');
 });

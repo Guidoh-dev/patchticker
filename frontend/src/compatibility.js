@@ -22,6 +22,10 @@ export function compatibilityProfileFromUpdate(update) {
   return {
     ...item.compatibility,
     sourceUrl: item.url || update?.sourceUrl || null,
+    sourceUrls: [...new Set([
+      item.url,
+      ...(Array.isArray(item.compatibility.sourceUrls) ? item.compatibility.sourceUrls : []),
+    ].filter(Boolean))],
     sourceLabel: item.source || `${item.compatibility.vendor || update?.platform || 'Vendor'} compatibility list`,
     checkedAt: item.checkedAt || update?.lastCheckedAt || null,
   };
@@ -31,6 +35,7 @@ function unsupportedVendor(profile, hardware) {
   const value = normalize(hardware);
   if (profile?.vendor === 'AMD') return /\b(?:nvidia|geforce|intel arc)\b/.test(value);
   if (profile?.vendor === 'Intel') return /\b(?:amd|radeon|nvidia|geforce)\b/.test(value);
+  if (profile?.vendor === 'NVIDIA') return /\b(?:amd|radeon|intel arc)\b/.test(value);
   return false;
 }
 
@@ -42,6 +47,7 @@ function looksLikeVendorModel(profile, hardware) {
   // remain unverified rather than becoming a false negative.
   if (profile?.vendor === 'AMD') return /\b(?:rx|radeon pro)\b/.test(value) && /\d/.test(value);
   if (profile?.vendor === 'Intel') return /\b(?:arc|uhd|iris|[ab]\s?\d{2,4})\b/.test(value) && /\d/.test(value);
+  if (profile?.vendor === 'NVIDIA') return /\b(?:rtx|gtx|mx)\b/.test(value) && /\d/.test(value);
   return false;
 }
 
@@ -202,6 +208,6 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
   return {
     status: 'unverified',
     title: 'Could not verify that model',
-    detail: 'Try the exact graphics model, such as “Radeon RX 7900 XTX” or “Intel Arc A770.” A missing match is not treated as proof of compatibility.',
+    detail: 'Try the exact graphics model, such as “Radeon RX 7900 XTX,” “Intel Arc A770,” or “GeForce RTX 5090.” A missing match is not treated as proof of compatibility.',
   };
 }

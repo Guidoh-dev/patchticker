@@ -343,6 +343,21 @@ function compatibilitySearchText(update) {
     .join(' ');
 }
 
+function normaliseSearchDocument(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function searchDocumentContains(haystack, needle) {
+  const document = normaliseSearchDocument(haystack);
+  const term = normaliseSearchDocument(needle);
+  return Boolean(document && term && ` ${document} `.includes(` ${term} `));
+}
+
 function searchRelevanceScore(update, queryOrTerms = []) {
   const fields = [
     [update?.name, 100],
@@ -362,21 +377,21 @@ function searchRelevanceScore(update, queryOrTerms = []) {
     [JSON.stringify(update?.evidence || []), 20],
   ];
   const searchableFields = fields.map(([value, weight]) => ({
-    haystack: String(value || '').toLowerCase(),
+    haystack: normaliseSearchDocument(value),
     weight,
   }));
 
   // Preserve the original helper contract for internal callers/tests that pass
   // a pre-expanded flat term list. User searches use the richer path below.
   if (Array.isArray(queryOrTerms)) {
-    const needles = queryOrTerms.map(term => String(term || '').toLowerCase()).filter(Boolean);
+    const needles = queryOrTerms.map(normaliseSearchDocument).filter(Boolean);
     if (!needles.length) return 0;
     return searchableFields.reduce((score, { haystack, weight }) => (
-      Math.max(score, needles.some(term => haystack.includes(term)) ? weight : 0)
+      Math.max(score, needles.some(term => searchDocumentContains(haystack, term)) ? weight : 0)
     ), 0);
   }
 
-  const exactQuery = String(queryOrTerms || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const exactQuery = normaliseSearchDocument(queryOrTerms);
   const groups = buildSearchTermGroups(exactQuery);
   if (!groups.length) return 0;
 
@@ -385,15 +400,15 @@ function searchRelevanceScore(update, queryOrTerms = []) {
   // appearing incidentally inside a long changelog.
   const crossFieldCoverage = groups.reduce((total, group) => {
     const strongest = searchableFields.reduce((best, { haystack, weight }) => (
-      group.some(term => haystack.includes(term)) ? Math.max(best, weight) : best
+      group.some(term => searchDocumentContains(haystack, term)) ? Math.max(best, weight) : best
     ), 0);
     return total + strongest;
   }, 0);
 
   const sameFieldStrength = searchableFields.reduce((best, { haystack, weight }) => {
     if (!haystack) return best;
-    if (exactQuery && haystack.includes(exactQuery)) return Math.max(best, weight * 10);
-    const hasEveryGroup = groups.every(group => group.some(term => haystack.includes(term)));
+    if (exactQuery && searchDocumentContains(haystack, exactQuery)) return Math.max(best, weight * 10);
+    const hasEveryGroup = groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
     return Math.max(best, hasEveryGroup ? weight * 5 : 0);
   }, 0);
 
@@ -1336,6 +1351,8 @@ async function getUpdates({ platform, status, sort, search } = {}) {
           COALESCE(verdict, ''), COALESCE(reasoning, ''),
           changelog::text, known_issues::text, risk_factors::text, evidence::text
         ))`;
+        const normalizedSearchDocument = `CONCAT(' ', TRIM(REGEXP_REPLACE(${searchDocument}, '[^a-z0-9]+', ' ', 'g')), ' ')`;
+        const normalizedSqlTerm = term => `CONCAT(' ', TRIM(REGEXP_REPLACE(${term}, '[^a-z0-9]+', ' ', 'g')), ' ')`;
         const groupParams = searchGroups.map(group => {
           params.push(group);
           return `$${params.length}`;
@@ -1343,7 +1360,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         query += ` AND ${groupParams.map((groupParam, index) => `EXISTS (
           SELECT 1
           FROM unnest(${groupParam}::text[]) AS search_group_${index}(term)
-          WHERE POSITION(search_group_${index}.term IN ${searchDocument}) > 0
+          WHERE POSITION(${normalizedSqlTerm(`search_group_${index}.term`)} IN ${normalizedSearchDocument}) > 0
         )`).join(' AND ')}`;
 
         if (sort === 'relevance') {
@@ -1352,7 +1369,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
           const patternParam = `$${params.length}`;
           const fieldContainsTerm = field => `EXISTS (
             SELECT 1 FROM unnest(${patternParam}::text[]) AS ranking_term(term)
-            WHERE POSITION(ranking_term.term IN LOWER(COALESCE(${field}, ''))) > 0
+            WHERE POSITION(${normalizedSqlTerm('ranking_term.term')} IN CONCAT(' ', TRIM(REGEXP_REPLACE(LOWER(COALESCE(${field}, '')), '[^a-z0-9]+', ' ', 'g')), ' ')) > 0
           )`;
           relevanceOrder = `GREATEST(
             CASE WHEN ${fieldContainsTerm('name')} THEN 100 ELSE 0 END,
@@ -1414,7 +1431,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
           JSON.stringify(u.changelog || []), JSON.stringify(u.knownIssues || []),
           JSON.stringify(u.riskFactors || []), JSON.stringify(u.evidence || []),
         ].filter(Boolean).join(' ').toLowerCase();
-        return groups.every(group => group.some(term => document.includes(term)));
+        return groups.every(group => group.some(term => searchDocumentContains(document, term)));
       });
     }
   }
@@ -1611,6 +1628,8 @@ module.exports = {
     exactSteamGameForSearch,
     resolveSearchPlan,
     compatibilitySearchText,
+    normaliseSearchDocument,
+    searchDocumentContains,
     searchRelevanceScore,
   },
 };

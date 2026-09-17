@@ -461,6 +461,58 @@ function nvidiaImpactMetadata(driver, parsed) {
   };
 }
 
+function parseNvidiaCompatibility(drivers = []) {
+  const alignedDrivers = (Array.isArray(drivers) ? drivers : [drivers]).filter(Boolean);
+  const seen = new Set();
+  const hardware = [];
+  const operatingSystems = [];
+  const sourceUrls = [];
+
+  for (const driver of alignedDrivers) {
+    if (driver.DetailsURL) sourceUrls.push(driver.DetailsURL);
+    for (const os of driver.OSList || []) {
+      const label = cleanDriverText(safeDecode(os?.OSName), 100);
+      if (label) operatingSystems.push(label);
+    }
+    for (const series of driver.series || []) {
+      const seriesLabel = cleanDriverText(safeDecode(series?.seriesname), 120);
+      const notebook = /notebook|laptop/i.test(seriesLabel);
+      for (const product of series?.products || []) {
+        const label = cleanDriverText(safeDecode(product?.productName), 160);
+        const key = label.toLowerCase();
+        if (!label || seen.has(key)) continue;
+        seen.add(key);
+        const withoutNvidia = label.replace(/^NVIDIA\s+/i, '');
+        const withoutGeForce = withoutNvidia.replace(/^GeForce\s+/i, '');
+        hardware.push({
+          label,
+          category: notebook || /laptop/i.test(label) ? 'mobile' : 'desktop',
+          matchType: 'exact-model',
+          aliases: unique([
+            label.toLowerCase(),
+            withoutNvidia.toLowerCase(),
+            withoutGeForce.toLowerCase(),
+          ], 120),
+        });
+      }
+    }
+  }
+
+  if (!hardware.length || !operatingSystems.length) return null;
+  return {
+    schemaVersion: 1,
+    vendor: 'NVIDIA',
+    scope: 'graphics-driver',
+    authoritative: true,
+    catalogCompleteness: 'official-driver-lookup-products',
+    hardware,
+    operatingSystems: unique(operatingSystems, 100),
+    exclusions: [],
+    sourceUrls: unique(sourceUrls, 260),
+    guidance: 'NVIDIA lists these desktop and notebook GPUs for this Game Ready package. Notebook owners should still check the computer manufacturer’s certified driver first.',
+  };
+}
+
 function parseIntelReleaseNotes(pdfText) {
   const source = String(pdfText || '');
   const versionLine = source.match(/Driver Version:\s*([\d.]+)\s*(Non-WHQL|WHQL)?/i);
@@ -1546,13 +1598,26 @@ async function detectWindows() {
  */
 async function detectNvidia() {
   try {
-    // NVIDIA has a lookup API used by their download page
-    const data = await fetchJson(
+    // Query one current desktop and one current notebook product. NVIDIA's
+    // lookup response then supplies the full official product matrix for that
+    // package. The previous single product id (899) returned notebook-only
+    // coverage while the public record claimed desktop support as well.
+    const lookupUrl = pfid => (
       'https://gfwsl.geforce.com/services_toolkit/services/com/nvidia/services/AjaxDriverService.php?' +
-      'func=DriverManualLookup&pfid=899&osID=57&languageCode=1033&isWHQL=1&dch=1&sort1=0&numberOfResults=1'
+      `func=DriverManualLookup&pfid=${pfid}&osID=57&languageCode=1033&isWHQL=1&dch=1&sort1=0&numberOfResults=1`
     );
-    const driver = data?.IDS?.[0]?.downloadInfo;
+    const [desktopData, notebookData] = await Promise.all([
+      fetchJson(lookupUrl(1066)), // GeForce RTX 5090 desktop
+      fetchJson(lookupUrl(1073)), // GeForce RTX 5090 Laptop GPU
+    ]);
+    const driver = desktopData?.IDS?.[0]?.downloadInfo;
     if (!driver) return null;
+    const notebookDriver = notebookData?.IDS?.[0]?.downloadInfo;
+    const compatibleDrivers = [
+      driver,
+      ...(notebookDriver?.Version === driver.Version ? [notebookDriver] : []),
+    ];
+    const compatibility = parseNvidiaCompatibility(compatibleDrivers);
     const sourceUrl = driver.DetailsURL || absoluteUrl(driver.DownloadURL || '', 'https://www.nvidia.com/en-us/geforce/drivers/');
     const initial = parseNvidiaReleaseNotes(driver.ReleaseNotes, driver.OtherNotes);
     let releasePdfText = '';
@@ -1571,7 +1636,7 @@ async function detectNvidia() {
       name:       `NVIDIA Game Ready Driver ${driver.Version}`,
       version:    driver.Version,
       releasedAt: toIsoDate(driver.ReleaseDateTime),
-      affects:    'NVIDIA GeForce RTX GPUs / Game Ready driver / DLSS / G-SYNC / NVIDIA App overlays / notebook OEM graphics stacks',
+      affects:    'NVIDIA GeForce desktop and notebook GPUs listed for this Game Ready package / DLSS / G-SYNC / NVIDIA App overlays',
       changelog:  parsed.changelog,
       knownIssues: parsed.knownIssues,
       knownIssuesAuthoritative: Boolean(releasePdfText),
@@ -1581,7 +1646,7 @@ async function detectNvidia() {
         : 'Install if the listed game support or fixes apply; otherwise wait if your current driver is stable.',
       reasoning: `NVIDIA’s official notes document ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} gaming fix${parsed.gameFixCount === 1 ? '' : 'es'}, ${parsed.generalFixCount} general fix${parsed.generalFixCount === 1 ? '' : 'es'}, and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} for this WHQL release.`,
       evidence: [
-        ...sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}; ${parsed.gameSupportCount} supported games, ${parsed.gameFixCount} gaming fixes, and ${parsed.generalFixCount} general fixes documented.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta }),
+        ...sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}; ${parsed.gameSupportCount} supported games, ${parsed.gameFixCount} gaming fixes, ${parsed.generalFixCount} general fixes, and ${compatibility?.hardware?.length || 0} supported desktop/notebook GPU entries documented.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta, compatibility: compatibility || undefined }),
         ...(parsed.releaseNotesUrl ? sourceEvidence('NVIDIA Release Notes', parsed.releaseNotesUrl, `Official WHQL release-notes PDF for driver ${driver.Version}; ${parsed.generalFixCount} general fixes and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }) : []),
       ],
       sourceUrl,
@@ -2787,5 +2852,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
 };

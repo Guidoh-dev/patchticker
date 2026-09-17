@@ -9693,6 +9693,38 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
   grid-template-columns: minmax(0, 1.55fr) minmax(270px, .7fr);
   gap: 14px;
 }
+.detail-compatibility-checks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 14px;
+  padding: 1px;
+  background: var(--border);
+}
+.detail-compatibility-checks > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 3px 10px;
+  align-content: start;
+  min-height: 78px;
+  padding: 13px;
+  background: var(--bg-deep);
+}
+.detail-compatibility-checks span {
+  grid-row: 1 / span 2;
+  color: var(--cyan);
+  font: 850 10px/1.3 var(--font-number);
+  letter-spacing: .08em;
+}
+.detail-compatibility-checks strong {
+  color: var(--text);
+  font: 750 11px/1.3 var(--font-display);
+}
+.detail-compatibility-checks small {
+  color: var(--text-3);
+  font: 600 9px/1.45 var(--font-mono);
+}
 .detail-compatibility-form,
 .detail-compatibility-proof,
 .detail-compatibility-result {
@@ -9778,7 +9810,7 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
 .detail-compatibility-proof > strong { color: var(--text); font-size: 18px; }
 .detail-compatibility-proof > small,
 .detail-compatibility-proof > p { margin: 0; color: var(--text-2); font-size: 11px; line-height: 1.5; }
-.detail-compatibility-proof > a { margin-top: 3px; color: var(--cyan); font-size: 11px; font-weight: 750; }
+.detail-compatibility-proof > a { display: block; margin-top: 3px; color: var(--cyan); font-size: 11px; font-weight: 750; }
 .detail-compatibility-os { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 3px; }
 .detail-compatibility-os span {
   border: 1px solid var(--border-2);
@@ -9823,6 +9855,8 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
   .detail-section-nav button { min-width: 104px; }
   .detail-update-info-grid { grid-template-columns: 1fr; }
   .detail-update-info-grid .detail-update-info-scope { grid-column: auto; }
+  .detail-compatibility-checks { grid-template-columns: 1fr; }
+  .detail-compatibility-checks > div { min-height: 0; }
   .detail-compatibility-controls { grid-template-columns: 1fr; }
   .detail-compatibility-submit { grid-column: auto; }
 }

@@ -596,6 +596,43 @@ describe('scraper accuracy guards', () => {
     expect(parsed.knownIssues).toEqual(['Prefer Maximum Performance mode may not be applied correctly [6007998]']);
   });
 
+  test('NVIDIA compatibility combines aligned desktop and notebook product matrices', () => {
+    const compatibility = __test.parseNvidiaCompatibility([{
+      Version: '616.92',
+      DetailsURL: 'https://www.nvidia.com/en-us/drivers/details/278453/',
+      OSList: [{ OSName: 'Windows%2010%2064-bit' }, { OSName: 'Windows%2011' }],
+      series: [{
+        seriesname: 'GeForce%20RTX%2050%20Series',
+        products: [
+          { productName: 'NVIDIA%20GeForce%20RTX%205090' },
+          { productName: 'NVIDIA%20GeForce%20RTX%205080' },
+        ],
+      }],
+    }, {
+      Version: '616.92',
+      DetailsURL: 'https://www.nvidia.com/en-us/drivers/details/278454/',
+      OSList: [{ OSName: 'Windows%2011' }],
+      series: [{
+        seriesname: 'GeForce%20RTX%2050%20Series%20(Notebooks)',
+        products: [{ productName: 'NVIDIA%20GeForce%20RTX%205090%20Laptop%20GPU' }],
+      }],
+    }]);
+
+    expect(compatibility).toMatchObject({
+      vendor: 'NVIDIA',
+      authoritative: true,
+      operatingSystems: ['Windows 10 64-bit', 'Windows 11'],
+      sourceUrls: [
+        'https://www.nvidia.com/en-us/drivers/details/278453/',
+        'https://www.nvidia.com/en-us/drivers/details/278454/',
+      ],
+    });
+    expect(compatibility.hardware).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'NVIDIA GeForce RTX 5090', category: 'desktop', aliases: expect.arrayContaining(['rtx 5090']) }),
+      expect.objectContaining({ label: 'NVIDIA GeForce RTX 5090 Laptop GPU', category: 'mobile', aliases: expect.arrayContaining(['rtx 5090 laptop gpu']) }),
+    ]));
+  });
+
   test('NVIDIA parser recovers game support and general fixes when the dynamic download page omits release highlights', () => {
     const parsed = __test.parseNvidiaReleaseNotes('', '', `
       2.4.1 Game Ready for 007 First Light, Active Matter,
