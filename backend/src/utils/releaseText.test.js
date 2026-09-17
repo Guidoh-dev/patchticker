@@ -15,6 +15,8 @@ test('repairs only mechanically identifiable vendor-feed artifacts', () => {
     .toBe('Seasons system and Season One: With this release, seasons begin.');
   expect(normaliseReleaseText('{STEAM_CLAN_IMAGE}/3949769/banner.png Greetings Terrarians!'))
     .toBe('Greetings Terrarians!');
+  expect(normaliseReleaseText('Judgement/Lost Judgement/Virtua Fighter 5 R.E.V.O. may fail to launch.'))
+    .toBe('Judgement/Lost Judgement/Virtua Fighter 5 R.E.V.O. may fail to launch.');
 });
 
 test('normalizes release arrays and drops empty artifacts', () => {

@@ -19,7 +19,9 @@ function normaliseReleaseText(value) {
     .replace(/\bintro\s+duced\b/gi, match => preserveInitialCase(match, 'introduced'))
     .replace(/\bintro\s+duces\b/gi, match => preserveInitialCase(match, 'introduces'))
     .replace(/\bintro\s+duce\b/gi, match => preserveInitialCase(match, 'introduce'))
-    .replace(/([.!?])(?=[A-Z])/g, '$1 ')
+    // Restore a missing sentence space without splitting dotted product names
+    // and acronyms such as R.E.V.O. or U.S.A.
+    .replace(/([a-z0-9][.!?])(?=[A-Z][a-z])/g, '$1 ')
     .replace(/([a-z]):(?=[A-Z])/g, '$1: ')
     .replace(/\b(modifiers)(?=Personal modifiers)/g, '$1. ')
     .replace(/\b(Privacy)(?=Players)/g, '$1: ')

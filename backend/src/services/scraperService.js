@@ -346,18 +346,65 @@ function isIntelGameTitle(value) {
   return !/\b(?:may|might|can|could|will)\s+(?:experience|display|show|fail|crash|stop)|\b(?:crash|corruption|artifact|known issue|recommendation|currently in beta|no action|workaround|unavailable)\b/i.test(text);
 }
 
+function parseNvidiaPdfReleaseDetails(pdfText) {
+  const source = String(pdfText || '');
+  const gameReady = pdfSection(
+    source,
+    /2\.4\.1\s+Game Ready for\s*/i,
+    /2\.4\.1\.1\s+Other Changes/i,
+  );
+  const heading = gameReady.split(/This new Game Ready Driver/i)[0]
+    .replace(/--\s*\d+\s+of\s+\d+\s*--/gi, ' ')
+    .replace(/RN-\S+[^\n]*/gi, ' ')
+    .replace(/Release \d+ Driver[^\n]*/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const gameTitles = unique(
+    heading
+      .split(/\s*(?:,|&|\band\b)\s*/i)
+      .map(title => cleanDriverText(title, 120))
+      .filter(title => title && title.length <= 100 && !/^Game Ready/i.test(title)),
+    120,
+  );
+  const gameIntro = cleanDriverText(gameReady.match(/This new Game Ready Driver[\s\S]*?(?=Learn more|$)/i)?.[0], 520);
+  const fixedGaming = pdfSection(
+    source,
+    /3\.1\.1\s+Fixed Gaming Bugs\s*/i,
+    /3\.1\.2\s+Fixed General Bugs/i,
+  );
+  const fixedGeneral = pdfSection(
+    source,
+    /3\.1\.2\s+Fixed General Bugs\s*/i,
+    /3\.2\s+Open Issues in Version/i,
+  );
+  const bulletText = section => unique(
+    markedPdfBullets(section)
+      .map(entry => entry.text)
+      .filter(text => text && !/^N\/?A\.?$/i.test(text)),
+    520,
+  );
+
+  return {
+    gameTitles,
+    gameIntro,
+    gamingFixes: bulletText(fixedGaming),
+    generalFixes: bulletText(fixedGeneral),
+  };
+}
+
 function parseNvidiaReleaseNotes(encodedNotes, encodedOtherNotes = '', pdfText = '') {
   const notesHtml = safeDecode(encodedNotes);
   const otherHtml = safeDecode(encodedOtherNotes);
   const $ = cheerio.load(`<div id="nvidia-notes">${notesHtml}</div>`);
   const gameReady = strongSection($, 'Game Ready for');
-  const gamingFixes = strongSection($, 'Fixed Gaming Bugs').bullets;
-  const generalFixes = strongSection($, 'Fixed General Bugs').bullets;
+  const pdfDetails = parseNvidiaPdfReleaseDetails(pdfText);
+  const gamingFixes = unique([...strongSection($, 'Fixed Gaming Bugs').bullets, ...pdfDetails.gamingFixes], 520);
+  const generalFixes = unique([...strongSection($, 'Fixed General Bugs').bullets, ...pdfDetails.generalFixes], 520);
   const includedGames = gameReady.intro.match(/including\s+(.+?)(?:\.|$)/i)?.[1] || '';
-  const gameTitles = unique(includedGames
+  const gameTitles = unique([...includedGames
     .replace(/,\s+and\s+/i, ', ')
     .split(/\s*,\s*/)
-    .map(title => cleanDriverText(title, 100)), 100);
+    .map(title => cleanDriverText(title, 100)), ...pdfDetails.gameTitles], 100);
   const other$ = cheerio.load(otherHtml);
   const releaseNotesUrl = other$('a[href$=".pdf"]').filter((_, link) => /release notes/i.test(other$(link).text())).first().attr('href')
     || otherHtml.match(/https:\/\/[^"'\s]+release-notes\.pdf/i)?.[0]
@@ -365,7 +412,7 @@ function parseNvidiaReleaseNotes(encodedNotes, encodedOtherNotes = '', pdfText =
   const openSection = pdfSection(pdfText, /3\.2\s+Open Issues in Version[^\n]*/i, /3\.3\s+Issues Not Caused/i);
   const knownIssues = unique(markedPdfBullets(openSection).map(entry => entry.text), 520);
   const changelog = unique([
-    gameTitles.length ? `Game support — ${gameTitles.join('; ')}.` : gameReady.intro,
+    gameTitles.length ? `Game support — ${gameTitles.join('; ')}.` : gameReady.intro || pdfDetails.gameIntro,
     ...gamingFixes.map(item => `Game fix — ${item}`),
     ...generalFixes.map(item => `General fix — ${item}`),
   ], 520);
@@ -1491,10 +1538,10 @@ async function detectNvidia() {
       verdict: parsed.knownIssueCount
         ? 'Install if the listed game support or fixes apply; otherwise wait if your current driver is stable, especially on notebooks or systems using Prefer Maximum Performance.'
         : 'Install if the listed game support or fixes apply; otherwise wait if your current driver is stable.',
-      reasoning: `NVIDIA’s official notes document ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} gaming fix${parsed.gameFixCount === 1 ? '' : 'es'}, and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} for this WHQL release.`,
+      reasoning: `NVIDIA’s official notes document ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} gaming fix${parsed.gameFixCount === 1 ? '' : 'es'}, ${parsed.generalFixCount} general fix${parsed.generalFixCount === 1 ? '' : 'es'}, and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} for this WHQL release.`,
       evidence: [
-        ...sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}; ${parsed.gameSupportCount} supported games and ${parsed.gameFixCount} gaming fixes documented.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta }),
-        ...(parsed.releaseNotesUrl ? sourceEvidence('NVIDIA Release Notes', parsed.releaseNotesUrl, `Official WHQL release-notes PDF for driver ${driver.Version}; ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }) : []),
+        ...sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}; ${parsed.gameSupportCount} supported games, ${parsed.gameFixCount} gaming fixes, and ${parsed.generalFixCount} general fixes documented.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta }),
+        ...(parsed.releaseNotesUrl ? sourceEvidence('NVIDIA Release Notes', parsed.releaseNotesUrl, `Official WHQL release-notes PDF for driver ${driver.Version}; ${parsed.generalFixCount} general fixes and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }) : []),
       ],
       sourceUrl,
     };
@@ -2216,5 +2263,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
 };

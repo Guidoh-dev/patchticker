@@ -431,6 +431,39 @@ describe('scraper accuracy guards', () => {
     expect(parsed.knownIssues).toEqual(['Prefer Maximum Performance mode may not be applied correctly [6007998]']);
   });
 
+  test('NVIDIA parser recovers game support and general fixes when the dynamic download page omits release highlights', () => {
+    const parsed = __test.parseNvidiaReleaseNotes('', '', `
+      2.4.1 Game Ready for 007 First Light, Active Matter,
+      Aniimo & WARDOGS
+      This new Game Ready Driver provides the best gaming experience for the listed games.
+      Learn more in our Game Ready Driver article here.
+      2.4.1.1 Other Changes
+      3.1.1 Fixed Gaming Bugs
+      > N/A
+      3.1.2 Fixed General Bugs
+      > Intermittent flicker may be observed in browsers when navigating to certain websites [6673430]
+      > Fixed an issue where virtual displays could not be created after updating [6674464]
+      > Remote Desktop sessions may display a black screen after updating [6687328]
+      3.2 Open Issues in Version 616.92 WHQL
+      > Prefer Maximum Performance mode may not be applied correctly [6007998]
+      3.3 Issues Not Caused by NVIDIA Drivers
+    `);
+
+    expect(parsed).toMatchObject({
+      gameSupportCount: 4,
+      gameFixCount: 0,
+      generalFixCount: 3,
+      knownIssueCount: 1,
+      gameTitles: ['007 First Light', 'Active Matter', 'Aniimo', 'WARDOGS'],
+    });
+    expect(parsed.changelog).toEqual(expect.arrayContaining([
+      'Game support — 007 First Light; Active Matter; Aniimo; WARDOGS.',
+      expect.stringContaining('General fix — Intermittent flicker'),
+      expect.stringContaining('General fix — Fixed an issue where virtual displays'),
+    ]));
+    expect(parsed.changelog.join(' ')).not.toMatch(/General fix — N\/?A/i);
+  });
+
   test('AMD driver page discovery selects the newest official Adrenalin notes', () => {
     const parsed = __test.parseAmdDriverPage(`
       <article><a href="/en/resources/support-articles/release-notes/RN-RAD-WIN-26-6-4.html">Release Notes</a></article>
