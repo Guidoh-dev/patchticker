@@ -32,8 +32,12 @@ export function navigate(path) {
   window.location.hash = path;
 }
 
+function currentLocationKey() {
+  return window.location.hash.slice(1) || '/';
+}
+
 export function currentPath() {
-  const hash = window.location.hash.slice(1) || '/';
+  const hash = currentLocationKey();
   return hash.split('?')[0];
 }
 
@@ -65,13 +69,14 @@ export function resolveRoute(path) {
 export function start() {
   function dispatch() {
     const path    = currentPath();
+    const locationKey = currentLocationKey();
     const match   = resolveRoute(path);
-    if (match && _current !== path) {
-      _current = path;
+    if (match && _current !== locationKey) {
+      _current = locationKey;
       window.dispatchEvent(new CustomEvent('app:route', { detail: { path } }));
       match.handler({ ...queryParams(), ...match.params });
     } else if (!match) {
-      _current = path;
+      _current = locationKey;
       window.dispatchEvent(new CustomEvent('app:route', { detail: { path } }));
       if (_fallback) {
         _fallback({ path });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { route, resolveRoute } from '../src/router.js';
+import { route, resolveRoute, start } from '../src/router.js';
 
 const root = resolve(import.meta.dirname, '..');
 const mainSource = await readFile(resolve(root, 'src/main.js'), 'utf8');
@@ -26,6 +26,27 @@ test('router resolves exact and dynamic update directories', () => {
     id: 'intel-32-0-101-8864',
   });
   assert.equal(resolveRoute('/updates/not%20encoded')?.params.id, 'not encoded');
+});
+
+test('router redispatches when only compatibility query parameters change', () => {
+  const previousWindow = globalThis.window;
+  const listeners = new Map();
+  const calls = [];
+  globalThis.window = {
+    location: { hash: '#/compatibility-query-test?hardware=RX%207900%20XTX' },
+    addEventListener(type, listener) { listeners.set(type, listener); },
+    dispatchEvent() {},
+  };
+
+  try {
+    route('/compatibility-query-test', params => calls.push(params.hardware));
+    start();
+    globalThis.window.location.hash = '#/compatibility-query-test?hardware=Ryzen%209%207900X';
+    listeners.get('hashchange')();
+    assert.deepEqual(calls, ['RX 7900 XTX', 'Ryzen 9 7900X']);
+  } finally {
+    globalThis.window = previousWindow;
+  }
 });
 
 test('application registers canonical navigation directories and aliases', () => {
