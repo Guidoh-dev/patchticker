@@ -280,6 +280,8 @@ describe('material Steam game update pipeline', () => {
     expect(__test.displayVersion({ title: 'Marvel Rivals Version 20260813 Patch Notes' }, releasedAt)).toBe('2026.08.13');
     expect(__test.displayVersion({ title: 'Y11S2.3 PATCH NOTES' }, releasedAt)).toBe('Y11S2.3');
     expect(__test.displayVersion({ title: 'Rocket League Patch Notes v2.72' }, releasedAt)).toBe('2.72');
+    expect(__test.displayVersion({ title: 'Dota 2 — 7.41f Gameplay Update' }, releasedAt)).toBe('7.41f');
+    expect(__test.displayVersion({ title: 'Valheim 1.0 - The Deep North' }, releasedAt)).toBe('1.0');
     expect(__test.explicitReleaseDateFromTitle('NARAKA Update – August 13th, 2026').toISOString().slice(0, 10)).toBe('2026-08-13');
   });
 

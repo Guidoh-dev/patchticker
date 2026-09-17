@@ -274,7 +274,15 @@ function displayVersion(post, releasedAt) {
   if (explicitV) return explicitV;
 
   const bareSemantic = title.match(/\b(\d+(?:\.\d+){2,3}[a-z]?)\b/i)?.[1];
-  return bareSemantic || releasedAt.toISOString().slice(0, 10).replaceAll('-', '.');
+  if (bareSemantic) return bareSemantic;
+
+  // Some publishers put a short semantic version directly beside the game
+  // name ("Valheim 1.0") or before the release label ("7.41f Gameplay
+  // Update"). A publication-date fallback hides that useful identity. Full
+  // YYYY.MM.DD values were already handled above, so a bounded two-part value
+  // is safe to preserve here without mistaking a date for a build number.
+  const shortSemantic = title.match(/\b(\d{1,3}\.\d{1,3}[a-z]?)\b/i)?.[1];
+  return shortSemantic || releasedAt.toISOString().slice(0, 10).replaceAll('-', '.');
 }
 
 function knownIssuesFromNotes(changelog) {
