@@ -35,6 +35,17 @@ test('static update listings exclude releases older than 240 days', async () => 
   expect(updates.some(update => update.id === 'steam-cs2-mar-2025')).toBe(false);
 });
 
+test('public reads reject implausibly future-dated releases', () => {
+  const now = Date.parse('2026-08-11T12:00:00Z');
+  expect(updatesService.__test.isUpdateDisplayable({
+    releasedAt: '2026-08-12T11:59:00Z', evidence: [], platform: 'AMD', version: '1.0',
+  })).toBe(true);
+  expect(updatesService.__test.isUpdateDisplayable({
+    releasedAt: '2026-08-12T12:01:00Z', evidence: [], platform: 'AMD', version: '1.0',
+  })).toBe(false);
+  expect(now).toBe(Date.now());
+});
+
 test('expired direct update permalinks no longer return update content', async () => {
   await expect(updatesService.getUpdateById('steam-cs2-mar-2025')).resolves.toBeNull();
   await expect(updatesService.getUpdateById('steam-apex-legends-july-2026')).resolves.toMatchObject({
@@ -66,6 +77,7 @@ test('database update and history queries enforce the same 240-day window', asyn
     .filter(sql => sql.includes('software_updates'));
   expect(updateQueries).toHaveLength(2);
   expect(updateQueries.every(sql => sql.includes("INTERVAL '240 days'"))).toBe(true);
+  expect(updateQueries.every(sql => sql.includes("INTERVAL '24 hours'"))).toBe(true);
   expect(updateQueries.every(sql => sql.includes("averagePlayersRegion == \"GLOBAL\""))).toBe(true);
   expect(updateQueries.every(sql => sql.includes('averagePlayersWindowDays == 30'))).toBe(true);
   expect(updateQueries.every(sql => sql.includes('averagePlayersSnapshot > 50000'))).toBe(true);

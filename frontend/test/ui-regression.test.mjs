@@ -396,11 +396,14 @@ test('mobile cards prioritize the decision and collapse low-value repetition', (
   assert.match(cssSource, /\.decision-card-rating\s*\{[^}]*grid-template-areas:\s*"action label value"/s);
 });
 
-test('the client applies the same 240-day update display ceiling as the API', () => {
+test('the client applies the same bounded release window as the API', () => {
   assert.match(mainSource, /const MAX_UPDATE_AGE_DAYS = 240/);
+  assert.match(mainSource, /const MAX_PUBLIC_FUTURE_SKEW_MS = 24 \* 60 \* 60 \* 1000/);
   assert.match(mainSource, /function isUpdateWithinDisplayWindow\(update/);
+  assert.match(mainSource, /releasedAt <= now \+ MAX_PUBLIC_FUTURE_SKEW_MS/);
   assert.match(mainSource, /function hydrateDashboardUpdates\(response\)[\s\S]*?normaliseUpdatesResponse\(response\)[\s\S]*?\.filter\(update => isUpdateWithinDisplayWindow\(update\)\)/);
   assert.match(mainSource, /hydrateDashboardUpdates\(await fetchUpdates\(\{\}\)\)/);
+  assert.match(mainSource, /if \(diff < -60000\)[\s\S]*?return `in \$\{futureHours\}h`/);
 });
 
 test('mobile ticker viewport clips its moving track without widening the page', () => {

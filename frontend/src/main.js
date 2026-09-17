@@ -158,6 +158,7 @@ const app = document.getElementById('app');
 const THEME_STORAGE_KEY = 'patchticker.theme';
 const MAX_UPDATE_AGE_DAYS = 240;
 const UPDATE_DISPLAY_WINDOW_MS = MAX_UPDATE_AGE_DAYS * 24 * 60 * 60 * 1000;
+const MAX_PUBLIC_FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 const DASHBOARD_REVALIDATE_MS = 5 * 60 * 1000;
 const QUICKBAR_TOP_ZONE_PX = 120;
 const QUICKBAR_SCROLL_EPSILON_PX = 3;
@@ -170,7 +171,9 @@ let _dashboardRefreshCleanup = null;
 
 function isUpdateWithinDisplayWindow(update, now = Date.now()) {
   const releasedAt = Date.parse(update?.releasedAt);
-  return Number.isFinite(releasedAt) && releasedAt >= now - UPDATE_DISPLAY_WINDOW_MS;
+  return Number.isFinite(releasedAt)
+    && releasedAt >= now - UPDATE_DISPLAY_WINDOW_MS
+    && releasedAt <= now + MAX_PUBLIC_FUTURE_SKEW_MS;
 }
 
 function preferredTheme() {
@@ -2050,13 +2053,21 @@ function renderBugFeed(containerEl, reports, updateId) {
 }
 
 // ── Time ago helper ───────────────────────────────────────────────────────────
-function timeAgo(isoString) {
+function timeAgo(isoString, now = Date.now()) {
   const parsed = new Date(isoString).getTime();
   if (!Number.isFinite(parsed)) return 'refresh pending';
-  const diff = Math.max(0, Date.now() - parsed);
-  const mins  = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days  = Math.floor(diff / 86400000);
+  const diff = now - parsed;
+  if (diff < -60000) {
+    const futureMins = Math.ceil(Math.abs(diff) / 60000);
+    if (futureMins < 60) return `in ${futureMins}m`;
+    const futureHours = Math.ceil(Math.abs(diff) / 3600000);
+    if (futureHours < 24) return `in ${futureHours}h`;
+    return `in ${Math.ceil(Math.abs(diff) / 86400000)}d`;
+  }
+  const safeDiff = Math.max(0, diff);
+  const mins  = Math.floor(safeDiff / 60000);
+  const hours = Math.floor(safeDiff / 3600000);
+  const days  = Math.floor(safeDiff / 86400000);
   if (mins  <  1) return 'just now';
   if (mins  < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;

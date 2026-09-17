@@ -11,6 +11,7 @@ const { getFreshnessSlaHours } = require('../config/platformRegistry');
 const { currentSteamGameRoster } = require('./steamGameEligibilityService');
 
 const MAX_UPDATE_AGE_DAYS = 240;
+const MAX_PUBLIC_FUTURE_SKEW_HOURS = 24;
 // Historical Steam game rows remain available to administrators for audit,
 // but public reads admit only evidence that satisfies the reviewed global
 // 30-day concurrency threshold plus the separate official US-market signal.
@@ -515,9 +516,11 @@ function searchRelevanceScore(update, queryOrTerms = []) {
   return Math.max(crossFieldCoverage, sameFieldStrength);
 }
 
-function isUpdateWithinDisplayWindow(update) {
+function isUpdateWithinDisplayWindow(update, now = Date.now()) {
   const releasedAt = Date.parse(update?.releasedAt);
-  return Number.isFinite(releasedAt) && releasedAt >= Date.now() - (MAX_UPDATE_AGE_DAYS * DAY_MS);
+  return Number.isFinite(releasedAt)
+    && releasedAt >= now - (MAX_UPDATE_AGE_DAYS * DAY_MS)
+    && releasedAt <= now + (MAX_PUBLIC_FUTURE_SKEW_HOURS * 60 * 60 * 1000);
 }
 
 function isUpdateDisplayable(update) {
@@ -1416,6 +1419,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         SELECT *
         FROM software_updates
         WHERE released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+          AND released_at <= NOW() + INTERVAL '${MAX_PUBLIC_FUTURE_SKEW_HOURS} hours'
           AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
       `;
       const params = [];
@@ -1509,6 +1513,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
           `SELECT *
            FROM software_updates
            WHERE released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+             AND released_at <= NOW() + INTERVAL '${MAX_PUBLIC_FUTURE_SKEW_HOURS} hours'
              AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
              AND LOWER(platform) = LOWER($1)
            ORDER BY released_at DESC, created_at DESC
@@ -1603,6 +1608,7 @@ async function getUpdateById(id) {
          FROM software_updates
          WHERE id = $1
            AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+           AND released_at <= NOW() + INTERVAL '${MAX_PUBLIC_FUTURE_SKEW_HOURS} hours'
            AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
          LIMIT 1`,
         [id]
@@ -1636,6 +1642,7 @@ async function getUpdateById(id) {
          WHERE id <> $1
            AND platform = $2
            AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+           AND released_at <= NOW() + INTERVAL '${MAX_PUBLIC_FUTURE_SKEW_HOURS} hours'
            AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
          ORDER BY
            CASE
@@ -1719,6 +1726,7 @@ async function getUpdateHistory(platform, limit = 20) {
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
          AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+         AND released_at <= NOW() + INTERVAL '${MAX_PUBLIC_FUTURE_SKEW_HOURS} hours'
          AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
        ORDER BY released_at DESC, created_at DESC
        LIMIT $2`,
