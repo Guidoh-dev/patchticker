@@ -355,8 +355,13 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
     platform: 'AMD', semanticQuery: 'xtx', sourceKind: null,
   }));
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('GeForce GTX 1060')).toBe('NVIDIA');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('GeForce 1080 Ti')).toBe('NVIDIA');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Quadro P2000')).toBe('NVIDIA');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon RX 580')).toBe('AMD');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon R9 390')).toBe('AMD');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon Vega 64')).toBe('AMD');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Intel UHD 630')).toBe('Intel');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Intel Iris Xe')).toBe('Intel');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Intel Arc B380')).toBe('Intel');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Arc A310')).toBe('Intel');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon RX 580', 'Intel')).toBeNull();

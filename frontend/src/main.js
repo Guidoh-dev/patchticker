@@ -4223,7 +4223,9 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
         <span class="detail-evidence-source">${H(e.source)}</span>
         <span class="detail-evidence-text">${H(e.text)}</span>
         ${e.provenanceNote ? `<span class="detail-evidence-note"><b>Source note</b>${H(e.provenanceNote)}</span>` : ''}
-        ${dateMeta.length ? `<span class="detail-evidence-meta">${dateMeta.map(item => `<em>${H(item)}</em>`).join('')}</span>` : ''}
+        <span class="detail-evidence-meta">${dateMeta.length
+          ? dateMeta.map(item => `<em>${H(item)}</em>`).join('')
+          : '<em>Verification timestamp unavailable</em>'}</span>
         <span class="detail-evidence-arrow">↗</span>
       </a>`;
   }).join('');

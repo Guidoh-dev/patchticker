@@ -570,6 +570,7 @@ test('update evidence cards distinguish source dates from verification time', ()
   assert.match(mainSource, /detail-evidence-meta/);
   assert.match(mainSource, /e\.provenanceNote[\s\S]*?detail-evidence-note/);
   assert.match(mainSource, /Verified \$\{timeAgo\(evidence\.checkedAt\)\}/);
+  assert.match(mainSource, /Verification timestamp unavailable/);
   assert.match(cssSource, /\.detail-evidence-meta\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(cssSource, /\.detail-evidence-note\s*\{[^}]*border-left:\s*2px solid var\(--yellow\)/s);
 });

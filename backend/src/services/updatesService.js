@@ -219,13 +219,25 @@ function parseSearchIntent(rawSearch) {
   };
 }
 
+const HARDWARE_SEARCH_PATTERNS = [
+  {
+    platform: 'NVIDIA',
+    pattern: /\b(?:geforce )?(?:rtx|gtx|mx)\s*\d{3,4}\b|\bgeforce\s+\d{3,4}(?:\s+ti)?\b|\b(?:nvidia\s+)?(?:quadro|tesla)\s+[a-z]?\d{3,4}\b/,
+  },
+  {
+    platform: 'AMD',
+    pattern: /\b(?:radeon )?rx\s*\d{3,4}\b|\bradeon pro w\s*\d{3,4}\b|\bradeon\s+(?:r[579]|hd|vega)\s*\d{1,4}\b/,
+  },
+  {
+    platform: 'Intel',
+    pattern: /\b(?:intel )?arc\s+(?:pro\s+)?[ab]?\s*\d{2,4}\b|\bintel\s+(?:uhd|iris(?:\s+xe)?)\s*(?:graphics\s*)?\d{0,4}\b|\bintel core ultra\b/,
+  },
+];
+
 function hardwareCompatibilitySearchPlatform(rawSearch, explicitPlatform = null) {
   const query = normaliseSearchDocument(rawSearch);
   if (!query) return null;
-  let inferred = null;
-  if (/\b(?:geforce )?(?:rtx|gtx|mx) \d{3,4}\b/.test(query)) inferred = 'NVIDIA';
-  else if (/\b(?:radeon )?rx \d{3,4}\b|\bradeon pro w\d{3,4}\b/.test(query)) inferred = 'AMD';
-  else if (/\b(?:intel )?arc (?:[ab]\s*)?\d{2,4}\b|\bintel (?:uhd|iris) \d{2,4}\b|\bintel core ultra\b/.test(query)) inferred = 'Intel';
+  const inferred = HARDWARE_SEARCH_PATTERNS.find(({ pattern }) => pattern.test(query))?.platform || null;
 
   const explicit = ['NVIDIA', 'AMD', 'Intel'].find(platform =>
     String(explicitPlatform || '').toLowerCase() === platform.toLowerCase()
