@@ -340,6 +340,12 @@ function dedupeIntelIssues(entries) {
   });
 }
 
+function isIntelGameTitle(value) {
+  const text = cleanDriverText(value, 180);
+  if (!text || text.length > 120) return false;
+  return !/\b(?:may|might|can|could|will)\s+(?:experience|display|show|fail|crash|stop)|\b(?:crash|corruption|artifact|known issue|recommendation|currently in beta|no action|workaround|unavailable)\b/i.test(text);
+}
+
 function parseNvidiaReleaseNotes(encodedNotes, encodedOtherNotes = '', pdfText = '') {
   const notesHtml = safeDecode(encodedNotes);
   const otherHtml = safeDecode(encodedOtherNotes);
@@ -390,11 +396,19 @@ function nvidiaImpactMetadata(driver, parsed) {
 function parseIntelReleaseNotes(pdfText) {
   const source = String(pdfText || '');
   const versionLine = source.match(/Driver Version:\s*([\d.]+)\s*(Non-WHQL|WHQL)?/i);
-  const highlights = pdfSection(source, /^\s*Highlights:\s*$/im, /^\s*Fixed Issues:\s*$/im);
-  const fixed = pdfSection(source, /^\s*Fixed Issues:\s*$/im, /^\s*Known Issues:\s*$/im);
+  const highlights = pdfSection(
+    source,
+    /^\s*Highlights:\s*$/im,
+    /^\s*(?:Fixed Issues|Known Issues|Intel[^\n]*Graphics Software Known Issues|Notes|Driver Package Contents):\s*$/im,
+  );
+  const fixed = pdfSection(
+    source,
+    /^\s*Fixed Issues:\s*$/im,
+    /^\s*(?:Known Issues|Intel[^\n]*Graphics Software Known Issues|Notes|Driver Package Contents):\s*$/im,
+  );
   const known = pdfSection(source, /^\s*Known Issues:\s*$/im, /^\s*Intel[^\n]*Graphics Software Known Issues:\s*$/im);
   const softwareKnown = pdfSection(source, /^\s*Intel[^\n]*Graphics Software Known Issues:\s*$/im, /^\s*Intel[^\n]*Graphics Software Performance Tuning/im);
-  const gameTitles = unique(markedPdfBullets(highlights).map(entry => entry.text), 140);
+  const gameTitles = unique(markedPdfBullets(highlights).map(entry => entry.text).filter(isIntelGameTitle), 140);
   const fixedIssues = dedupeIntelIssues(markedPdfBullets(fixed));
   const gameKnownIssues = dedupeIntelIssues(markedPdfBullets(known));
   const softwareKnownIssues = dedupeIntelIssues(markedPdfBullets(softwareKnown));

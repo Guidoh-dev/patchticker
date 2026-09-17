@@ -522,6 +522,39 @@ describe('scraper accuracy guards', () => {
     ]));
   });
 
+  test('Intel parser stops highlights at known issues when a release has no fixed-issues section', () => {
+    const parsed = __test.parseIntelReleaseNotes(`
+      Date: September 10, 2026
+      Driver Version: 32.0.101.8993 Non-WHQL
+      Highlights:
+      Intel Game On Driver support for:
+      ▪ WARDOGS*
+      Known Issues:
+      Intel® Core™ Ultra Series 3 Processors:
+      ▪ Mafia: The Old Country* may experience an application crash during gameplay.
+      ▪ Arena Breakout: Infinite* may experience an application crash during gameplay.
+      Intel® Graphics Software Known Issues:
+      ▪ Display page may show a blank value.
+      Intel® Graphics Software Performance Tuning (BETA):
+    `);
+
+    expect(parsed).toMatchObject({
+      version: '32.0.101.8993',
+      releasedAt: '2026-09-10',
+      whql: false,
+      gameTitles: ['WARDOGS'],
+      gameSupportCount: 1,
+      gameFixCount: 0,
+      knownIssueCount: 3,
+    });
+    expect(parsed.changelog).toEqual(['Game support — WARDOGS.']);
+    expect(parsed.knownIssues).toEqual(expect.arrayContaining([
+      expect.stringMatching(/Mafia: The Old Country.*Core Ultra Series 3/),
+      expect.stringMatching(/Arena Breakout: Infinite.*Core Ultra Series 3/),
+      'Display page may show a blank value.',
+    ]));
+  });
+
   test('official Intel and PlayStation artifact metadata preserves vendor package sizes', () => {
     expect(__test.parseIntelPackageSize(`
       <ul><li>Windows 11 Family</li><li>Size: 877.4 MB</li><li>SHA256: abc123</li></ul>
