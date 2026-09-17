@@ -2170,7 +2170,7 @@ function renderSourceTimeline(update) {
   `;
 }
 
-function evidenceDateMeta(evidence) {
+function evidenceDateMeta(evidence, update = null) {
   const basisLabels = {
     released: 'Release date',
     published: 'Published',
@@ -2179,8 +2179,14 @@ function evidenceDateMeta(evidence) {
     'source-updated': 'Source updated',
     'catalog-updated': 'Catalog metadata',
   };
-  const sourceDate = evidence?.publishedAt && Number.isFinite(Date.parse(evidence.publishedAt))
-    ? `${basisLabels[evidence.dateBasis] || 'Source date'} · ${formatReleaseDate(evidence.publishedAt)}`
+  const publishedAt = evidence?.publishedAt && Number.isFinite(Date.parse(evidence.publishedAt))
+    ? evidence.publishedAt
+    : ['released', 'published', 'artifact-published'].includes(evidence?.dateBasis)
+      && update?.releasedAt && Number.isFinite(Date.parse(update.releasedAt))
+      ? update.releasedAt
+      : null;
+  const sourceDate = publishedAt
+    ? `${basisLabels[evidence.dateBasis] || 'Source date'} · ${formatReleaseDate(publishedAt)}`
     : '';
   const checkedAt = evidence?.checkedAt && Number.isFinite(Date.parse(evidence.checkedAt))
     ? `Verified ${timeAgo(evidence.checkedAt)}`
@@ -4394,7 +4400,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
   `).join('');
 
   const evidenceHTML = (u.evidence || []).map(e => {
-    const dateMeta = evidenceDateMeta(e);
+    const dateMeta = evidenceDateMeta(e, u);
     return `
       <a class="detail-evidence-item" href="${H(e.url)}" target="_blank" rel="noopener">
         <span class="detail-evidence-source">${H(e.source)}</span>

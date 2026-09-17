@@ -1584,7 +1584,11 @@ async function detectWindows() {
       knownIssues,
       knownIssuesAuthoritative: true,
       securityCriticality,
-      evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title, { dateBasis: 'released', releaseType: isSecurityUpdate ? 'official-security-release' : 'official-release' }),
+      evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title, {
+        dateBasis: 'released',
+        publishedAt: update.releasedAt,
+        releaseType: isSecurityUpdate ? 'official-security-release' : 'official-release',
+      }),
       sourceUrl:  update.sourceUrl,
     };
   } catch (err) {
@@ -1630,12 +1634,13 @@ async function detectNvidia() {
     }
     const parsed = parseNvidiaReleaseNotes(driver.ReleaseNotes, driver.OtherNotes, releasePdfText);
     const impactMeta = nvidiaImpactMetadata(driver, parsed);
+    const releasedAt = toIsoDate(driver.ReleaseDateTime);
 
     return {
       platform:   'NVIDIA',
       name:       `NVIDIA Game Ready Driver ${driver.Version}`,
       version:    driver.Version,
-      releasedAt: toIsoDate(driver.ReleaseDateTime),
+      releasedAt,
       affects:    'NVIDIA GeForce desktop and notebook GPUs listed for this Game Ready package / DLSS / G-SYNC / NVIDIA App overlays',
       changelog:  parsed.changelog,
       knownIssues: parsed.knownIssues,
@@ -1646,8 +1651,8 @@ async function detectNvidia() {
         : 'Install if the listed game support or fixes apply; otherwise wait if your current driver is stable.',
       reasoning: `NVIDIA’s official notes document ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} gaming fix${parsed.gameFixCount === 1 ? '' : 'es'}, ${parsed.generalFixCount} general fix${parsed.generalFixCount === 1 ? '' : 'es'}, and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} for this WHQL release.`,
       evidence: [
-        ...sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}; ${parsed.gameSupportCount} supported games, ${parsed.gameFixCount} gaming fixes, ${parsed.generalFixCount} general fixes, and ${compatibility?.hardware?.length || 0} supported desktop/notebook GPU entries documented.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta, compatibility: compatibility || undefined }),
-        ...(parsed.releaseNotesUrl ? sourceEvidence('NVIDIA Release Notes', parsed.releaseNotesUrl, `Official WHQL release-notes PDF for driver ${driver.Version}; ${parsed.generalFixCount} general fixes and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }) : []),
+        ...sourceEvidence('NVIDIA Driver Downloads', sourceUrl, `Game Ready Driver ${driver.Version}; ${parsed.gameSupportCount} supported games, ${parsed.gameFixCount} gaming fixes, ${parsed.generalFixCount} general fixes, and ${compatibility?.hardware?.length || 0} supported desktop/notebook GPU entries documented.`, { dateBasis: 'released', publishedAt: releasedAt, releaseType: 'official-release', ...impactMeta, compatibility: compatibility || undefined }),
+        ...(parsed.releaseNotesUrl ? sourceEvidence('NVIDIA Release Notes', parsed.releaseNotesUrl, `Official WHQL release-notes PDF for driver ${driver.Version}; ${parsed.generalFixCount} general fixes and ${parsed.knownIssueCount} open issue${parsed.knownIssueCount === 1 ? '' : 's'} documented.`, { dateBasis: 'released', publishedAt: releasedAt, releaseType: 'official-release-notes', ...impactMeta }) : []),
       ],
       sourceUrl,
     };
@@ -1708,7 +1713,7 @@ async function detectAmd() {
         reasoning: `AMD’s official ${parsed.whql ? 'WHQL ' : ''}release documents ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} fixed issue${parsed.gameFixCount === 1 ? '' : 's'}, ${parsed.productSupportCount} newly supported product${parsed.productSupportCount === 1 ? '' : 's'}, and ${parsed.knownIssueCount} known issue${parsed.knownIssueCount === 1 ? '' : 's'}.`,
         evidence: [
           ...(discovered ? sourceEvidence('AMD Driver Downloads', driverPageUrl, `AMD’s Radeon RX driver page identifies Adrenalin Edition ${parsed.version} as the current ${parsed.whql ? 'WHQL ' : ''}package.`, { dateBasis: 'checked', releaseType: 'official-download-index', ...impactMeta }) : []),
-          ...sourceEvidence('AMD Release Notes', url, `${parsed.title}; ${parsed.gameFixCount} fixed and ${parsed.knownIssueCount} known issues documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta, compatibility: parsed.compatibility || undefined }),
+          ...sourceEvidence('AMD Release Notes', url, `${parsed.title}; ${parsed.gameFixCount} fixed and ${parsed.knownIssueCount} known issues documented.`, { dateBasis: 'released', publishedAt: parsed.releasedAt, releaseType: 'official-release-notes', ...impactMeta, compatibility: parsed.compatibility || undefined }),
         ],
         sourceUrl: url,
       };
@@ -1824,6 +1829,7 @@ async function detectSteam() {
     );
     if (!update) return null;
     const sourceUrl = update.link || 'https://store.steampowered.com/news/';
+    const releasedAt = toIsoDate(update.pubDate);
     const explicitVersion = firstVersion(`${update.title} ${update.description}`);
     const identity = steamClientReleaseIdentity(sourceUrl, update.pubDate);
     const version = explicitVersion || identity.version;
@@ -1843,7 +1849,7 @@ async function detectSteam() {
       sourceKind: identity.sourceKind,
       sourceRef: identity.sourceRef,
       productId: identity.productId,
-      releasedAt: toIsoDate(update.pubDate),
+      releasedAt,
       affects: isSteamOs
         ? 'Steam Deck / SteamOS / handheld compatibility and system software'
         : 'Steam desktop client / login / library / downloads / local network transfers',
@@ -1860,7 +1866,7 @@ async function detectSteam() {
         : isSteamOs
           ? 'PatchTicker reads Valve’s official Steam Deck feed and separates SteamOS release changes from known issues before scoring the update.'
           : 'PatchTicker reads Valve’s official Steam Client feed and separates desktop client changes from known issues before scoring the update.',
-      evidence: sourceEvidence('Steam News', sourceUrl, `${update.title}. ${description}`, { dateBasis: 'published', releaseType: 'official-release' }),
+      evidence: sourceEvidence('Steam News', sourceUrl, `${update.title}. ${description}`, { dateBasis: 'published', publishedAt: releasedAt, releaseType: 'official-release' }),
       sourceUrl,
     };
   } catch (err) {
@@ -1916,7 +1922,7 @@ async function detectSwitch() {
       ...(securityNotice ? [`Security: ${securityNotice.title}.`] : []),
     ], 520).slice(0, 8);
     const evidence = [
-      ...sourceEvidence('Nintendo Support', sourceUrl, `${parsed.heading}. ${changelog[0]}`, { dateBasis: 'released', releaseType: 'official-release' }),
+      ...sourceEvidence('Nintendo Support', sourceUrl, `${parsed.heading}. ${changelog[0]}`, { dateBasis: 'released', publishedAt: parsed.releasedAt, releaseType: 'official-release' }),
       ...(securityNotice ? sourceEvidence('Nintendo Security Advisory', securityNotice.url, securityNotice.title, {
         dateBasis: 'published',
         releaseType: 'official-security-advisory',

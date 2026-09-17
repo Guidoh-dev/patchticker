@@ -591,8 +591,10 @@ test('update cards and detail pages expose compact source freshness signals', ()
 });
 
 test('update evidence cards distinguish source dates from verification time', () => {
-  assert.match(mainSource, /function evidenceDateMeta\(evidence\)/);
+  assert.match(mainSource, /function evidenceDateMeta\(evidence, update = null\)/);
   assert.match(mainSource, /'catalog-updated': 'Catalog metadata'/);
+  assert.match(mainSource, /\['released', 'published', 'artifact-published'\]\.includes\(evidence\?\.dateBasis\)/);
+  assert.match(mainSource, /evidenceDateMeta\(e, u\)/);
   assert.match(mainSource, /detail-evidence-meta/);
   assert.match(mainSource, /e\.provenanceNote[\s\S]*?detail-evidence-note/);
   assert.match(mainSource, /Verified \$\{timeAgo\(evidence\.checkedAt\)\}/);
