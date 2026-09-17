@@ -148,6 +148,27 @@ test('verified evidence metadata is promoted for API clients without inference',
     whql: true,
     steamAppId: null,
   });
+
+  const layeredDriver = updatesService.__test.rowToUpdate({
+    ...baseRow,
+    id: 'amd-layered-evidence', platform: 'AMD', product_id: null,
+    evidence: [
+      {
+        source: 'AMD Driver Downloads', url: 'https://amd.example/download',
+        releaseType: 'official-download-index', dateBasis: 'checked', checkedAt: '2026-08-12T10:00:00Z',
+      },
+      {
+        source: 'AMD Release Notes', url: 'https://amd.example/release-notes',
+        releaseType: 'official-release-notes', dateBasis: 'released', checkedAt: '2026-08-12T09:00:00Z',
+      },
+    ],
+  });
+  expect(layeredDriver).toMatchObject({
+    sourceUrl: 'https://amd.example/release-notes',
+    dateBasis: 'released',
+    lastCheckedAt: '2026-08-12T10:00:00Z',
+    officialSourceCount: 2,
+  });
 });
 
 test('legacy vendor-feed text is safely normalized when rows are hydrated', () => {

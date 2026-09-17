@@ -1074,6 +1074,39 @@ function analysisMethodForEvidence(evidence = []) {
   return 'source-and-issue-signals';
 }
 
+function isOfficialEvidence(item) {
+  return Boolean(item?.url) && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`);
+}
+
+function primaryOfficialEvidence(evidence = []) {
+  const releaseTypePriority = new Map([
+    ['official-security-advisory', 100],
+    ['official-security-release', 100],
+    ['official-release-notes', 95],
+    ['official-game-update', 95],
+    ['official-artifact', 90],
+    ['official-release', 80],
+    ['official-version', 70],
+    ['official-download-index', 40],
+  ]);
+  return (Array.isArray(evidence) ? evidence : [])
+    .filter(isOfficialEvidence)
+    .map((item, index) => ({
+      item,
+      index,
+      priority: releaseTypePriority.get(String(item.releaseType || '').toLowerCase()) || 50,
+    }))
+    .sort((a, b) => b.priority - a.priority || a.index - b.index)[0]?.item || null;
+}
+
+function latestOfficialCheck(evidence = []) {
+  return (Array.isArray(evidence) ? evidence : [])
+    .filter(isOfficialEvidence)
+    .map(item => item?.checkedAt)
+    .filter(value => Number.isFinite(Date.parse(value)))
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
+}
+
 function rowToUpdate(row) {
   const changelog = normaliseReleaseTextArray(jsonArray(row.changelog));
   const knownIssues = normaliseReleaseTextArray(jsonArray(row.known_issues));
@@ -1086,7 +1119,8 @@ function rowToUpdate(row) {
     text: item?.text ? normaliseReleaseText(item.text) : item?.text,
   }));
   const subreddits = jsonArray(row.subreddits);
-  const officialEvidence = evidence.find(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`));
+  const officialEvidence = primaryOfficialEvidence(evidence);
+  const lastOfficialCheck = latestOfficialCheck(evidence);
   const evidenceSizeBytes = evidence
     .map(item => Number(item?.sizeBytes))
     .find(value => Number.isFinite(value) && value > 0) || null;
@@ -1145,8 +1179,8 @@ function rowToUpdate(row) {
     evidence,
     sourceUrl:            officialEvidence?.url || evidence.find(e => e?.url)?.url || null,
     dateBasis:            officialEvidence?.dateBasis || 'released',
-    lastCheckedAt:        officialEvidence?.checkedAt || row.updated_at || row.created_at || null,
-    officialSourceCount:  evidence.filter(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`)).length,
+    lastCheckedAt:        lastOfficialCheck || row.updated_at || row.created_at || null,
+    officialSourceCount:  evidence.filter(isOfficialEvidence).length,
     sourceCheckSlaHours:  getFreshnessSlaHours(row.platform),
     securityCriticality:  row.security_criticality
       ? (typeof row.security_criticality === 'string' ? JSON.parse(row.security_criticality) : row.security_criticality)
@@ -1489,7 +1523,7 @@ async function getUpdateHistory(platform, limit = 20) {
     );
     const updates = rows.rows.map(r => {
       const evidence = jsonArray(r.evidence);
-      const officialEvidence = evidence.find(item => item?.url && !/(?:reddit\.com|^r\/)/i.test(`${item.source || ''} ${item.url}`));
+      const officialEvidence = primaryOfficialEvidence(evidence);
       const score = scoreOrNull(r.score, { updateId: r.id, field: 'score' });
       return {
         id:          r.id,
@@ -1503,7 +1537,7 @@ async function getUpdateHistory(platform, limit = 20) {
         aiGenerated: r.ai_generated,
         evidence,
         dateBasis:   officialEvidence?.dateBasis || 'released',
-        lastCheckedAt: officialEvidence?.checkedAt || r.updated_at || r.created_at || null,
+        lastCheckedAt: latestOfficialCheck(evidence) || r.updated_at || r.created_at || null,
       };
     }).filter(isUpdateDisplayable);
     return dedupeArticleReleases(updates).slice(0, Math.min(limit, 50));
