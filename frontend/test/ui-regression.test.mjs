@@ -785,6 +785,12 @@ test('update details expose an evidence-aware compatibility workspace and clear 
   assert.match(cssSource, /\.detail-update-info-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
 });
 
+test('update information fills its tablet grid without a dead metadata cell', () => {
+  assert.match(mainSource, /class="detail-update-info-source"/);
+  assert.match(cssSource, /\.detail-update-info-grid \.detail-update-info-source \{\s*grid-column: 1 \/ -1;\s*min-height: 82px;/);
+  assert.match(cssSource, /\.detail-update-info-grid \.detail-update-info-source,\s*\.detail-update-info-grid \.detail-update-info-scope \{ grid-column: auto; \}/);
+});
+
 test('source heartbeat makes per-platform check recency visible and filterable', () => {
   assert.match(mainSource, /id="coverage-heartbeats"/);
   assert.match(mainSource, /function renderSourceHeartbeats\(updates = \[\]\)/);

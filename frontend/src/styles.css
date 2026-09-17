@@ -9994,6 +9994,10 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
 
 @media (max-width: 920px) {
   .detail-update-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .detail-update-info-grid .detail-update-info-source {
+    grid-column: 1 / -1;
+    min-height: 82px;
+  }
   .detail-compatibility-layout { grid-template-columns: 1fr; }
   .detail-compatibility-controls { grid-template-columns: minmax(0, 1fr) 160px; }
   .detail-compatibility-unavailable { grid-template-columns: minmax(170px, .55fr) minmax(0, 1fr); }
@@ -10004,6 +10008,7 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
   .detail-section-nav { margin-inline: -1px; }
   .detail-section-nav button { min-width: 104px; }
   .detail-update-info-grid { grid-template-columns: 1fr; }
+  .detail-update-info-grid .detail-update-info-source,
   .detail-update-info-grid .detail-update-info-scope { grid-column: auto; }
   .detail-compatibility-checks { grid-template-columns: 1fr; }
   .detail-compatibility-checks > div { min-height: 0; }

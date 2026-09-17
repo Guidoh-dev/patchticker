@@ -4806,7 +4806,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
                 <strong>${H(decisionForUpdate(u).action)}</strong>
                 <small>Based on validated release evidence</small>
               </div>
-              <div>
+              <div class="detail-update-info-source">
                 <span>Source verification</span>
                 <strong>${H(detailSourceLabel)}</strong>
                 <small>${H(freshness.label)} · ${H(freshness.detail)}</small>
