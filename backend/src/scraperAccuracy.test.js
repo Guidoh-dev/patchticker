@@ -457,7 +457,7 @@ describe('scraper accuracy guards', () => {
       <ul>
         <li>New Product Support<ul><li>AMD Radeon RX 9050</li></ul></li>
         <li>New Game Support<ul><li>Gears of War: E-Day Open Beta Early Access</li><li>Out of Control Evolution</li></ul></li>
-        <li>Fixed Issues<ul><li>Directional indicators may fail to render in Fortnite.</li><li>Blender may crash on RX 7000 series products.</li></ul></li>
+        <li>Fixed Issues:<ul><li>Directional indicators may fail to render in Fortnite.</li><li>Blender may crash on RX 7000 series products.</li></ul></li>
       </ul>
       <h2>Known Issues</h2>
       <ul><li>Battlefield 6 may experience a driver timeout.</li><li>Smart Access Memory may become disabled after installation.</li></ul>

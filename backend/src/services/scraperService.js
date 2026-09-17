@@ -916,7 +916,7 @@ function amdNestedBullets($, label, max = 5) {
   const pattern = label instanceof RegExp ? label : new RegExp(label, 'i');
   const bullets = [];
   $('li').each((_, li) => {
-    const own = cleanText($(li).clone().children('ul,ol').remove().end().text(), 160);
+    const own = cleanText($(li).clone().children('ul,ol').remove().end().text(), 160).replace(/:\s*$/, '');
     pattern.lastIndex = 0;
     if (!pattern.test(own)) return;
     $(li).children('ul,ol').first().children('li').each((__, child) => {
