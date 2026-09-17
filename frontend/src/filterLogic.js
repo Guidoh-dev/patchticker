@@ -1,5 +1,5 @@
 export const SETUP_LENSES = Object.freeze({
-  pc: { label: 'PC & Steam', platforms: ['Windows', 'Chrome', 'NVIDIA', 'AMD', 'Intel', 'Steam', 'Discord', 'BattleNet', 'GOG'] },
+  pc: { label: 'PC & Steam', platforms: ['Windows', 'Chrome', 'Firefox', 'NVIDIA', 'AMD', 'Intel', 'Steam', 'Discord', 'BattleNet', 'GOG'] },
   console: { label: 'Console & handheld', platforms: ['Steam', 'Switch', 'PS5', 'Xbox'] },
   apple: { label: 'Apple devices', platforms: ['Apple', 'macOS'] },
 });

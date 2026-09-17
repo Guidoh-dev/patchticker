@@ -23,6 +23,7 @@
 //   Battle.net— Blizzard regional version manifests + HTTPS CDN build config
 //   GOG       — GOG GALAXY installer manifest + artifact timestamp
 //   Chrome    — Google Chrome Releases Atom feed (full Stable desktop only)
+//   Firefox   — Mozilla current-version JSON + release notes + security advisory
 //
 // All detectors fail silently — a scrape failure never crashes the cron job.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2121,6 +2122,173 @@ async function detectChrome() {
   }
 }
 
+function firefoxAdvisoryUrl(releaseHtml, releaseUrl) {
+  const $ = cheerio.load(String(releaseHtml || ''));
+  const href = $('a[href*="/security/advisories/mfsa"]').first().attr('href');
+  if (!href) return null;
+  try {
+    const parsed = new URL(href, releaseUrl);
+    if (parsed.protocol !== 'https:'
+      || parsed.hostname !== 'www.mozilla.org'
+      || !/^\/(?:[a-z]{2}-[A-Z]{2}\/)?security\/advisories\/mfsa\d{4}-\d+\/$/.test(parsed.pathname)) return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, urls = {}) {
+  const expectedVersion = cleanText(versionMetadata?.LATEST_FIREFOX_VERSION, 40);
+  const expectedDate = toIsoDate(versionMetadata?.LAST_RELEASE_DATE);
+  if (!/^\d+\.\d+(?:\.\d+)?$/.test(expectedVersion) || !expectedDate) return null;
+
+  const releaseUrl = String(urls.releaseUrl || '');
+  const versionsUrl = String(urls.versionsUrl || 'https://product-details.mozilla.org/1.0/firefox_versions.json');
+  let parsedReleaseUrl;
+  try {
+    parsedReleaseUrl = new URL(releaseUrl);
+  } catch {
+    return null;
+  }
+  if (parsedReleaseUrl.protocol !== 'https:'
+    || !['www.firefox.com', 'firefox.com'].includes(parsedReleaseUrl.hostname)
+    || !parsedReleaseUrl.pathname.endsWith(`/firefox/${expectedVersion}/releasenotes/`)) return null;
+
+  const release$ = cheerio.load(String(releaseHtml || ''));
+  const actualVersion = cleanText(release$('.c-release-version').first().text(), 40);
+  const actualDate = toIsoDate(release$('.c-release-date').first().text());
+  const releaseChannelText = cleanText(release$('.c-release-first-title').first().text(), 220);
+  if (actualVersion !== expectedVersion
+    || actualDate !== expectedDate
+    || !new RegExp(`Version\\s+${expectedVersion.replace(/\./g, '\\.')}.*Release channel`, 'i').test(releaseChannelText)) return null;
+
+  const advisoryUrl = String(urls.advisoryUrl || firefoxAdvisoryUrl(releaseHtml, releaseUrl) || '');
+  let parsedAdvisoryUrl;
+  try {
+    parsedAdvisoryUrl = new URL(advisoryUrl);
+  } catch {
+    return null;
+  }
+  if (parsedAdvisoryUrl.protocol !== 'https:'
+    || parsedAdvisoryUrl.hostname !== 'www.mozilla.org'
+    || !/^\/(?:[a-z]{2}-[A-Z]{2}\/)?security\/advisories\/mfsa\d{4}-\d+\/$/.test(parsedAdvisoryUrl.pathname)) return null;
+
+  const advisory$ = cheerio.load(String(advisoryHtml || ''));
+  const advisoryHeading = cleanText(advisory$('.advisory h2').first().text(), 160);
+  const advisorySummary = advisory$('.advisory > dl.summary').first();
+  const advisoryDate = toIsoDate(advisorySummary.find('dt').filter((_, el) => cleanText(advisory$(el).text(), 40) === 'Announced').next('dd').text());
+  const fixedIn = cleanText(advisorySummary.find('dt').filter((_, el) => cleanText(advisory$(el).text(), 40) === 'Fixed in').next('dd').text(), 120);
+  const products = cleanText(advisorySummary.find('dt').filter((_, el) => cleanText(advisory$(el).text(), 40) === 'Products').next('dd').text(), 120);
+  const majorVersion = expectedVersion.split('.')[0];
+  if (!new RegExp(`Security Vulnerabilities fixed in Firefox\\s+${majorVersion}\\b`, 'i').test(advisoryHeading)
+    || advisoryDate !== expectedDate
+    || !new RegExp(`Firefox\\s+${majorVersion}\\b`, 'i').test(fixedIn)
+    || !/^Firefox$/i.test(products)) return null;
+
+  const severityMap = { critical: 'critical', high: 'high', moderate: 'medium', medium: 'medium', low: 'low' };
+  const vulnerabilities = [];
+  advisory$('section.cve').each((_, element) => {
+    const section = advisory$(element);
+    const heading = cleanText(section.find('h4').first().text().replace(/^#/, ''), 260);
+    const match = heading.match(/\b(CVE-\d{4}-\d+)\s*:\s*(.+)$/i);
+    const rawSeverity = cleanText(section.find('span.level').first().text(), 40).toLowerCase();
+    const severity = severityMap[rawSeverity];
+    if (!match || !severity) return;
+    vulnerabilities.push({
+      cve: match[1].toUpperCase(),
+      summary: cleanText(match[2], 190),
+      severity,
+    });
+  });
+  if (!vulnerabilities.length) return null;
+
+  const severityCounts = vulnerabilities.reduce((counts, vulnerability) => {
+    counts[vulnerability.severity] = (counts[vulnerability.severity] || 0) + 1;
+    return counts;
+  }, {});
+  const securityLevel = severityCounts.critical
+    ? 'critical'
+    : severityCounts.high
+      ? 'high'
+      : severityCounts.medium
+        ? 'medium'
+        : 'low';
+  const severitySummary = [
+    severityCounts.critical ? `${severityCounts.critical} critical` : '',
+    severityCounts.high ? `${severityCounts.high} high` : '',
+    severityCounts.medium ? `${severityCounts.medium} medium` : '',
+    severityCounts.low ? `${severityCounts.low} low` : '',
+  ].filter(Boolean).join(', ');
+
+  const releaseNotes = [];
+  for (const [sectionId, label, limit] of [['new', 'New', 3], ['fixed', 'Fixed', 5], ['changed', 'Changed', 3]]) {
+    release$(`#${sectionId} li.release-note .release-note-content`).slice(0, limit).each((_, element) => {
+      const text = cleanText(release$(element).text(), 320);
+      if (text && !/^Various security fixes\.?$/i.test(text)) releaseNotes.push(`${label}: ${text}`);
+    });
+  }
+  const activelyExploited = /(?:known to be|actively|currently) exploited(?: in the wild)?|active exploitation/i.test(cleanText(advisory$('.advisory').text(), 100_000));
+
+  return {
+    platform: 'Firefox',
+    name: `Mozilla Firefox ${expectedVersion}`,
+    version: expectedVersion,
+    releasedAt: expectedDate,
+    affects: 'Mozilla Firefox Release channel / Windows / macOS / Linux / browser security / extensions and web compatibility',
+    changelog: unique([
+      `Firefox ${expectedVersion} was first offered to Release channel users on ${expectedDate}.`,
+      `Mozilla documents ${vulnerabilities.length} CVEs in the matching security advisory (${severitySummary}).`,
+      ...releaseNotes,
+    ], 360).slice(0, 12),
+    knownIssues: [],
+    knownIssuesAuthoritative: false,
+    riskFactors: [{
+      level: securityLevel === 'critical' || securityLevel === 'high' ? 'high' : 'medium',
+      text: `${vulnerabilities.length} documented security vulnerabilities are fixed in this release; the highest Mozilla impact rating is ${securityLevel}.`,
+    }],
+    securityCriticality: {
+      level: securityLevel,
+      label: `${vulnerabilities.length} Mozilla security advisories (${severitySummary})`,
+      cves: unique(vulnerabilities.map(item => item.cve), 32),
+      totalCves: vulnerabilities.length,
+      activelyExploited,
+    },
+    verdict: securityLevel === 'critical' || securityLevel === 'high'
+      ? 'Install promptly and restart Firefox to apply Mozilla’s documented security fixes.'
+      : 'Install through Firefox’s normal Release channel, then restart the browser to finish applying the update.',
+    reasoning: `Mozilla’s current-version endpoint, Release-channel notes, and security advisory agree on Firefox ${expectedVersion} dated ${expectedDate}. The advisory documents ${vulnerabilities.length} CVEs (${severitySummary}); Beta, Nightly, ESR, Android, and iOS release lanes are not admitted by this detector.`,
+    evidence: [
+      ...sourceEvidence('Mozilla Firefox Version Service', versionsUrl, `Current Firefox Release version ${expectedVersion}; release date ${expectedDate}.`, { dateBasis: 'released', releaseType: 'official-version', publishedAt: expectedDate, releaseChannel: 'stable' }),
+      ...sourceEvidence('Firefox Release Notes', releaseUrl, `Firefox ${expectedVersion} Release channel notes dated ${expectedDate}; ${releaseNotes.length} bounded feature and fix notes parsed.`, { dateBasis: 'released', releaseType: 'official-release-notes', publishedAt: expectedDate, releaseChannel: 'stable' }),
+      ...sourceEvidence('Mozilla Security Advisory', advisoryUrl, `Firefox ${majorVersion} advisory documents ${vulnerabilities.length} CVEs (${severitySummary}).`, { dateBasis: 'announced', releaseType: 'official-security-advisory', publishedAt: expectedDate, severityCounts, securityFixCount: vulnerabilities.length }),
+    ],
+    sourceUrl: releaseUrl,
+  };
+}
+
+/**
+ * Mozilla Firefox — current desktop Release channel only.
+ * The version service, exact release-notes page, and exact security advisory
+ * must agree before PatchTicker accepts a release.
+ */
+async function detectFirefox() {
+  const versionsUrl = 'https://product-details.mozilla.org/1.0/firefox_versions.json';
+  try {
+    const versions = await fetchJson(versionsUrl);
+    const version = cleanText(versions?.LATEST_FIREFOX_VERSION, 40);
+    if (!/^\d+\.\d+(?:\.\d+)?$/.test(version)) return null;
+    const releaseUrl = `https://www.firefox.com/en-US/firefox/${version}/releasenotes/`;
+    const releaseHtml = await fetchHtml(releaseUrl);
+    const advisoryUrl = firefoxAdvisoryUrl(releaseHtml, releaseUrl);
+    if (!advisoryUrl) return null;
+    const advisoryHtml = await fetchHtml(advisoryUrl);
+    return parseFirefoxStableRelease(versions, releaseHtml, advisoryHtml, { versionsUrl, releaseUrl, advisoryUrl });
+  } catch (err) {
+    logger.warn('[scraper] Firefox detection failed', { error: err.message });
+    return null;
+  }
+}
+
 
 /**
  * Xbox — official Xbox Support structured content endpoint.
@@ -2291,6 +2459,7 @@ const DETECTORS = {
   BattleNet: detectBattleNet,
   GOG:      detectGog,
   Chrome:   detectChrome,
+  Firefox:  detectFirefox,
 };
 
 function sleep(ms) {
@@ -2402,5 +2571,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
 };

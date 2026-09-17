@@ -1306,9 +1306,9 @@ async function hydrateLandingSignals() {
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 const PLATFORM_CLASS = {
   AMD:'amd', NVIDIA:'nvidia', Apple:'apple', PS5:'ps5', Windows:'windows', Steam:'steam',
-  macOS:'macos', Chrome:'chrome', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
+  macOS:'macos', Chrome:'chrome', Firefox:'firefox', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
 };
-const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Chrome:'CHR', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
+const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Chrome:'CHR', Firefox:'FF', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
 const PLATFORM_LOGOS = {
   AMD:       '/platform-logos/simple-icons/amd.svg',
   NVIDIA:    '/platform-logos/simple-icons/nvidia.svg',
@@ -1325,24 +1325,25 @@ const PLATFORM_LOGOS = {
   BattleNet: '/platform-logos/simple-icons/battledotnet.svg',
   GOG:       '/platform-logos/simple-icons/gogdotcom.svg',
   Chrome:    '/platform-logos/simple-icons/googlechrome.svg',
+  Firefox:   '/platform-logos/simple-icons/firefoxbrowser.svg',
 };
-const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Chrome','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
+const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Chrome','Firefox','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
 const TICKER_SERVICES = [
-  'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows', 'Google Chrome',
+  'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows', 'Google Chrome', 'Mozilla Firefox',
   'Steam', 'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy', 'Switch', 'Xbox', 'PS5',
 ];
 const PLATFORM_CATEGORY_META = {
   pcHardware: { title: 'PC Hardware & Drivers', subtitle: 'GPU, graphics driver, and silicon update lanes.', platforms: ['NVIDIA', 'AMD', 'Intel'] },
   desktopOs:  { title: 'Desktop OS & Apple', subtitle: 'Windows, macOS, and iOS security and stability releases.', platforms: ['Windows', 'Apple', 'macOS'] },
   gaming:     { title: 'Gaming Platforms', subtitle: 'Steam, Steam Deck, consoles, launchers, and live game-service tooling.', platforms: ['Steam', 'Switch', 'Xbox', 'PS5', 'Discord', 'BattleNet', 'GOG'] },
-  browsers:   { title: 'Web Browsers', subtitle: 'Stable desktop browser releases and documented security fixes.', platforms: ['Chrome'] },
+  browsers:   { title: 'Web Browsers', subtitle: 'Stable desktop browser releases and documented security fixes.', platforms: ['Chrome', 'Firefox'] },
 };
 const PLATFORM_CATEGORY_ORDER = ['pcHardware', 'desktopOs', 'gaming', 'browsers'];
 const PLATFORM_TO_CATEGORY = Object.fromEntries(Object.entries(PLATFORM_CATEGORY_META).flatMap(([key, meta]) => meta.platforms.map(platform => [platform, key])));
 const SEARCH_SUGGESTIONS = [
   'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy',
   'Switch OLED', 'Joy-Con', 'MacBook Pro M3', 'MacBook Air M2',
-  'RTX 4090', 'RTX 50', 'RX 7900 XT', 'Arc A770', 'Chrome security', 'VPN', 'anti-cheat',
+  'RTX 4090', 'RTX 50', 'RX 7900 XT', 'Arc A770', 'Chrome security', 'Firefox security', 'VPN', 'anti-cheat',
 ];
 const SEARCH_ALIASES = {
   steamos: ['steamos', 'steam os', 'steam deck', 'deck', 'valve handheld'],
@@ -1355,6 +1356,7 @@ const SEARCH_ALIASES = {
   battlenet: ['battle.net', 'battlenet', 'blizzard', 'warcraft', 'diablo', 'overwatch'],
   gog: ['gog', 'gog galaxy', 'galaxy client', 'cd projekt'],
   chrome: ['chrome', 'google chrome', 'chromium', 'browser security'],
+  firefox: ['firefox', 'mozilla firefox', 'gecko', 'browser security'],
   // Keep model and chip searches literal. The empty-state recovery can offer
   // the macOS lane without claiming an update explicitly supports M1–M4.
   macbook: ['macbook', 'macos', 'mac os'],
@@ -1401,7 +1403,7 @@ function steamGameRosterDescription() {
 }
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
-function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy', Chrome: 'Google Chrome' })[p] || p; }
+function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy', Chrome: 'Google Chrome', Firefox: 'Mozilla Firefox' })[p] || p; }
 function platformLogoPath(platform) { return PLATFORM_LOGOS[platform] || null; }
 function renderPlatformLogo(platform, extraClass = '') {
   const pSuffix = platformSuffix(platform);
@@ -1420,6 +1422,7 @@ function serviceLogoKey(service) {
     'Battle.net': 'BattleNet',
     'GOG Galaxy': 'GOG',
     'Google Chrome': 'Chrome',
+    'Mozilla Firefox': 'Firefox',
   })[service] || service;
 }
 function renderServiceTickerItem(service) {
@@ -2526,12 +2529,12 @@ function renderGroupedUpdateSections(updates, watchedSet = new Set()) {
             <div>
               <p class="dash-section-kicker">Source lane ready</p>
               <h2>${H(meta.title)}</h2>
-              <span>Google Chrome Stable is monitored from Google’s official release feed. No verified browser release is loaded in this snapshot yet.</span>
+              <span>Chrome and Firefox desktop Stable releases are monitored from their official vendor sources. No verified browser release is loaded in this snapshot yet.</span>
             </div>
             <a href="#/updates" data-scroll-target="section-overview">Back to top ↑</a>
           </div>
           <div class="category-coming-soon">
-            <span>Chrome active</span><span>Edge planned</span><span>Firefox planned</span>
+            <span>Chrome active</span><span>Firefox active</span><span>Edge planned</span>
           </div>
         </section>
       `;
@@ -4764,14 +4767,11 @@ async function renderAdmin() {
             <button class="btn btn--primary btn--sm" id="pipeline-run-all">▶ Run full scan now</button>
             <select class="field-input pipeline-platform-select" id="pipeline-platform-select">
               <option value="">— or run single platform —</option>
-              <option>AMD</option><option>NVIDIA</option><option>Intel</option>
-              <option>Apple</option><option>macOS</option><option>Windows</option>
-              <option>Steam</option><option>Discord</option><option>BattleNet</option><option>GOG</option>
-              <option>Switch</option><option>Xbox</option><option>PS5</option>
+              ${TRACKED_PLATFORMS.map(platform => `<option value="${H(platform)}">${H(platformLabel(platform))}</option>`).join('')}
             </select>
             <button class="btn btn--outline btn--sm" id="pipeline-run-one">Run selected</button>
           </div>
-          <p class="pipeline-note">Scans run automatically every 6 hours. Security platforms (Windows, Apple, macOS) scan every hour.</p>
+          <p class="pipeline-note">Scans run automatically every 6 hours. Security platforms (Windows, Apple, macOS, Chrome, Firefox) scan every hour.</p>
         </div>
         <div id="pipeline-status-wrap" class="admin-table-wrap">${spinner()}</div>
         <div class="pipeline-controls pipeline-controls--email">

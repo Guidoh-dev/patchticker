@@ -52,6 +52,8 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['mac os', 'macOS'],
   ['chrome', 'Chrome'],
   ['google chrome', 'Chrome'],
+  ['firefox', 'Firefox'],
+  ['mozilla firefox', 'Firefox'],
   ['windows', 'Windows'],
   ['steam', 'Steam'],
   ['discord', 'Discord'],

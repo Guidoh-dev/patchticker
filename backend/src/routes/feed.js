@@ -50,7 +50,7 @@ const postQuotaLimiter = rateLimit({
 
 const PostSchema = z.object({
   body:     z.string().min(1).max(280).trim(),
-  platform: z.enum(['AMD','NVIDIA','Apple','PS5','Windows','Steam','macOS','Chrome','Intel','Xbox','Switch','Discord','BattleNet','GOG']).optional(),
+  platform: z.enum(['AMD','NVIDIA','Apple','PS5','Windows','Steam','macOS','Chrome','Firefox','Intel','Xbox','Switch','Discord','BattleNet','GOG']).optional(),
 });
 
 function feedUserLabel(userId) {

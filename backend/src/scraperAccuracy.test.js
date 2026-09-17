@@ -267,6 +267,76 @@ describe('scraper accuracy guards', () => {
     expect(parsed.name).not.toContain('154.0');
   });
 
+  test('Firefox parser requires matching Release notes and advisory while preserving CVE severity', () => {
+    const releaseHtml = `
+      <span class="c-release-version">156.0</span>
+      <p class="c-release-date">September 15, 2026</p>
+      <div class="c-release-first-title">Version 156.0, first offered to Release channel users on September 15, 2026</div>
+      <section class="c-release-notes">
+        <div id="new"><li class="release-note"><div class="release-note-content">Added a startup preference on macOS.</div></li></div>
+        <div id="fixed">
+          <li class="release-note"><div class="release-note-content">Fixed DNS over HTTPS site loading.</div></li>
+          <li class="release-note"><div class="release-note-content">Various <a href="https://www.mozilla.org/security/advisories/mfsa2026-90/">security fixes</a>.</div></li>
+        </div>
+        <div id="changed"><li class="release-note"><div class="release-note-content">The PDF viewer starts faster.</div></li></div>
+      </section>`;
+    const advisoryHtml = `
+      <div class="advisory">
+        <h2>Security Vulnerabilities fixed in Firefox 156</h2>
+        <dl class="summary">
+          <dt>Announced</dt><dd>September 15, 2026</dd>
+          <dt>Impact</dt><dd><span class="level high">high</span></dd>
+          <dt>Products</dt><dd>Firefox</dd>
+          <dt>Fixed in</dt><dd>Firefox 156</dd>
+        </dl>
+        <section class="cve"><h4>#CVE-2026-92005: Use-after-free in Web Codecs</h4><span class="level high">high</span></section>
+        <section class="cve"><h4>#CVE-2026-92039: Mitigation bypass in Notifications</h4><span class="level moderate">moderate</span></section>
+        <section class="cve"><h4>#CVE-2026-92060: Boundary issue in Internationalization</h4><span class="level low">low</span></section>
+      </div>`;
+    const parsed = __test.parseFirefoxStableRelease(
+      { LATEST_FIREFOX_VERSION: '156.0', LAST_RELEASE_DATE: '2026-09-15' },
+      releaseHtml,
+      advisoryHtml,
+      {
+        versionsUrl: 'https://product-details.mozilla.org/1.0/firefox_versions.json',
+        releaseUrl: 'https://www.firefox.com/en-US/firefox/156.0/releasenotes/',
+        advisoryUrl: 'https://www.mozilla.org/security/advisories/mfsa2026-90/',
+      }
+    );
+
+    expect(parsed).toMatchObject({
+      platform: 'Firefox',
+      name: 'Mozilla Firefox 156.0',
+      version: '156.0',
+      releasedAt: '2026-09-15',
+      securityCriticality: {
+        level: 'high',
+        totalCves: 3,
+        cves: ['CVE-2026-92005', 'CVE-2026-92039', 'CVE-2026-92060'],
+        activelyExploited: false,
+      },
+    });
+    expect(parsed.reasoning).toMatch(/3 CVEs \(1 high, 1 medium, 1 low\)/i);
+    expect(parsed.changelog.join(' ')).toMatch(/startup preference.*DNS over HTTPS.*PDF viewer/i);
+    expect(parsed.evidence).toHaveLength(3);
+
+    expect(__test.parseFirefoxStableRelease(
+      { LATEST_FIREFOX_VERSION: '157.0b2', LAST_RELEASE_DATE: '2026-09-15' },
+      releaseHtml,
+      advisoryHtml,
+      { releaseUrl: 'https://www.firefox.com/en-US/firefox/157.0b2/releasenotes/' }
+    )).toBeNull();
+    expect(__test.parseFirefoxStableRelease(
+      { LATEST_FIREFOX_VERSION: '156.0', LAST_RELEASE_DATE: '2026-09-16' },
+      releaseHtml,
+      advisoryHtml,
+      {
+        releaseUrl: 'https://www.firefox.com/en-US/firefox/156.0/releasenotes/',
+        advisoryUrl: 'https://www.mozilla.org/security/advisories/mfsa2026-90/',
+      }
+    )).toBeNull();
+  });
+
   test('Apple advisory parser ranks concrete impacts and preserves the full CVE count', () => {
     const parsed = __test.parseAppleSecurityAdvisory(`
       <div id="sections">

@@ -232,6 +232,11 @@ function platformContext(platform, detected) {
       verdict: 'Install promptly when Google documents critical or high-severity security fixes; restart Chrome to finish applying the release.',
       reasoning: 'Chrome Stable updates can close browser security vulnerabilities and change rendering, extensions, media, and web-platform behavior. PatchTicker tracks only Google’s full Stable desktop channel—not Beta, Dev, Early Stable, or mobile posts.',
     },
+    Firefox: {
+      affects: 'Mozilla Firefox Release channel / Windows / macOS / Linux / browser security / extensions and web compatibility',
+      verdict: 'Install promptly when Mozilla documents high-impact security fixes; restart Firefox to finish applying the release.',
+      reasoning: 'Firefox Release updates can close browser security vulnerabilities and change extensions, media, privacy controls, and web-platform behavior. PatchTicker requires Mozilla’s current-version service, matching Release notes, and matching security advisory to agree.',
+    },
     Steam: {
       affects: 'Steam client / SteamOS / Steam Deck / game library / downloads / compatibility layers',
       verdict: 'Good candidate for Steam Deck or Steam client users unless early reports mention install, compatibility, or download regressions.',
@@ -401,6 +406,7 @@ const PLATFORM_SUBREDDITS = {
   Apple:   ['iphone', 'ios'],
   macOS:   ['MacOS', 'apple'],
   Chrome:  ['chrome', 'cybersecurity'],
+  Firefox: ['firefox', 'cybersecurity'],
   Steam:   ['Steam', 'SteamDeck', 'linux_gaming'],
   Xbox:    ['XboxSeriesX', 'xboxone'],
   PS5:     ['PS5', 'playstation'],
