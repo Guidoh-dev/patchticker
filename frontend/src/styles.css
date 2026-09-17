@@ -2262,16 +2262,38 @@ select.field-input { cursor: pointer; }
 }
 .analytics-consent-actions .btn { min-height: 44px; }
 
+@media (min-width: 641px) {
+  .analytics-consent:not(.analytics-consent--preferences) {
+    width: min(660px, calc(100vw - 36px));
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 16px;
+    padding: 13px 14px;
+  }
+  .analytics-consent:not(.analytics-consent--preferences) .analytics-consent-actions {
+    grid-template-columns: 110px 150px;
+  }
+}
+
 @media (max-width: 640px) {
   .analytics-consent {
-    right: 10px;
-    bottom: 10px;
-    width: calc(100vw - 20px);
-    gap: 10px;
-    padding: 14px;
-    border-radius: 16px;
+    right: 8px;
+    bottom: 8px;
+    width: calc(100vw - 16px);
+    gap: 7px;
+    padding: 10px;
+    border-radius: 12px;
   }
-  .analytics-consent-copy strong { margin-bottom: 4px; }
+  .analytics-consent-copy strong {
+    margin-bottom: 2px;
+    font-size: 13px;
+  }
+  .analytics-consent-copy p {
+    margin-bottom: 2px;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .analytics-consent-copy a { font-size: 10px; }
   .analytics-consent-actions .btn { padding-inline: 12px; }
 }
 
@@ -10113,4 +10135,23 @@ html[data-theme="light"] .dash-aside-toolbar { background-color: rgba(244,244,24
 @media (prefers-reduced-motion: reduce) {
   .nav-system-status i,
   .site-footer-status i { animation: none; }
+}
+
+@media (max-width: 700px) {
+  #section-latest > .dash-panel-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 7px;
+  }
+  #section-latest > .dash-panel-head > div,
+  #section-latest > .dash-panel-head .dash-panel-copy {
+    width: 100%;
+    max-width: none;
+  }
+  #section-latest > .dash-panel-head h2 {
+    max-width: 18ch;
+    font-size: clamp(23px, 7vw, 29px);
+    line-height: 1.02;
+  }
 }

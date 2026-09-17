@@ -359,7 +359,15 @@ test('quick filters start collapsed and analytics consent stays compact on mobil
   assert.match(cssSource, /\.analytics-consent\s*\{[^}]*width:\s*min\(440px, calc\(100vw - 36px\)\)/s);
   assert.match(cssSource, /\.analytics-consent-detail--full\s*\{\s*display:\s*none/);
   assert.match(cssSource, /\.analytics-consent-detail--compact\s*\{\s*display:\s*block/);
-  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.analytics-consent\s*\{[^}]*width:\s*calc\(100vw - 20px\)/s);
+  assert.match(cssSource, /@media \(min-width: 641px\)[\s\S]*?\.analytics-consent:not\(\.analytics-consent--preferences\)[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.analytics-consent\s*\{[^}]*width:\s*calc\(100vw - 16px\)/s);
+  assert.match(cssSource, /\.analytics-consent-copy p\s*\{[^}]*font-size:\s*10px;[^}]*line-height:\s*1\.35/s);
+});
+
+test('the mobile patch desk header keeps its title and guidance in a readable vertical hierarchy', () => {
+  assert.match(cssSource, /@media \(max-width: 700px\)[\s\S]*?#section-latest > \.dash-panel-head\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
+  assert.match(cssSource, /#section-latest > \.dash-panel-head \.dash-panel-copy\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*none/s);
+  assert.match(cssSource, /#section-latest > \.dash-panel-head h2\s*\{[^}]*max-width:\s*18ch/s);
 });
 
 test('default platform sections reveal deep history on demand instead of flooding the page', () => {
