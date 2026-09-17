@@ -572,7 +572,10 @@ function isUpdateDisplayable(update) {
     );
   }
   if (update?.platform === 'PS5') {
-    return /^PUP-\d{4}\.\d{2}\.\d{2}-[a-f0-9]{8}$/i.test(String(update?.version || ''))
+    // `version` is the user-facing Sony build once display_version exists;
+    // provenance remains anchored to the immutable package fingerprint.
+    const artifactVersion = update?.internalVersion || update?.version;
+    return /^PUP-\d{4}\.\d{2}\.\d{2}-[a-f0-9]{8}$/i.test(String(artifactVersion || ''))
       && evidence.some(item => item?.releaseType === 'official-artifact');
   }
   const placeholderMonth = /^\d{4}-\d{2}$/.test(String(update?.version || ''));

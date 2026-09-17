@@ -838,6 +838,15 @@ test('PS5 CMS revisions are excluded while official package fingerprints remain 
     version: 'PUP-2026.07.23-767a94ea',
     evidence: [{ source: 'PlayStation System Software', releaseType: 'official-artifact' }],
   })).toBe(true);
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base,
+    version: '26.06-14.00.00',
+    internalVersion: 'PUP-2026.07.23-767a94ea',
+    evidence: [
+      { source: 'PlayStation System Software', releaseType: 'official-artifact' },
+      { source: 'PlayStation Update Features', releaseType: 'official-release-notes' },
+    ],
+  })).toBe(true);
 });
 
 test('production outages never expose static demo updates as live data', async () => {
