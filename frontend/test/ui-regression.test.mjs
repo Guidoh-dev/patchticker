@@ -447,6 +447,10 @@ test('invalid update scores are dropped rather than coerced to zero or five', ()
   assert.match(mainSource, /score: validScoreOrNull\(update\?\.score\)/);
   assert.match(mainSource, /return score === null \? 'Not scored'/);
   assert.match(mainSource, /if \(score === null\) return \{ label: 'Review official notes', cls: 'unscored', action: 'REVIEW' \}/);
+  assert.match(mainSource, /const updateStatus = updateScore === null[\s\S]*?'unscored'/);
+  assert.match(mainSource, /const updateStatusLabel = updateStatus === 'unscored' \? 'REVIEW'/);
+  assert.doesNotMatch(mainSource, /u\.status\.toUpperCase\(\)/);
+  assert.match(cssSource, /\.detail-decision-panel--unscored/);
   assert.doesNotMatch(mainSource, /vote\.avoid.*decisionForUpdate|decisionForUpdate[\s\S]{0,500}vote\.wait/);
   assert.doesNotMatch(mainSource, /Number\(latest\.score\) \|\| 0/);
 });

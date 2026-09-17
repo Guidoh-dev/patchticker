@@ -3990,6 +3990,12 @@ async function renderUpdateDetail(id) {
 
   const pSuffix   = platformSuffix(u.platform);
   const updateScore = validScoreOrNull(u.score);
+  const updateStatus = updateScore === null
+    ? 'unscored'
+    : ['stable', 'caution', 'avoid'].includes(u.status)
+      ? u.status
+      : updateScore >= 7.5 ? 'stable' : updateScore >= 5 ? 'caution' : 'avoid';
+  const updateStatusLabel = updateStatus === 'unscored' ? 'REVIEW' : updateStatus.toUpperCase();
   const updateScoreDisplay = scoreDisplay(updateScore);
   const updateScoreTone = scoreToneClass(updateScore);
   const packageSize = packageSizeMeta(u);
@@ -4176,8 +4182,8 @@ async function renderUpdateDetail(id) {
           </div>
         </div>
 
-        <aside class="detail-decision-panel detail-decision-panel--${H(u.status)}" aria-label="PatchTicker decision summary">
-          <div class="status-badge ${H(u.status)} detail-status-badge">${H(u.status.toUpperCase())}</div>
+        <aside class="detail-decision-panel detail-decision-panel--${H(updateStatus)}" aria-label="PatchTicker decision summary">
+          <div class="status-badge ${H(updateStatus)} detail-status-badge">${H(updateStatusLabel)}</div>
           <div class="detail-decision-score">
             <span class="${updateScoreTone}">${H(updateScoreDisplay)}</span>
             <em>${updateScore === null ? 'Patch notes available · rating rejected or unavailable' : 'PatchTicker score · out of 10'}</em>
@@ -4196,7 +4202,7 @@ async function renderUpdateDetail(id) {
       </div>
 
       <!-- Verdict banner -->
-      <div class="detail-verdict detail-verdict--${H(u.status)}">
+      <div class="detail-verdict detail-verdict--${H(updateStatus)}">
         <span class="detail-verdict-label">PATCHTICKER READ</span>
         <p class="detail-verdict-text">${H(u.verdict || 'No takeaway available for this update yet.')}</p>
       </div>
