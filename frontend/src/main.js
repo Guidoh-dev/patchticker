@@ -4304,21 +4304,33 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
       ? `${secLevel} security context`
       : 'No security classification published';
 
-  const changelogHTML = (u.changelog || []).map(c => `
-    <li class="detail-list-item detail-list-item--positive">
+  const detailChangeLimit = 6;
+  const detailIssueLimit = 4;
+  const changelog = Array.isArray(u.changelog) ? u.changelog : [];
+  const changelogHTML = changelog.map((c, index) => `
+    <li class="detail-list-item detail-list-item--positive"${index >= detailChangeLimit ? ' data-detail-overflow hidden' : ''}>
       <span class="detail-list-marker">+</span>${H(c)}
     </li>
   `).join('');
+  const changelogOverflow = Math.max(0, changelog.length - detailChangeLimit);
+  const changelogToggleHTML = changelogOverflow
+    ? `<button class="detail-list-toggle" type="button" data-detail-list-toggle="detail-changelog-list" data-collapsed-label="Show ${H(String(changelogOverflow))} more changes" data-expanded-label="Show fewer changes" aria-controls="detail-changelog-list" aria-expanded="false">Show ${H(String(changelogOverflow))} more changes</button>`
+    : '';
 
-  const issuesHTML = (u.knownIssues || []).length
-    ? (u.knownIssues).map(i => `
-        <li class="detail-list-item detail-list-item--negative">
+  const knownIssues = Array.isArray(u.knownIssues) ? u.knownIssues : [];
+  const issuesHTML = knownIssues.length
+    ? knownIssues.map((i, index) => `
+        <li class="detail-list-item detail-list-item--negative"${index >= detailIssueLimit ? ' data-detail-overflow hidden' : ''}>
           <span class="detail-list-marker">!</span>${H(i)}
         </li>
       `).join('')
     : u.knownIssuesAuthoritative
       ? '<li class="detail-list-item detail-list-item--verified"><span class="detail-list-marker">✓</span>The vendor currently lists no known issues for this release.</li>'
       : '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">?</span>No authoritative known-issue list was available in the checked release notes.</li>';
+  const issueOverflow = Math.max(0, knownIssues.length - detailIssueLimit);
+  const issueToggleHTML = issueOverflow
+    ? `<button class="detail-list-toggle detail-list-toggle--risk" type="button" data-detail-list-toggle="detail-issues-list" data-collapsed-label="Show ${H(String(issueOverflow))} more issues" data-expanded-label="Show fewer issues" aria-controls="detail-issues-list" aria-expanded="false">Show ${H(String(issueOverflow))} more issues</button>`
+    : '';
 
   const feedHTML = (u.feed || []).slice(0, 5).map(p => `
     <a class="detail-feed-item" href="${H(p.url)}" target="_blank" rel="noopener">
@@ -4482,12 +4494,14 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
           <section class="detail-section" id="detail-changes">
             ${detailSectionHeading('03 · Release contents', detailMethodMeta.heading, 'Vendor-published changes, fixes, and additions relevant to this release.')}
             <p class="detail-section-context">${H(detailMethodMeta.note)}</p>
-            <ul class="detail-list">${changelogHTML || '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">—</span>No changelog available</li>'}</ul>
+            <ul class="detail-list" id="detail-changelog-list">${changelogHTML || '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">—</span>No changelog available</li>'}</ul>
+            ${changelogToggleHTML}
           </section>
 
           <section class="detail-section" id="detail-issues">
             ${detailSectionHeading('04 · Before installing', 'Known issues', 'Unresolved problems explicitly captured from the checked source material.')}
-            <ul class="detail-list">${issuesHTML}</ul>
+            <ul class="detail-list" id="detail-issues-list">${issuesHTML}</ul>
+            ${issueToggleHTML}
           </section>
 
           <section class="detail-section detail-compatibility" id="detail-compatibility">
@@ -4615,6 +4629,20 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
     button.addEventListener('click', () => {
       const target = document.getElementById(button.dataset.detailTarget);
       target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  document.querySelectorAll('[data-detail-list-toggle]').forEach(button => {
+    button.addEventListener('click', () => {
+      const list = document.getElementById(button.dataset.detailListToggle || '');
+      if (!list) return;
+      const willExpand = button.getAttribute('aria-expanded') !== 'true';
+      list.querySelectorAll('[data-detail-overflow]').forEach(item => {
+        item.hidden = !willExpand;
+      });
+      button.setAttribute('aria-expanded', String(willExpand));
+      button.textContent = willExpand
+        ? button.dataset.expandedLabel || 'Show fewer'
+        : button.dataset.collapsedLabel || 'Show more';
     });
   });
 

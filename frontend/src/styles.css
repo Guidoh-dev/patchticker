@@ -9573,6 +9573,36 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
 .detail-section-title { padding-bottom: 11px; border-bottom: 1px solid var(--border); }
 .detail-list { gap: 1px; padding: 1px; background: var(--border); }
 .detail-list-item { border: 0; border-radius: 0; background: var(--bg-deep); }
+.detail-list-toggle {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 28%, var(--border));
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--cyan) 4%, var(--bg-deep));
+  color: var(--cyan);
+  font: 800 10px/1 var(--font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease, color .2s ease;
+}
+.detail-list-toggle:hover,
+.detail-list-toggle:focus-visible {
+  border-color: color-mix(in srgb, var(--cyan) 64%, var(--border));
+  background: color-mix(in srgb, var(--cyan) 9%, var(--bg-deep));
+  outline: none;
+}
+.detail-list-toggle--risk {
+  border-color: color-mix(in srgb, var(--red) 28%, var(--border));
+  background: color-mix(in srgb, var(--red) 4%, var(--bg-deep));
+  color: var(--red);
+}
+.detail-list-toggle--risk:hover,
+.detail-list-toggle--risk:focus-visible {
+  border-color: color-mix(in srgb, var(--red) 64%, var(--border));
+  background: color-mix(in srgb, var(--red) 9%, var(--bg-deep));
+}
 .detail-evidence-list { gap: 1px; padding: 1px; background: var(--border); }
 .detail-evidence-item { border: 0; border-radius: 0; background: var(--bg-deep); }
 .detail-evidence-item:hover { background: rgba(6,182,212,.045); }

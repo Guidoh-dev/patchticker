@@ -714,6 +714,13 @@ test('every update detail exposes a source-backed compatibility workspace and cl
   assert.match(mainSource, /compatibilityForm\.requestSubmit\(\)/);
   assert.match(mainSource, /document\.getElementById\('detail-compatibility'\)\?\.scrollIntoView/);
   assert.match(mainSource, /route\('\/updates\/:id', \(\{ id, hardware \}\) => renderUpdateDetail\(id, \{ hardware \}\)\)/);
+  assert.match(mainSource, /const detailChangeLimit = 6/);
+  assert.match(mainSource, /const detailIssueLimit = 4/);
+  assert.match(mainSource, /data-detail-overflow hidden/);
+  assert.match(mainSource, /data-detail-list-toggle="detail-changelog-list"/);
+  assert.match(mainSource, /data-detail-list-toggle="detail-issues-list"/);
+  assert.match(mainSource, /list\.querySelectorAll\('\[data-detail-overflow\]'\)/);
+  assert.match(cssSource, /\.detail-list-toggle\s*\{[^}]*min-height:\s*44px/s);
   assert.match(compatibilitySource, /PatchTicker will not guess from the product name/);
   assert.match(cssSource, /\.detail-compatibility-layout\s*\{[\s\S]*?grid-template-columns/);
   assert.match(cssSource, /\.detail-compatibility-checks\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
