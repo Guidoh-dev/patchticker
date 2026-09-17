@@ -345,6 +345,11 @@ test('dashboard status, logos, facts, and footer use valid accessible semantics'
   assert.match(mainSource, /<span class="nav-system-status">/);
   assert.match(mainSource, /<div class="service-ticker" aria-hidden="true">/);
   assert.doesNotMatch(mainSource, /class="\$\{classes\}" aria-label=/);
+  assert.match(mainSource, /class="dash-lens-ribbon" role="group" aria-label="Setup filters"/);
+  assert.match(mainSource, /id="status-ribbon" role="group" aria-label="Status filters"/);
+  assert.match(mainSource, /class="dash-category-jumps" role="navigation" aria-label="Category jumps"/);
+  assert.match(mainSource, /class="dash-source-heartbeats" role="group" aria-label="Platform source heartbeat"/);
+  assert.match(mainSource, /id="dash-hero-stats" role="group" aria-label="Current update status totals"/);
   assert.match(mainSource, /<dd class="\$\{scoreToneClass\(ratingValue\)\}">[\s\S]*?<small>\$\{H\(ratingSource\)\}<\/small><\/dd>/);
   assert.match(mainSource, /<dd>\$\{H\(formatReleaseDate\(u\.releasedAt\)\)\}<small>\$\{H\(age\)\}<\/small><\/dd>/);
   assert.match(mainSource, /<dd>\$\{H\(packageSize\.value\)\}<small>\$\{H\(packageSize\.note\)\}<\/small><\/dd>/);

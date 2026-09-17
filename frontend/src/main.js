@@ -2727,7 +2727,7 @@ async function renderDashboard({ focusId = null } = {}) {
               </div>
               <div class="dash-quickbar-filter-group">
                 <span class="dash-quickbar-filter-label">Setup</span>
-                <div class="dash-lens-ribbon" aria-label="Setup filters">
+                <div class="dash-lens-ribbon" role="group" aria-label="Setup filters">
                   <button class="setup-lens active" type="button" data-setup="">Everything</button>
                   <button class="setup-lens" type="button" data-setup="pc">PC &amp; Steam</button>
                   <button class="setup-lens" type="button" data-setup="console">Console &amp; handheld</button>
@@ -2743,7 +2743,7 @@ async function renderDashboard({ focusId = null } = {}) {
               </div>
               <div class="dash-quickbar-filter-group dash-quickbar-filter-group--split">
                 <span class="dash-quickbar-filter-label">Status</span>
-                <div class="dash-status-ribbon" id="status-ribbon" aria-label="Status filters">
+                <div class="dash-status-ribbon" id="status-ribbon" role="group" aria-label="Status filters">
                   <button class="chip active" type="button" data-status="">All status</button>
                   <button class="chip" type="button" data-status="stable">Stable</button>
                   <button class="chip" type="button" data-status="caution">Caution</button>
@@ -2752,7 +2752,7 @@ async function renderDashboard({ focusId = null } = {}) {
               </div>
               <div class="dash-quickbar-filter-group">
                 <span class="dash-quickbar-filter-label">Jump to</span>
-                <div class="dash-category-jumps" aria-label="Category jumps">
+                <div class="dash-category-jumps" role="navigation" aria-label="Category jumps">
                   ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
                 </div>
               </div>
@@ -2785,14 +2785,14 @@ async function renderDashboard({ focusId = null } = {}) {
                 <span id="coverage-health">Health check pending</span>
                 <span id="coverage-last">Last sweep pending</span>
               </div>
-              <div class="dash-source-heartbeats" aria-label="Platform source heartbeat">
+              <div class="dash-source-heartbeats" role="group" aria-label="Platform source heartbeat">
                 <span>Source heartbeat</span>
                 <div class="dash-source-heartbeat-track" id="coverage-heartbeats">
                   <em>Checking platform lanes…</em>
                 </div>
               </div>
             </div>
-            <div class="dash-command-stats" id="dash-hero-stats" aria-label="Current update status totals">
+            <div class="dash-command-stats" id="dash-hero-stats" role="group" aria-label="Current update status totals">
               <div class="dash-command-stat"><span class="dash-stat-val" id="stat-stable">—</span><small>Stable</small></div>
               <div class="dash-command-stat"><span class="dash-stat-val dash-stat-val--caution" id="stat-caution">—</span><small>Caution</small></div>
               <div class="dash-command-stat"><span class="dash-stat-val dash-stat-val--avoid" id="stat-avoid">—</span><small>Avoid</small></div>
