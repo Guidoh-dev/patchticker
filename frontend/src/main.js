@@ -1420,6 +1420,41 @@ const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam deck', 'steamdeck', 'steam os', 'steamos'], platform: 'Steam', sourceKind: 'steamos-news', label: 'SteamOS / Steam Deck' },
   { aliases: ['steam games', 'steam game'], platform: 'Steam', sourceKind: 'steam-game-news', label: 'Steam games' },
 ];
+const CATEGORY_SEARCH_INTENTS = [
+  {
+    aliases: ['web browsers', 'web browser', 'browser updates', 'browser update', 'browsers', 'browser'],
+    label: 'Web browsers',
+    lanes: [{ platform: 'Chrome' }, { platform: 'Firefox' }, { platform: 'Edge' }],
+  },
+  {
+    aliases: ['pc hardware and drivers', 'pc hardware', 'graphics drivers', 'graphics driver', 'gpu drivers', 'gpu driver', 'video drivers', 'video driver'],
+    label: 'PC hardware & drivers',
+    lanes: [{ platform: 'NVIDIA' }, { platform: 'AMD' }, { platform: 'Intel' }],
+  },
+  {
+    aliases: ['console firmware', 'console updates', 'console update', 'console patches', 'consoles', 'console'],
+    label: 'Console firmware',
+    lanes: [{ platform: 'Switch' }, { platform: 'Xbox' }, { platform: 'PS5' }],
+  },
+  {
+    aliases: ['game launchers', 'game launcher', 'gaming launchers', 'launcher updates', 'launcher update', 'launchers'],
+    label: 'Game launchers',
+    lanes: [
+      { platform: 'Steam', sourceKind: 'steam-client-news' },
+      { platform: 'Discord' }, { platform: 'BattleNet' }, { platform: 'GOG' },
+    ],
+  },
+  {
+    aliases: ['desktop operating systems', 'desktop operating system', 'desktop os', 'operating system updates', 'os updates', 'operating systems', 'operating system'],
+    label: 'Operating systems',
+    lanes: [{ platform: 'Windows' }, { platform: 'macOS' }, { platform: 'Apple' }],
+  },
+  {
+    aliases: ['handheld updates', 'handheld firmware', 'handhelds', 'handheld'],
+    label: 'Handheld systems',
+    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }],
+  },
+];
 const STEAM_GAME_SEARCH_ALIASES = new Map([
   ['cs2', '730'], ['counter strike', '730'], ['counter strike 2', '730'],
   ['gta v enhanced', '3240220'], ['gta 5 enhanced', '3240220'],
@@ -1671,6 +1706,20 @@ function searchIntentForQuery(raw) {
     };
   }
 
+  for (const intent of CATEGORY_SEARCH_INTENTS) {
+    const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
+      .find(candidate => query === candidate || query.startsWith(`${candidate} `));
+    if (!alias) continue;
+    return {
+      platform: null,
+      sourceKind: null,
+      sourceLabel: null,
+      categoryLabel: intent.label,
+      lanes: intent.lanes,
+      semanticQuery: stripSearchIntentStopwords(query.slice(alias.length).trim()),
+    };
+  }
+
   const exactPlatform = exactPlatformForSearch(query);
   if (exactPlatform) return { platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' };
 
@@ -1701,7 +1750,9 @@ function updateSearchRelevance(update, query) {
   const exactQuery = intent.semanticQuery;
   const groups = searchTermGroups(exactQuery);
   const intentScore = (intent.platform && update?.platform === intent.platform ? 200 : 0)
-    + (intent.sourceKind && update?.sourceKind === intent.sourceKind ? 200 : 0);
+    + (intent.sourceKind && update?.sourceKind === intent.sourceKind ? 200 : 0)
+    + (intent.lanes?.some(lane => update?.platform === lane.platform
+      && (!lane.sourceKind || update?.sourceKind === lane.sourceKind)) ? 200 : 0);
   if (!groups.length) return intentScore;
   const fields = [
     [update?.name, 100],
@@ -1753,6 +1804,8 @@ function searchMatchReason(update, query, explicitPlatform = '') {
   }
   if (!groups.length && intent.sourceKind && update?.sourceKind === intent.sourceKind) return `Release lane · ${intent.sourceLabel}`;
   if (!groups.length && intent.platform && update?.platform === intent.platform) return `Platform · ${platformLabel(intent.platform)}`;
+  if (!groups.length && intent.categoryLabel && intent.lanes?.some(lane => update?.platform === lane.platform
+    && (!lane.sourceKind || update?.sourceKind === lane.sourceKind))) return `Category · ${intent.categoryLabel}`;
   const matchesAll = value => {
     const haystack = normaliseSearchDocument(value);
     return groups.every(group => group.some(needle => searchDocumentContains(haystack, needle)));
@@ -2762,6 +2815,8 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
       resultScope = `Release lane · ${H(resolvedSearchIntent.sourceLabel || releaseLaneLabel(updates[0]))}`;
     } else if (resolvedSearchIntent.platform && !matchedTermCount) {
       resultScope = `Platform releases · ${H(platformLabel(resolvedSearchIntent.platform))}`;
+    } else if (resolvedSearchIntent.categoryLabel && !matchedTermCount) {
+      resultScope = `Category releases · ${H(resolvedSearchIntent.categoryLabel)}`;
     } else if (compatibilityFallbackCount && compatibilityFallbackCount === updates.length) {
       resultScope = 'Compatibility check · current vendor release';
     } else if (compatibilityMatchCount && compatibilityMatchCount === updates.length) {
@@ -3239,6 +3294,11 @@ async function renderDashboard({ focusId = null } = {}) {
       if (intent.platform) filtered = filtered.filter(u => u.platform === intent.platform);
       if (intent.sourceKind) filtered = filtered.filter(u => u.sourceKind === intent.sourceKind);
       if (intent.productId) filtered = filtered.filter(u => String(u.productId || '') === intent.productId);
+      if (intent.lanes?.length) {
+        filtered = filtered.filter(update => intent.lanes.some(lane =>
+          update.platform === lane.platform && (!lane.sourceKind || update.sourceKind === lane.sourceKind)
+        ));
+      }
       const groups = searchTermGroups(intent.semanticQuery);
       if (groups.length) {
         filtered = filtered.filter(u => {
@@ -3326,6 +3386,8 @@ async function renderDashboard({ focusId = null } = {}) {
       ? `Release lane · ${intent.sourceLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
       : intent.platform
       ? `Platform search · ${platformLabel(intent.platform)} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
+      : intent.categoryLabel
+      ? `Category search · ${intent.categoryLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
       : _searchMode === 'server'
       ? `Database search · ${resultCount} ${resultCount === 1 ? 'match' : 'matches'}`
       : `${resultCount} cached ${resultCount === 1 ? 'match' : 'matches'}`;

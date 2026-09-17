@@ -406,6 +406,33 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
   }));
 });
 
+test('category searches select explicit ecosystem lanes instead of incidental prose mentions', async () => {
+  expect(updatesService.__test.parseSearchIntent('browser updates')).toEqual(expect.objectContaining({
+    categoryLabel: 'Web browsers', semanticQuery: '',
+    lanes: [{ platform: 'Chrome' }, { platform: 'Firefox' }, { platform: 'Edge' }],
+  }));
+  expect(updatesService.__test.parseSearchIntent('graphics drivers crash')).toEqual(expect.objectContaining({
+    categoryLabel: 'PC hardware & drivers', semanticQuery: 'crash',
+  }));
+  expect(updatesService.__test.parseSearchIntent('console firmware')).toEqual(expect.objectContaining({
+    categoryLabel: 'Console firmware', semanticQuery: '',
+  }));
+  expect(updatesService.__test.parseSearchIntent('handheld updates')).toEqual(expect.objectContaining({
+    categoryLabel: 'Handheld systems',
+    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }],
+  }));
+
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'game launchers', sort: 'relevance' });
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$1\) AND source_kind = \$2/);
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$3\)/);
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$4\)/);
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$5\)/);
+  expect(params).toEqual(['Steam', 'steam-client-news', 'Discord', 'BattleNet', 'GOG']);
+});
+
 test('unsupported hardware searches return the current vendor release for an explicit compatibility check', async () => {
   mockIsAvailable.mockReturnValue(true);
   const amdRow = {

@@ -261,6 +261,16 @@ test('platform and release-lane search intent excludes incidental mentions', () 
   assert.match(mainSource, /platform === 'AMD'[\s\S]*?AMD_MODEL_VARIANT_TERMS\.has\(token\)/);
 });
 
+test('natural category searches map to explicit platform and release lanes', () => {
+  assert.match(mainSource, /const CATEGORY_SEARCH_INTENTS = \[/);
+  assert.match(mainSource, /label: 'Web browsers'[\s\S]*?platform: 'Chrome'[\s\S]*?platform: 'Firefox'[\s\S]*?platform: 'Edge'/);
+  assert.match(mainSource, /label: 'PC hardware & drivers'[\s\S]*?platform: 'NVIDIA'[\s\S]*?platform: 'AMD'[\s\S]*?platform: 'Intel'/);
+  assert.match(mainSource, /label: 'Game launchers'[\s\S]*?platform: 'Steam', sourceKind: 'steam-client-news'/);
+  assert.match(mainSource, /intent\.lanes\?\.length[\s\S]*?filtered = filtered\.filter\(update => intent\.lanes\.some/);
+  assert.match(mainSource, /Category search · \$\{intent\.categoryLabel\}/);
+  assert.match(mainSource, /Category releases · \$\{H\(resolvedSearchIntent\.categoryLabel\)\}/);
+});
+
 test('multi-part searches use strict all-term matching without phrase-order failures', () => {
   assert.match(mainSource, /function searchTermGroups\(raw\)/);
   assert.match(mainSource, /tokens\.length > 1[\s\S]*?map\(token => \[token\]\)/);

@@ -108,6 +108,45 @@ const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam games', 'steam game'], platform: 'Steam', sourceKind: 'steam-game-news', label: 'Steam games' },
 ];
 
+// Natural category language should select verified release lanes, not records
+// that happen to mention the word in prose. Steam is lane-scoped where needed
+// so a "game launchers" search cannot fill with unrelated game patch notes.
+const CATEGORY_SEARCH_INTENTS = [
+  {
+    aliases: ['web browsers', 'web browser', 'browser updates', 'browser update', 'browsers', 'browser'],
+    label: 'Web browsers',
+    lanes: [{ platform: 'Chrome' }, { platform: 'Firefox' }, { platform: 'Edge' }],
+  },
+  {
+    aliases: ['pc hardware and drivers', 'pc hardware', 'graphics drivers', 'graphics driver', 'gpu drivers', 'gpu driver', 'video drivers', 'video driver'],
+    label: 'PC hardware & drivers',
+    lanes: [{ platform: 'NVIDIA' }, { platform: 'AMD' }, { platform: 'Intel' }],
+  },
+  {
+    aliases: ['console firmware', 'console updates', 'console update', 'console patches', 'consoles', 'console'],
+    label: 'Console firmware',
+    lanes: [{ platform: 'Switch' }, { platform: 'Xbox' }, { platform: 'PS5' }],
+  },
+  {
+    aliases: ['game launchers', 'game launcher', 'gaming launchers', 'launcher updates', 'launcher update', 'launchers'],
+    label: 'Game launchers',
+    lanes: [
+      { platform: 'Steam', sourceKind: 'steam-client-news' },
+      { platform: 'Discord' }, { platform: 'BattleNet' }, { platform: 'GOG' },
+    ],
+  },
+  {
+    aliases: ['desktop operating systems', 'desktop operating system', 'desktop os', 'operating system updates', 'os updates', 'operating systems', 'operating system'],
+    label: 'Operating systems',
+    lanes: [{ platform: 'Windows' }, { platform: 'macOS' }, { platform: 'Apple' }],
+  },
+  {
+    aliases: ['handheld updates', 'handheld firmware', 'handhelds', 'handheld'],
+    label: 'Handheld systems',
+    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }],
+  },
+];
+
 const STEAM_GAME_SEARCH_ALIASES = new Map([
   ['cs2', '730'],
   ['counter strike', '730'],
@@ -205,6 +244,20 @@ function parseSearchIntent(rawSearch) {
       sourceKind: intent.sourceKind,
       sourceLabel: intent.label,
       semanticQuery: stripIntentStopwords(remainder, intent.platform),
+    };
+  }
+
+  for (const intent of CATEGORY_SEARCH_INTENTS) {
+    const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
+      .find(candidate => query === candidate || query.startsWith(`${candidate} `));
+    if (!alias) continue;
+    return {
+      platform: null,
+      sourceKind: null,
+      sourceLabel: null,
+      categoryLabel: intent.label,
+      lanes: intent.lanes,
+      semanticQuery: stripIntentStopwords(query.slice(alias.length).trim()),
     };
   }
 
@@ -1390,6 +1443,16 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         params.push(searchIntent.productId);
         query += ` AND product_id = $${params.length}`;
       }
+      if (searchIntent.lanes?.length) {
+        const laneClauses = searchIntent.lanes.map(lane => {
+          params.push(lane.platform);
+          const platformParam = `$${params.length}`;
+          if (!lane.sourceKind) return `LOWER(platform) = LOWER(${platformParam})`;
+          params.push(lane.sourceKind);
+          return `(LOWER(platform) = LOWER(${platformParam}) AND source_kind = $${params.length})`;
+        });
+        query += ` AND (${laneClauses.join(' OR ')})`;
+      }
       const searchGroups = buildSearchTermGroups(searchIntent.semanticQuery);
       if (searchGroups.length) {
         const searchDocument = `LOWER(CONCAT_WS(' ',
@@ -1487,6 +1550,11 @@ async function getUpdates({ platform, status, sort, search } = {}) {
     }
     if (searchIntent.productId) {
       updates = updates.filter(u => String(u.productId || '') === searchIntent.productId);
+    }
+    if (searchIntent.lanes?.length) {
+      updates = updates.filter(update => searchIntent.lanes.some(lane =>
+        update.platform === lane.platform && (!lane.sourceKind || update.sourceKind === lane.sourceKind)
+      ));
     }
     const groups = buildSearchTermGroups(searchIntent.semanticQuery);
     if (groups.length) {
