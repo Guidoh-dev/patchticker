@@ -2295,6 +2295,24 @@ select.field-input { cursor: pointer; }
   }
   .analytics-consent-copy a { font-size: 10px; }
   .analytics-consent-actions .btn { padding-inline: 12px; }
+  .analytics-consent:not(.analytics-consent--preferences) .analytics-consent-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 1px 10px;
+  }
+  .analytics-consent:not(.analytics-consent--preferences) .analytics-consent-copy strong {
+    grid-column: 1;
+    margin: 0;
+  }
+  .analytics-consent:not(.analytics-consent--preferences) .analytics-consent-copy p {
+    grid-column: 1 / -1;
+  }
+  .analytics-consent:not(.analytics-consent--preferences) .analytics-consent-copy a {
+    grid-column: 2;
+    grid-row: 1;
+    white-space: nowrap;
+  }
 }
 
 /* ── Marketing landing page ─────────────────────────────────────────────────── */
@@ -5639,14 +5657,30 @@ body { overflow-x: hidden; }
 .detail-score-method summary {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   min-height: 44px;
   color: var(--text-2);
   cursor: pointer;
   font-size: 11px;
   font-weight: 900;
+  list-style: none;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+.detail-score-method summary::-webkit-details-marker { display: none; }
+.detail-score-method summary::after {
+  content: '+';
+  display: grid;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--border-2);
+  color: var(--cyan);
+  font: 900 15px/1 var(--font-mono);
+}
+.detail-score-method[open] summary::after { content: '−'; }
 .detail-score-method summary:hover { color: var(--text); }
 .detail-score-method p {
   padding: 2px 2px 8px;

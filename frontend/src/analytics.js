@@ -217,7 +217,7 @@ function renderConsentPanel({ preferences = false } = {}) {
   const compactDetail = document.createElement('p');
   compactDetail.id = 'analytics-consent-detail-compact';
   compactDetail.className = 'analytics-consent-detail analytics-consent-detail--compact';
-  compactDetail.textContent = 'Anonymous usage analytics and masked heatmaps. No email, searches, watchlists, or notification tokens.';
+  compactDetail.textContent = 'Optional usage analytics and masked heatmaps. No emails, raw searches, watchlists, or tokens.';
   const policy = document.createElement('a');
   policy.href = '#/privacy';
   policy.textContent = 'Privacy policy';

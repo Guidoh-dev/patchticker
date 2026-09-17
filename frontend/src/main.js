@@ -4725,7 +4725,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
             ${decisionFactsHTML}
           </div>
           <details class="detail-score-method">
-            <summary>What shaped this score</summary>
+            <summary>How this rating is calculated</summary>
             <p>PatchTicker weighs documented release channels, vendor-known issues, structured risk severity, source availability, and release-note completeness. Community votes and generated summaries never alter this score.</p>
           </details>
           ${officialSourceUrl

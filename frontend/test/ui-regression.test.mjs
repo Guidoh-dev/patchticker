@@ -8,6 +8,7 @@ const root = resolve(import.meta.dirname, '..');
 const mainSource = await readFile(resolve(root, 'src/main.js'), 'utf8');
 const cssSource = await readFile(resolve(root, 'src/styles.css'), 'utf8');
 const apiSource = await readFile(resolve(root, 'src/api.js'), 'utf8');
+const analyticsSource = await readFile(resolve(root, 'src/analytics.js'), 'utf8');
 const routerSource = await readFile(resolve(root, 'src/router.js'), 'utf8');
 const filterLogicSource = await readFile(resolve(root, 'src/filterLogic.js'), 'utf8');
 const steamCandidatesSource = await readFile(resolve(root, 'src/steamGameCandidates.js'), 'utf8');
@@ -401,6 +402,9 @@ test('quick filters start collapsed and analytics consent stays compact on mobil
   assert.match(cssSource, /@media \(min-width: 641px\)[\s\S]*?\.analytics-consent:not\(\.analytics-consent--preferences\)[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.analytics-consent\s*\{[^}]*width:\s*calc\(100vw - 16px\)/s);
   assert.match(cssSource, /\.analytics-consent-copy p\s*\{[^}]*font-size:\s*10px;[^}]*line-height:\s*1\.35/s);
+  assert.match(analyticsSource, /Optional usage analytics and masked heatmaps\. No emails, raw searches, watchlists, or tokens\./);
+  assert.match(cssSource, /\.analytics-consent:not\(\.analytics-consent--preferences\) \.analytics-consent-copy\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s);
+  assert.match(cssSource, /\.analytics-consent:not\(\.analytics-consent--preferences\) \.analytics-consent-copy a\s*\{[^}]*grid-row:\s*1/s);
 });
 
 test('the mobile patch desk header keeps its title and guidance in a readable vertical hierarchy', () => {
@@ -706,9 +710,11 @@ test('score panels expose evidence inputs rather than dead impact placeholders',
   assert.match(mainSource, /WHQL Optional/);
   assert.match(mainSource, /WHQL Recommended/);
   assert.match(mainSource, /releaseChannel/);
-  assert.match(mainSource, /What shaped this score/);
+  assert.match(mainSource, /How this rating is calculated/);
   assert.doesNotMatch(mainSource, /Impact pending/);
   assert.match(cssSource, /\.detail-score-method\s*\{/);
+  assert.match(cssSource, /\.detail-score-method summary::after\s*\{[^}]*content:\s*'\+'/s);
+  assert.match(cssSource, /\.detail-score-method\[open\] summary::after\s*\{\s*content:\s*'−'/s);
   assert.match(cssSource, /\.detail-decision-fact--good strong\s*\{[^}]*var\(--green-score\)/s);
 });
 
