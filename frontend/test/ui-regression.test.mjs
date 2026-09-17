@@ -313,8 +313,10 @@ test('sticky update filters retreat on downward scroll and return toward the top
 test('quick filters start collapsed and analytics consent stays compact on mobile', () => {
   assert.match(mainSource, /<section class="dash-quickbar is-collapsed"[^>]*data-collapsed="true"/);
   assert.match(mainSource, /aria-expanded="false" aria-label="Show update filters"/);
-  assert.match(cssSource, /\.analytics-consent-detail--compact\s*\{\s*display:\s*none/);
-  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.analytics-consent-detail--full\s*\{\s*display:\s*none;\s*\}[\s\S]*?\.analytics-consent-detail--compact\s*\{\s*display:\s*block;/);
+  assert.match(cssSource, /\.analytics-consent\s*\{[^}]*width:\s*min\(440px, calc\(100vw - 36px\)\)/s);
+  assert.match(cssSource, /\.analytics-consent-detail--full\s*\{\s*display:\s*none/);
+  assert.match(cssSource, /\.analytics-consent-detail--compact\s*\{\s*display:\s*block/);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.analytics-consent\s*\{[^}]*width:\s*calc\(100vw - 20px\)/s);
 });
 
 test('default platform sections reveal deep history on demand instead of flooding the page', () => {

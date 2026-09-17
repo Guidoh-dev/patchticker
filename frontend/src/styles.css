@@ -2150,22 +2150,19 @@ select.field-input { cursor: pointer; }
 .analytics-consent {
   position: fixed;
   z-index: 10000;
-  right: 20px;
-  bottom: 20px;
-  left: 20px;
-  max-width: 920px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 18px 20px;
+  right: 18px;
+  bottom: 18px;
+  width: min(440px, calc(100vw - 36px));
+  display: grid;
+  gap: 12px;
+  padding: 16px;
   border: 1px solid var(--border-strong, var(--border));
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--bg-2);
   color: var(--text);
-  box-shadow: 0 18px 60px rgba(0, 0, 0, .36);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .5);
 }
+.analytics-consent--preferences { width: min(620px, calc(100vw - 36px)); }
 .analytics-consent-copy { min-width: 0; }
 .analytics-consent-copy strong {
   display: block;
@@ -2179,26 +2176,29 @@ select.field-input { cursor: pointer; }
   font-size: 12px;
   line-height: 1.5;
 }
-.analytics-consent-detail--compact { display: none; }
+.analytics-consent-detail--full { display: none; }
+.analytics-consent-detail--compact { display: block; }
+.analytics-consent--preferences .analytics-consent-detail--full { display: block; }
+.analytics-consent--preferences .analytics-consent-detail--compact { display: none; }
 .analytics-consent-copy a { color: var(--text); font-size: 11px; }
-.analytics-consent-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+.analytics-consent-actions {
+  display: grid;
+  grid-template-columns: minmax(110px, .72fr) minmax(150px, 1fr);
+  gap: 8px;
+}
+.analytics-consent-actions .btn { min-height: 44px; }
 
 @media (max-width: 640px) {
   .analytics-consent {
     right: 10px;
     bottom: 10px;
-    left: 10px;
-    align-items: stretch;
-    flex-direction: column;
+    width: calc(100vw - 20px);
     gap: 10px;
     padding: 14px;
     border-radius: 16px;
   }
   .analytics-consent-copy strong { margin-bottom: 4px; }
-  .analytics-consent-detail--full { display: none; }
-  .analytics-consent-detail--compact { display: block; }
-  .analytics-consent-actions { justify-content: stretch; }
-  .analytics-consent-actions .btn { flex: 1; min-height: 44px; padding-inline: 12px; }
+  .analytics-consent-actions .btn { padding-inline: 12px; }
 }
 
 /* ── Marketing landing page ─────────────────────────────────────────────────── */

@@ -198,6 +198,7 @@ function renderConsentPanel({ preferences = false } = {}) {
   const panel = document.createElement('section');
   panel.id = 'analytics-consent';
   panel.className = 'analytics-consent';
+  panel.classList.toggle('analytics-consent--preferences', preferences);
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-modal', preferences ? 'true' : 'false');
   panel.setAttribute('aria-labelledby', 'analytics-consent-title');
@@ -247,7 +248,10 @@ function renderConsentPanel({ preferences = false } = {}) {
     captureWebEvent('$pageview', activeRoute || currentRoute());
     removeConsentPanel();
   });
-  allow.focus();
+  // The first-visit notice is intentionally non-modal and must not hijack a
+  // visitor who is already using search or navigation. The explicit privacy
+  // preferences dialog is modal, so it receives focus when opened on demand.
+  if (preferences) allow.focus();
 }
 
 export function applyAnalyticsPrivacyMasks(root = document) {

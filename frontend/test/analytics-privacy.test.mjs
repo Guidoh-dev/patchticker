@@ -14,6 +14,7 @@ test('analytics vendors require an explicit granted consent state', () => {
   assert.match(analytics, /else if \(readConsent\(\) === null\) renderConsentPanel/);
   assert.match(analytics, /analytics_Storage: 'granted'/);
   assert.match(analytics, /ad_Storage: 'denied'/);
+  assert.match(analytics, /if \(preferences\) allow\.focus\(\)/);
 });
 
 test('PostHog billing requires a separate explicit production opt-in', () => {
