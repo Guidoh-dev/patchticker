@@ -72,6 +72,26 @@ test('AMD compatibility uses the official model family instead of fuzzy vendor g
   assert.match(oldCard.detail, /does not match/i);
 });
 
+test('AMD numeric family aliases cannot turn similarly numbered CPUs into supported GPUs', () => {
+  const cpu = evaluateCompatibility(amdProfile, {
+    hardware: 'AMD Ryzen 9 7900X',
+    operatingSystem: 'windows-11',
+  });
+  assert.equal(cpu.status, 'unverified');
+
+  const bareNumber = evaluateCompatibility(amdProfile, {
+    hardware: '7900',
+    operatingSystem: 'windows-11',
+  });
+  assert.equal(bareNumber.status, 'unverified');
+
+  const gpuShorthand = evaluateCompatibility(amdProfile, {
+    hardware: 'RX 7900 XTX',
+    operatingSystem: 'windows-11',
+  });
+  assert.equal(gpuShorthand.status, 'supported');
+});
+
 test('AMD compatibility enforces explicit vendor exclusions', () => {
   const result = evaluateCompatibility(amdProfile, {
     hardware: 'Steam Deck OLED',

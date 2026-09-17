@@ -51,6 +51,26 @@ function looksLikeVendorModel(profile, hardware) {
   return false;
 }
 
+function compatibilityAliasMatches(profile, entry, hardware, alias) {
+  if (!includesPhrase(hardware, alias)) return false;
+
+  // AMD publishes useful family aliases such as "7900", but a bare processor
+  // number is not enough to prove graphics-driver compatibility. Preserve the
+  // shorthand only when the entered model also identifies the matching Radeon
+  // namespace. This prevents a Ryzen 9 7900X from being mistaken for an RX 7900.
+  const normalizedAlias = normalize(alias).replace(/\s+/g, '');
+  if (profile?.vendor === 'AMD' && /^\d{4}$/.test(normalizedAlias)) {
+    const input = normalize(hardware);
+    const label = normalize(entry?.label);
+    if (/\bradeon rx\b/.test(label)) return /\b(?:radeon\s+rx|rx)\b/.test(input);
+    if (/\bradeon (?:ai )?pro\b/.test(label)) {
+      return /\b(?:radeon\s+(?:ai\s+)?pro|ai\s+pro|pro\s+w)\b/.test(input);
+    }
+    return /\b(?:radeon|ryzen|athlon|graphics)\b/.test(input);
+  }
+  return true;
+}
+
 function releaseOrdinal(value) {
   const match = String(value || '').toUpperCase().match(/^(\d{2})H([12])$/);
   return match ? (Number(match[1]) * 2) + Number(match[2]) : null;
@@ -181,7 +201,7 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
   }
 
   const matches = profile.hardware.filter(entry =>
-    (entry.aliases || []).some(alias => includesPhrase(enteredHardware, alias))
+    (entry.aliases || []).some(alias => compatibilityAliasMatches(profile, entry, enteredHardware, alias))
   );
   if (matches.length) {
     const best = matches.sort((left, right) =>
