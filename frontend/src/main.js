@@ -1342,10 +1342,12 @@ const PLATFORM_CATEGORY_META = {
 const PLATFORM_CATEGORY_ORDER = ['pcHardware', 'desktopOs', 'gaming', 'browsers'];
 const PLATFORM_TO_CATEGORY = Object.fromEntries(Object.entries(PLATFORM_CATEGORY_META).flatMap(([key, meta]) => meta.platforms.map(platform => [platform, key])));
 const SEARCH_SUGGESTIONS = [
-  'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy',
-  'Switch OLED', 'Joy-Con', 'MacBook Pro M3', 'MacBook Air M2',
-  'RTX 4090', 'RTX 50', 'RX 7900 XT', 'Arc A770', 'Chrome security', 'Firefox security', 'Edge security', 'VPN', 'anti-cheat',
+  'Steam Deck', 'Steam client', 'Discord', 'Battle.net', 'GOG Galaxy',
+  'Switch OLED', 'Joy-Con', 'PS5 system software', 'Windows security',
+  'Radeon RX 7900 XT', 'Intel Arc A770 25H2',
+  'Chrome security', 'Firefox security', 'Edge security',
 ];
+const BLOCKED_SEARCH_AUTOFILL = /\b(?:cs2|counter[ -]?strike(?: 2)?|helldivers(?: 2)?|hd2)\b/i;
 const SEARCH_ALIASES = {
   steamos: ['steamos', 'steam os', 'steam deck', 'deck', 'valve handheld'],
   'steam deck': ['steam deck', 'steamos', 'deck', 'dock', 'docked'],
@@ -1511,6 +1513,30 @@ function latestUniqueUpdates(updates, keyForUpdate) {
       seen.add(key);
       return true;
     });
+}
+
+function searchSuggestionValues(updates = []) {
+  const liveSuggestions = latestUniqueUpdates(updates, discoveryLaneKey)
+    .map(update => {
+      if (update?.sourceKind === 'steam-game-news') return update.name;
+      const lane = releaseLaneLabel(update);
+      const version = String(update?.version || '').trim();
+      return version.toLowerCase().startsWith(lane.toLowerCase())
+        ? version
+        : `${lane} ${version}`.trim();
+    })
+    .filter(Boolean);
+  return [...new Set([...SEARCH_SUGGESTIONS, ...liveSuggestions])]
+    .filter(value => !BLOCKED_SEARCH_AUTOFILL.test(value))
+    .slice(0, 32);
+}
+
+function refreshSearchSuggestions(updates = []) {
+  const list = document.getElementById('dash-search-suggestions');
+  if (!list) return;
+  list.innerHTML = searchSuggestionValues(updates)
+    .map(value => `<option value="${H(value)}"></option>`)
+    .join('');
 }
 
 function searchTermGroups(raw) {
@@ -2755,7 +2781,10 @@ async function renderDashboard({ focusId = null } = {}) {
               <div class="dash-quickbar-search">
                 <label for="dash-top-search"><span>Search updates</span><small>Service, device, game, or version</small></label>
                 <div class="dash-quickbar-input-wrap">
-                  <input id="dash-top-search" type="search" placeholder="Try “SteamOS”, “Windows 11”, or a game…" autocomplete="off" />
+                  <input id="dash-top-search" type="search" list="dash-search-suggestions" placeholder="Try “SteamOS”, “Windows 11”, or a game…" autocomplete="off" />
+                  <datalist id="dash-search-suggestions">
+                    ${searchSuggestionValues().map(value => `<option value="${H(value)}"></option>`).join('')}
+                  </datalist>
                   <button class="dash-search-clear hidden" id="dash-search-clear" type="button" aria-label="Clear update search">×</button>
                 </div>
               </div>
@@ -3546,6 +3575,7 @@ async function renderDashboard({ focusId = null } = {}) {
         normaliseUpdatesResponse(await fetchUpdates({}))
           .filter(update => isUpdateWithinDisplayWindow(update))
       );
+      refreshSearchSuggestions(_allUpdates);
       updateReturnBrief(_allUpdates);
       renderTapeAndLatest(_allUpdates);
       renderSourceHeartbeats(_allUpdates);
@@ -3786,6 +3816,7 @@ async function renderDashboard({ focusId = null } = {}) {
           update,
           ..._allUpdates.filter(candidate => candidate.id !== update.id),
         ]);
+        refreshSearchSuggestions(_allUpdates);
         updateReturnBrief(_allUpdates);
         renderTapeAndLatest(_allUpdates);
         renderSourceHeartbeats(_allUpdates);

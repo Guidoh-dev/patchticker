@@ -137,6 +137,17 @@ test('the top search bar is the single dashboard navigation and filtering surfac
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.dash-top-sort\s*\{[^}]*display:\s*block/s);
 });
 
+test('search autofill is live-backed and excludes explicitly removed game suggestions', () => {
+  const suggestionBlock = mainSource.match(/const SEARCH_SUGGESTIONS = \[[\s\S]*?\];/)?.[0] || '';
+  assert.match(mainSource, /list="dash-search-suggestions"/);
+  assert.match(mainSource, /<datalist id="dash-search-suggestions">/);
+  assert.match(mainSource, /function searchSuggestionValues\(updates = \[\]\)/);
+  assert.match(mainSource, /latestUniqueUpdates\(updates, discoveryLaneKey\)/);
+  assert.match(mainSource, /refreshSearchSuggestions\(_allUpdates\)/);
+  assert.match(mainSource, /BLOCKED_SEARCH_AUTOFILL/);
+  assert.doesNotMatch(suggestionBlock, /cs2|counter[ -]?strike|helldivers|hd2/i);
+});
+
 test('update detail columns cannot force horizontal page overflow', () => {
   assert.match(cssSource, /\.detail-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(280px, 380px\)/s);
   assert.match(cssSource, /\.detail-col-main,\s*\.detail-col-side\s*\{[^}]*min-width:\s*0/s);
