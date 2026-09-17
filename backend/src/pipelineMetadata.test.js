@@ -148,7 +148,10 @@ describe('pipeline source metadata preservation', () => {
 
     const [sql, params] = db.query.mock.calls[0];
     expect(sql).toContain("known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb OR $15::boolean");
+    expect(sql).toContain('risk_factors = $10::jsonb');
+    expect(sql).not.toContain("risk_factors = CASE WHEN $10::jsonb <> '[]'::jsonb");
     expect(params[8]).toBe('[]');
+    expect(params[9]).toBe('[]');
     expect(params[14]).toBe(true);
   });
 

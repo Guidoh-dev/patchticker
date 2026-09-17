@@ -344,7 +344,7 @@ async function updateExistingMetadata(platform, version, detected) {
        reasoning = COALESCE($7, reasoning),
        changelog = CASE WHEN $8::jsonb <> '[]'::jsonb THEN $8::jsonb ELSE changelog END,
        known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb OR $15::boolean THEN $9::jsonb ELSE known_issues END,
-       risk_factors = CASE WHEN $10::jsonb <> '[]'::jsonb THEN $10::jsonb ELSE risk_factors END,
+       risk_factors = $10::jsonb,
        evidence = CASE WHEN $11::jsonb <> '[]'::jsonb THEN $11::jsonb ELSE evidence END,
        security_criticality = COALESCE($12::jsonb, security_criticality),
        score = $13,
