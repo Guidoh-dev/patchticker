@@ -5449,6 +5449,18 @@ body { overflow-x: hidden; }
 .detail-decision-panel--avoid { border-color: rgba(248,113,113,.30); }
 .detail-decision-panel--unscored { border-color: rgba(34,211,238,.28); }
 .detail-status-badge.unscored { background: rgba(34,211,238,.10); color: var(--cyan); }
+
+.decision-card-rating--limited {
+  border-color: rgba(251,191,36,.34);
+  background:
+    linear-gradient(135deg, rgba(251,191,36,.06), transparent 58%),
+    var(--bg-2);
+}
+
+.decision-card-rating--limited .decision-card-rating-label,
+.decision-card-rating--limited > em {
+  color: var(--yellow);
+}
 .detail-decision-score {
   display: grid;
   gap: 2px;

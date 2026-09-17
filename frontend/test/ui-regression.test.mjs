@@ -144,9 +144,9 @@ test('update cards organize title, release date, package size, and rating withou
   assert.match(mainSource, /return \{ value: 'Not listed', available: false, note: 'Not published by vendor' \}/);
   assert.match(mainSource, /class="decision-card-facts" aria-label="Update facts"/);
   assert.match(mainSource, /<dt>Package size<\/dt>/);
-  assert.match(mainSource, /class="decision-card-rating" aria-label="Patch recommendation and rating"/);
-  assert.match(mainSource, /const scoreLabel = rating\.votes \? 'User rating' : 'Safety score'/);
-  assert.match(mainSource, /const ratingSource = rating\.votes \? 'Live community' : 'PatchTicker'/);
+  assert.match(mainSource, /class="decision-card-rating\$\{limitedScoreEvidence \? ' decision-card-rating--limited' : ''\}" aria-label="Patch recommendation and rating"/);
+  assert.match(mainSource, /const scoreLabel = rating\.votes \? 'User rating' : limitedScoreEvidence \? 'Provisional score' : 'Safety score'/);
+  assert.match(mainSource, /const ratingSource = rating\.votes \? 'Live community' : limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
   assert.match(cssSource, /\.decision-card-facts\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
   assert.match(cssSource, /\.decision-card-link:hover,[\s\S]*?text-decoration:\s*none !important/s);
   assert.match(cssSource, /\.decision-card-rating-value strong\s*\{[^}]*font-size:\s*36px/s);
@@ -467,8 +467,8 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /detail-source-health/);
   assert.match(mainSource, /official source/);
   assert.match(mainSource, /Official source \+ issue signals/);
-  assert.match(mainSource, /scoreLabel = rating\.votes \? 'User rating' : 'Safety score'/);
-  assert.match(mainSource, /ratingSource = rating\.votes \? 'Live community' : 'PatchTicker'/);
+  assert.match(mainSource, /scoreLabel = rating\.votes \? 'User rating' : limitedScoreEvidence \? 'Provisional score' : 'Safety score'/);
+  assert.match(mainSource, /ratingSource = rating\.votes \? 'Live community' : limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
   assert.match(mainSource, /updateDateLabel\(u\)/);
   assert.match(mainSource, /id="dash-coverage-pulse"/);
   assert.match(mainSource, /No demo records shown/);
@@ -491,7 +491,11 @@ test('source-depth labels distinguish full notes from version-only verification'
   assert.match(mainSource, /class="source-depth-signal source-depth-signal--\$\{H\(methodMeta\.tone\)\}"/);
   assert.match(mainSource, /detailSectionHeading\('02 · Release contents', detailMethodMeta\.heading/);
   assert.match(mainSource, /\$\{H\(detailMethodMeta\.note\)\}/);
+  assert.match(mainSource, /limitedScoreEvidence \? 'Provisional score' : 'Safety score'/);
+  assert.match(mainSource, /limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
+  assert.match(mainSource, /Build verified · full notes unavailable/);
   assert.match(cssSource, /\.source-depth-signal--limited\s*\{[^}]*var\(--yellow\)/s);
+  assert.match(cssSource, /\.decision-card-rating--limited\s*\{[^}]*rgba\(251,191,36,\.34\)/s);
   assert.match(cssSource, /\.detail-section-context\s*\{[^}]*font-family:\s*var\(--font-mono\)/s);
 });
 

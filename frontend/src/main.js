@@ -2287,11 +2287,12 @@ function renderUpdateCard(u) {
   const methodMeta = analysisMethodMeta(u);
   const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
-  const scoreLabel = rating.votes ? 'User rating' : 'Safety score';
-  const ratingSource = rating.votes ? 'Live community' : 'PatchTicker';
+  const limitedScoreEvidence = !rating.votes && methodMeta.tone === 'limited';
+  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Provisional score' : 'Safety score';
+  const ratingSource = rating.votes ? 'Live community' : limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
   const ratingDetail = rating.votes
     ? `${rating.votes.toLocaleString()} vote${rating.votes === 1 ? '' : 's'}`
-    : sourceLabel;
+    : limitedScoreEvidence ? 'Build verified · full notes unavailable' : sourceLabel;
   const routeId = encodeURIComponent(u.id);
   return `
     <article class="decision-card decision-card--compact decision-card--${H(decision.cls)}" data-id="${H(u.id)}">
@@ -2332,7 +2333,7 @@ function renderUpdateCard(u) {
             <span class="source-depth-signal source-depth-signal--${H(methodMeta.tone)}">${H(methodMeta.label)}</span>
           </div>
         </div>
-        <aside class="decision-card-rating" aria-label="Patch recommendation and rating">
+        <aside class="decision-card-rating${limitedScoreEvidence ? ' decision-card-rating--limited' : ''}" aria-label="Patch recommendation and rating">
           <span class="decision-action decision-action--${H(decision.cls)}">${H(decision.action)}</span>
           <span class="decision-card-rating-label">${H(scoreLabel)}</span>
           <div class="decision-card-rating-value"><strong>${H(ratingDisplay)}</strong>${ratingValue === null ? '' : '<span>/10</span>'}</div>
@@ -2391,10 +2392,12 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const packageSize = packageSizeMeta(u);
   const steamAudience = steamAudienceMeta(u);
   const rating = peerRatingMeta(u);
+  const methodMeta = analysisMethodMeta(u);
   const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
-  const scoreLabel = rating.votes ? 'User rating' : 'Safety score';
-  const ratingSource = rating.votes ? 'Live community' : 'PatchTicker';
+  const limitedScoreEvidence = !rating.votes && methodMeta.tone === 'limited';
+  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Provisional score' : 'Safety score';
+  const ratingSource = rating.votes ? 'Live community' : limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
   return `
     <a class="mini-update-card${tone}" href="#/updates/${H(u.id)}">
       <div class="mini-update-top">
