@@ -2312,13 +2312,11 @@ function renderUpdateCard(u) {
           <dl class="decision-card-facts" aria-label="Update facts">
             <div>
               <dt>${H(updateDateLabel(u))}</dt>
-              <dd>${H(formatReleaseDate(u.releasedAt))}</dd>
-              <small>${H(age)}</small>
+              <dd>${H(formatReleaseDate(u.releasedAt))}<small>${H(age)}</small></dd>
             </div>
             <div class="${packageSize.available ? '' : 'is-unavailable'}">
               <dt>Package size</dt>
-              <dd>${H(packageSize.value)}</dd>
-              <small>${H(packageSize.note)}</small>
+              <dd>${H(packageSize.value)}<small>${H(packageSize.note)}</small></dd>
             </div>
           </dl>
           <p class="decision-one-line">${H(u.verdict || risk)}</p>

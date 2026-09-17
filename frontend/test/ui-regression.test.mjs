@@ -346,6 +346,8 @@ test('dashboard status, logos, facts, and footer use valid accessible semantics'
   assert.match(mainSource, /<div class="service-ticker" aria-hidden="true">/);
   assert.doesNotMatch(mainSource, /class="\$\{classes\}" aria-label=/);
   assert.match(mainSource, /<dd class="\$\{scoreToneClass\(ratingValue\)\}">[\s\S]*?<small>\$\{H\(ratingSource\)\}<\/small><\/dd>/);
+  assert.match(mainSource, /<dd>\$\{H\(formatReleaseDate\(u\.releasedAt\)\)\}<small>\$\{H\(age\)\}<\/small><\/dd>/);
+  assert.match(mainSource, /<dd>\$\{H\(packageSize\.value\)\}<small>\$\{H\(packageSize\.note\)\}<\/small><\/dd>/);
   assert.match(cssSource, /\.mini-update-facts small\s*\{[^}]*display:\s*block;/s);
   assert.match(cssSource, /\.site-footer-status\s*\{[^}]*color:\s*var\(--text-2\)/s);
   assert.match(cssSource, /\.site-footer-link\s*\{[^}]*color:\s*var\(--text-2\)/s);
