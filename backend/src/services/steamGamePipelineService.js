@@ -45,6 +45,8 @@ const DEFAULT_CONCURRENCY = 5;
 const DEFAULT_POST_COUNT = 10;
 const MAX_POST_CHARACTERS = 12000;
 const MIN_EXPLICIT_PACKAGE_BYTES = 250 * 1024 * 1024;
+const DOTA_APP_ID = 570;
+const DOTA_DATAFEED_BASE = 'https://www.dota2.com/datafeed';
 
 const SMALL_RELEASE_RE = /\b(?:hot[ -]?fix|micro[ -]?patch|bug[ -]?fix(?:es)?(?: patch)?|minor update|small update|quick fix|update fixes|maintenance(?: update)?|server maintenance)\b/i;
 const PRERELEASE_RE = /\b(?:ptb|public test build|test server|beta|preview|experimental|playtest|developer update|dev diary|dev blog|roadmap|coming soon|what we(?:'|’)re working on|state of the game|community crunch|deep dive|research trip|wishlist now)\b/i;
@@ -283,6 +285,106 @@ function knownIssuesFromNotes(changelog) {
   )), 6);
 }
 
+function dotaEntryNotes(entry) {
+  const noteGroups = [
+    entry?.hero_notes,
+    entry?.talent_notes,
+    entry?.ability_notes,
+    ...(Array.isArray(entry?.abilities) ? entry.abilities.map(ability => ability?.ability_notes) : []),
+  ];
+  return noteGroups
+    .flatMap(notes => Array.isArray(notes) ? notes : [])
+    .map(note => normaliseReleaseText(stripSteamMarkup(note?.note || '')))
+    .filter(note => note && note !== '<br>');
+}
+
+function parseDotaPatchData(patchPayload, heroPayload, itemPayload, expectedVersion = '') {
+  const patchVersion = String(patchPayload?.patch_number || patchPayload?.patch_name || '').trim();
+  if (!patchPayload?.success || !patchVersion || (expectedVersion && patchVersion.toLowerCase() !== expectedVersion.toLowerCase())) {
+    return null;
+  }
+  const heroes = Array.isArray(patchPayload.heroes) ? patchPayload.heroes : [];
+  const items = Array.isArray(patchPayload.items) ? patchPayload.items : [];
+  const neutralItems = Array.isArray(patchPayload.neutral_items) ? patchPayload.neutral_items : [];
+  const heroNames = new Map(
+    (heroPayload?.result?.data?.heroes || []).map(hero => [Number(hero.id), hero.name_loc || hero.name_english_loc || hero.name])
+  );
+  const itemNames = new Map(
+    (itemPayload?.result?.data?.itemabilities || []).map(item => [Number(item.id), item.name_loc || item.name_english_loc || item.name])
+  );
+  const countLabel = (count, singular, plural = `${singular}s`) => `${count} ${count === 1 ? singular : plural}`;
+  const changelog = [
+    `Gameplay balance — ${countLabel(heroes.length, 'hero', 'heroes')}, ${countLabel(items.length, 'item')}, and ${countLabel(neutralItems.length, 'neutral-item entry', 'neutral-item entries')} changed in patch ${patchVersion}.`,
+    ...heroes.slice(0, 6).map(hero => {
+      const name = heroNames.get(Number(hero.hero_id)) || `Hero ${hero.hero_id}`;
+      const notes = dotaEntryNotes(hero).slice(0, 2);
+      return notes.length ? `${name} — ${notes.join('; ')}` : null;
+    }),
+    ...items.slice(0, 4).map(item => {
+      const name = itemNames.get(Number(item.ability_id)) || item.title || `Item ${item.ability_id}`;
+      const notes = dotaEntryNotes(item).slice(0, 2);
+      return notes.length ? `${name} — ${notes.join('; ')}` : null;
+    }),
+  ].filter(Boolean);
+  if (changelog.length < 2) {
+    return null;
+  }
+  return {
+    patchVersion,
+    changelog: uniqueText(changelog, 12),
+    heroCount: heroes.length,
+    itemCount: items.length,
+    neutralItemCount: neutralItems.length,
+    publishedAt: Number.isFinite(Number(patchPayload.patch_timestamp))
+      ? new Date(Number(patchPayload.patch_timestamp) * 1000).toISOString()
+      : null,
+  };
+}
+
+async function enrichOfficialGameNotes(game, post, classification) {
+  if (Number(game?.appId) !== DOTA_APP_ID) {
+    return classification;
+  }
+  const patchVersion = stripSteamMarkup(post?.title || '').match(/\b(\d+\.\d+[a-z]?)\b/i)?.[1];
+  if (!patchVersion) {
+    return classification;
+  }
+  const requestConfig = {
+    timeout: boundedInteger(process.env.STEAM_GAME_REQUEST_TIMEOUT_MS, 12000, 3000, 30000),
+    maxContentLength: 2 * 1024 * 1024,
+    headers: { 'User-Agent': 'PatchTicker/1.0 (+https://patchticker.app)', 'Accept': 'application/json' },
+  };
+  try {
+    const [patchResponse, heroResponse, itemResponse] = await Promise.all([
+      axios.get(`${DOTA_DATAFEED_BASE}/patchnotes`, { ...requestConfig, params: { version: patchVersion, language: 'english' } }),
+      axios.get(`${DOTA_DATAFEED_BASE}/herolist`, { ...requestConfig, params: { language: 'english' } }),
+      axios.get(`${DOTA_DATAFEED_BASE}/itemlist`, { ...requestConfig, params: { language: 'english' } }),
+    ]);
+    const parsed = parseDotaPatchData(patchResponse.data, heroResponse.data, itemResponse.data, patchVersion);
+    if (!parsed) {
+      return classification;
+    }
+    return {
+      ...classification,
+      changelog: parsed.changelog,
+      supplementalEvidence: [{
+        source: 'Dota 2 official patch notes',
+        url: `https://www.dota2.com/patches/${encodeURIComponent(parsed.patchVersion)}`,
+        text: `Valve’s structured patch data documents changes to ${parsed.heroCount} hero${parsed.heroCount === 1 ? '' : 'es'}, ${parsed.itemCount} item${parsed.itemCount === 1 ? '' : 's'}, and ${parsed.neutralItemCount} neutral-item entr${parsed.neutralItemCount === 1 ? 'y' : 'ies'}.`,
+        dateBasis: 'published',
+        releaseType: 'official-release-notes',
+        publishedAt: parsed.publishedAt,
+      }],
+    };
+  } catch (error) {
+    logger.warn('[steam-games] Dota patch-note enrichment failed; retaining official Steam announcement', {
+      version: patchVersion,
+      error: error.message,
+    });
+    return classification;
+  }
+}
+
 function releaseTitle(gameName, postTitle) {
   // Card/detail headings are single-line data even when a publisher decorates
   // its Steam title with BBCode or hard line breaks. Preserve those boundaries
@@ -328,7 +430,7 @@ function toDatabaseUpdate(game, post, classification) {
     usMarketObservedAt: game.marketObservedAt,
     usMarketSource: game.marketSourceUrl,
     ...(statedSize ? { sizeBytes: statedSize } : {}),
-  }];
+  }, ...(classification.supplementalEvidence || []).map(item => ({ ...item, checkedAt }))];
   const riskFactors = [
     ...(classification.requirements ? [{ level: 'medium', text: 'The release changes or discusses platform, hardware, anti-cheat, or system requirements; confirm compatibility before updating.' }] : []),
     ...knownIssues.slice(0, 2).map(text => ({ level: 'medium', text })),
@@ -506,7 +608,8 @@ async function run(options = {}) {
         const posts = await fetchGameNews(game, options);
         const selected = selectBestMaterialPost(posts, options.now || Date.now(), lookbackDays);
         if (!selected) return { appId: game.appId, game: game.name, status: 'no_material_update' };
-        const update = toDatabaseUpdate(game, selected.post, selected.classification);
+        const enrichedClassification = await enrichOfficialGameNotes(game, selected.post, selected.classification);
+        const update = toDatabaseUpdate(game, selected.post, enrichedClassification);
         const saved = await upsertMaterialUpdate(update, options.dryRun === true);
         return {
           appId: game.appId,
@@ -567,6 +670,8 @@ module.exports = {
     knownIssuesFromNotes,
     releaseNotesFromPost,
     extractSteamSentences,
+    parseDotaPatchData,
+    enrichOfficialGameNotes,
     selectBestMaterialPost,
     stripSteamMarkup,
     toDatabaseUpdate,

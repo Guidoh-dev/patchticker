@@ -1082,7 +1082,7 @@ function primaryOfficialEvidence(evidence = []) {
   const releaseTypePriority = new Map([
     ['official-security-advisory', 100],
     ['official-security-release', 100],
-    ['official-release-notes', 95],
+    ['official-release-notes', 100],
     ['official-game-update', 95],
     ['official-artifact', 90],
     ['official-release', 80],

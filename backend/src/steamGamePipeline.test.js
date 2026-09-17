@@ -19,6 +19,42 @@ function list(items) {
 }
 
 describe('material Steam game update pipeline', () => {
+  test('turns Valve Dota patch data into named, source-backed change summaries', () => {
+    const parsed = __test.parseDotaPatchData({
+      success: true,
+      patch_number: '7.41f',
+      patch_timestamp: 1789455600,
+      heroes: [
+        { hero_id: 1, abilities: [{ ability_notes: [{ note: 'Mana Burned as Damage increased from 60% to 65%' }] }] },
+        { hero_id: 3, hero_notes: [{ note: 'Base Armor decreased by 1' }] },
+      ],
+      items: [{ ability_id: 265, ability_notes: [{ note: 'Mana Regen bonus decreased from +0.8 to +0.6' }] }],
+      neutral_items: [{ title: 'Enchantment Changes', is_general_note: true }],
+    }, {
+      result: { data: { heroes: [
+        { id: 1, name_loc: 'Anti-Mage' },
+        { id: 3, name_loc: 'Bane' },
+      ] } },
+    }, {
+      result: { data: { itemabilities: [{ id: 265, name_loc: 'Aether Lens' }] } },
+    }, '7.41f');
+
+    expect(parsed).toMatchObject({
+      patchVersion: '7.41f', heroCount: 2, itemCount: 1, neutralItemCount: 1,
+    });
+    expect(parsed.changelog).toEqual(expect.arrayContaining([
+      expect.stringContaining('2 heroes, 1 item, and 1 neutral-item entry'),
+      expect.stringContaining('Anti-Mage — Mana Burned as Damage increased'),
+      expect.stringContaining('Bane — Base Armor decreased'),
+      expect.stringContaining('Aether Lens — Mana Regen bonus decreased'),
+    ]));
+  });
+
+  test('rejects mismatched or empty Dota patch payloads instead of inventing notes', () => {
+    expect(__test.parseDotaPatchData({ success: true, patch_number: '7.41e' }, {}, {}, '7.41f')).toBeNull();
+    expect(__test.parseDotaPatchData({ success: true, patch_number: '7.41f', heroes: [], items: [] }, {}, {}, '7.41f')).toBeNull();
+  });
+
   test('keeps the broad historical audit while activating only the reviewed roster', () => {
     expect(STEAM_GAME_CANDIDATES).toHaveLength(81);
     expect(new Set(STEAM_GAME_CANDIDATES.map(game => game.appId)).size).toBe(STEAM_GAME_CANDIDATES.length);
