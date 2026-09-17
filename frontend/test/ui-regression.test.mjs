@@ -668,6 +668,9 @@ test('score panels expose evidence inputs rather than dead impact placeholders',
   assert.match(mainSource, /Vendor-known issues/);
   assert.match(mainSource, /Issue coverage/);
   assert.match(mainSource, /Official source/);
+  assert.match(mainSource, /WHQL Optional/);
+  assert.match(mainSource, /WHQL Recommended/);
+  assert.match(mainSource, /releaseChannel/);
   assert.match(mainSource, /What shaped this score/);
   assert.doesNotMatch(mainSource, /Impact pending/);
   assert.match(cssSource, /\.detail-score-method\s*\{/);

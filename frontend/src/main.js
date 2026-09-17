@@ -2300,6 +2300,10 @@ function decisionPanelFacts(update, freshness) {
   const identity = `${update?.name || ''} ${update?.version || ''} ${(update?.riskFactors || []).map(item => `${item?.label || ''} ${item?.text || ''}`).join(' ')}`.toLowerCase();
   const hasWhql = evidence.some(item => item?.whql === true);
   const hasNonWhql = evidence.some(item => item?.whql === false) || /non-whql/.test(identity);
+  const whqlChannel = evidence
+    .map(item => String(item?.releaseChannel || '').toLowerCase())
+    .find(channel => channel === 'optional' || channel === 'recommended')
+    || (hasWhql && /\boptional\b/.test(identity) ? 'optional' : null);
   const steamAudience = steamAudienceMeta(update);
   let contextFact;
   if (securitySignal) {
@@ -2308,6 +2312,10 @@ function decisionPanelFacts(update, freshness) {
     contextFact = { value: 'Security', label: 'Update context', tone: security.level };
   } else if (hasNonWhql) {
     contextFact = { value: 'Non-WHQL', label: 'Driver channel', tone: 'warning' };
+  } else if (hasWhql && whqlChannel === 'optional') {
+    contextFact = { value: 'WHQL Optional', label: 'Driver channel', tone: 'warning' };
+  } else if (hasWhql && whqlChannel === 'recommended') {
+    contextFact = { value: 'WHQL Recommended', label: 'Driver channel', tone: 'good' };
   } else if (/preview/.test(identity)) {
     contextFact = { value: 'Preview', label: 'Release channel', tone: 'warning' };
   } else if (/beta/.test(identity)) {

@@ -94,9 +94,27 @@ describe('scraper accuracy guards', () => {
     `);
 
     expect(__test.parseWindowsKnownIssues($)).toEqual([
-      'USB audio devices might fail to start: After installing KB5124012, some USB Audio Class 1.0 devices might produce no sound.',
+      'USB audio devices might fail to start: After installing KB5124012, some USB Audio Class 1.0 devices might produce no sound. Symptoms: No audio output. Volume controls remain at zero.',
       'Host folder shares might be unavailable: Linux VM host folders shared using Plan9 might not appear.',
     ]);
+  });
+
+  test('Windows issue summaries keep bounded text on a complete word', () => {
+    const $ = require('cheerio').load(`
+      <h2>Known issues in this update</h2>
+      <details>
+        <summary>Long vendor disclosure</summary>
+        <p><strong>Symptoms</strong></p>
+        <p>${'Affected devices can lose audio after installation while Microsoft investigates the compatibility regression. '.repeat(12)}</p>
+      </details>
+      <h2>How to get this update</h2>
+    `);
+    const [issue] = __test.parseWindowsKnownIssues($);
+    expect(issue.length).toBeGreaterThan(300);
+    expect(issue.length).toBeLessThanOrEqual(650);
+    expect(issue.endsWith('…')).toBe(true);
+    expect(issue).not.toMatch(/\s…$/);
+    expect(issue).not.toMatch(/regress…$/);
   });
 
   test('PS5 parser fingerprints the official system package instead of the CMS revision', () => {
@@ -682,7 +700,26 @@ describe('scraper accuracy guards', () => {
       url: 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html',
       version: '26.7.1',
       whql: true,
+      releaseChannel: 'recommended',
       packageSize: '849 MB',
+    });
+  });
+
+  test('AMD discovery preserves the vendor Optional channel label', () => {
+    const parsed = __test.parseAmdDriverPage(`
+      <article>
+        <strong>Revision Number</strong><p>Adrenalin 26.9.1 (WHQL Optional)</p>
+        <strong>File Size</strong><p>887 MB</p>
+        <a href="/en/resources/support-articles/release-notes/RN-RAD-WIN-26-9-1.html">Release Notes</a>
+      </article>
+    `, 'https://www.amd.com/en/support/downloads/drivers.html/graphics/radeon-rx-9000.html');
+
+    expect(parsed).toEqual({
+      url: 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-9-1.html',
+      version: '26.9.1',
+      whql: true,
+      releaseChannel: 'optional',
+      packageSize: '887 MB',
     });
   });
 
@@ -699,7 +736,7 @@ describe('scraper accuracy guards', () => {
       <h2>Known Issues</h2>
       <ul><li>Battlefield 6 may experience a driver timeout.</li><li>Smart Access Memory may become disabled after installation.</li></ul>
       <h2>Additional Information</h2>
-    `, 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html', { whql: true });
+    `, 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-7-1.html', { whql: true, releaseChannel: 'recommended' });
 
     expect(parsed).toMatchObject({
       version: '26.7.1',
@@ -709,6 +746,7 @@ describe('scraper accuracy guards', () => {
       productSupportCount: 1,
       knownIssueCount: 2,
       whql: true,
+      releaseChannel: 'recommended',
     });
     expect(parsed.changelog).toEqual(expect.arrayContaining([
       expect.stringContaining('Gears of War: E-Day Open Beta Early Access'),

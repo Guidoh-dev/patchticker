@@ -216,7 +216,7 @@ function boundedText(value, max = 360) {
 }
 
 function unique(values, max = 280) {
-  return [...new Set(values.map(v => cleanText(v, max)).filter(Boolean))];
+  return [...new Set(values.map(v => boundedText(v, max)).filter(Boolean))];
 }
 
 function firstVersion(text) {
@@ -232,27 +232,27 @@ function sectionBullets($, labels, max = 5) {
     let node = $(heading).next();
     let guard = 0;
     while (node.length && guard++ < 8 && !/^h[234]$/i.test(node[0]?.tagName || '')) {
-      node.find('li').each((__, li) => bullets.push(cleanText($(li).text(), 240)));
-      const p = cleanText(node.text(), 240);
+      node.find('li').each((__, li) => bullets.push(boundedText($(li).text(), 420)));
+      const p = boundedText(node.text(), 420);
       if (p && bullets.length < 2) bullets.push(p);
       node = node.next();
     }
   });
-  return unique(bullets).slice(0, max);
+  return unique(bullets, 420).slice(0, max);
 }
 
 function sourceEvidence(source, url, text, meta = {}) {
   return [{
     source,
     url,
-    text: cleanText(text, 260),
+    text: boundedText(text, 260),
     checkedAt: new Date().toISOString(),
     ...meta,
   }];
 }
 
 function cleanDriverText(value, max = 360) {
-  return cleanText(value, max)
+  return boundedText(value, max)
     .replace(/[®™]/g, '')
     .replace(/\*/g, '')
     .replace(/\s+([,.;:])/g, '$1')
@@ -617,11 +617,20 @@ function parseWindowsKnownIssues($, max = 8) {
         && !/^(?:symptoms?|next steps?|resolution|microsoft support)\b/i.test(label)
         && !/^(?:symptoms?|next steps?|resolution|microsoft support)\b/i.test(text.replace(/^[^A-Za-z]+/, ''));
     }).first();
-    const description = cleanText(symptom.text(), 520);
-    const combined = title && description && !description.toLowerCase().startsWith(title.toLowerCase())
-      ? `${title}: ${description}`
-      : title || description;
-    if (combined) issues.push(combined);
+    const description = boundedText(symptom.text(), 520);
+    const symptomItems = node.children('ul,ol').first().children('li')
+      .map((__, item) => boundedText($(item).text(), 180))
+      .get()
+      .filter(Boolean)
+      .slice(0, 4);
+    const symptomLabel = /\bsymptoms?:\s*$/i.test(description) ? '' : 'Symptoms: ';
+    const symptomSummary = symptomItems.length
+      ? `${description}${description ? ' ' : ''}${symptomLabel}${symptomItems.join(' ')}`
+      : description;
+    const combined = title && symptomSummary && !symptomSummary.toLowerCase().startsWith(title.toLowerCase())
+      ? `${title}: ${symptomSummary}`
+      : title || symptomSummary;
+    if (combined) issues.push(boundedText(combined, 650));
   });
 
   // Older KB templates publish ordinary lists instead of disclosure panels.
@@ -1337,11 +1346,14 @@ function parseAmdDriverPage(html, baseUrl) {
           .first().nextAll('p').first().text(),
         48
       );
+      const articleHtml = article.html() || '';
+      const releaseChannel = articleHtml.match(/\bWHQL\s+(Recommended|Optional)\b/i)?.[1]?.toLowerCase() || null;
       return version && /^https:\/\/www\.amd\.com\/en\/resources\/support-articles\/release-notes\/RN-RAD-WIN-/i.test(url)
         ? {
             url,
             version,
-            whql: /(?:\/whql\/|\bWHQL Recommended\b|whql-amd-software)/i.test(article.html() || ''),
+            whql: Boolean(releaseChannel) || /(?:\/whql\/|whql-amd-software)/i.test(articleHtml),
+            ...(releaseChannel ? { releaseChannel } : {}),
             ...(packageSize ? { packageSize } : {}),
           }
         : null;
@@ -1403,6 +1415,7 @@ function parseAmdReleaseNotes(html, sourceUrl, options = {}) {
     knownIssueCount: knownIssues.length,
     productSupportCount: productSupport.length,
     whql: Boolean(options.whql),
+    releaseChannel: options.releaseChannel || (/\bOptional\b/i.test(title) ? 'optional' : null),
     compatibility,
   };
 }
@@ -1684,14 +1697,20 @@ async function detectAmd() {
     try {
       const parsed = parseAmdReleaseNotes(await fetchHtml(url), url, {
         whql: discovered?.url === url && discovered.whql,
+        releaseChannel: discovered?.url === url ? discovered.releaseChannel : null,
       });
       if (!parsed) continue;
+      const isDiscoveredRelease = discovered?.url === url && discovered?.version === parsed.version;
+      const releaseLabel = parsed.whql
+        ? `WHQL${parsed.releaseChannel ? ` ${parsed.releaseChannel[0].toUpperCase()}${parsed.releaseChannel.slice(1)}` : ''}`
+        : null;
       const impactMeta = {
         gameSupportCount: parsed.gameSupportCount,
         gameFixCount: parsed.gameFixCount,
         knownIssueCount: parsed.knownIssueCount,
         productSupportCount: parsed.productSupportCount,
         whql: parsed.whql,
+        releaseChannel: parsed.releaseChannel || undefined,
         packageSize: discovered?.version === parsed.version ? discovered.packageSize : undefined,
       };
       return {
@@ -1710,9 +1729,9 @@ async function detectAmd() {
         verdict: parsed.knownIssueCount
           ? 'Install if the new game, product, or listed fixes apply to your Radeon setup; otherwise wait if your current driver is stable and review the game-specific known issues first.'
           : 'Install if the new game, product, or listed fixes apply to your Radeon setup; otherwise stay on your current stable OEM-qualified driver.',
-        reasoning: `AMD’s official ${parsed.whql ? 'WHQL ' : ''}release documents ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} fixed issue${parsed.gameFixCount === 1 ? '' : 's'}, ${parsed.productSupportCount} newly supported product${parsed.productSupportCount === 1 ? '' : 's'}, and ${parsed.knownIssueCount} known issue${parsed.knownIssueCount === 1 ? '' : 's'}.`,
+        reasoning: `AMD’s official ${releaseLabel ? `${releaseLabel} ` : ''}release documents ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} fixed issue${parsed.gameFixCount === 1 ? '' : 's'}, ${parsed.productSupportCount} newly supported product${parsed.productSupportCount === 1 ? '' : 's'}, and ${parsed.knownIssueCount} known issue${parsed.knownIssueCount === 1 ? '' : 's'}.`,
         evidence: [
-          ...(discovered ? sourceEvidence('AMD Driver Downloads', driverPageUrl, `AMD’s Radeon RX driver page identifies Adrenalin Edition ${parsed.version} as the current ${parsed.whql ? 'WHQL ' : ''}package.`, { dateBasis: 'checked', releaseType: 'official-download-index', ...impactMeta }) : []),
+          ...(isDiscoveredRelease ? sourceEvidence('AMD Driver Downloads', driverPageUrl, `AMD’s Radeon RX driver page identifies Adrenalin Edition ${parsed.version} as the current ${releaseLabel ? `${releaseLabel} ` : ''}package.`, { dateBasis: 'checked', releaseType: 'official-download-index', ...impactMeta }) : []),
           ...sourceEvidence('AMD Release Notes', url, `${parsed.title}; ${parsed.gameFixCount} fixed and ${parsed.knownIssueCount} known issues documented.`, { dateBasis: 'released', publishedAt: parsed.releasedAt, releaseType: 'official-release-notes', ...impactMeta, compatibility: parsed.compatibility || undefined }),
         ],
         sourceUrl: url,
