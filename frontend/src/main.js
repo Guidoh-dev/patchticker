@@ -3085,8 +3085,15 @@ async function renderDashboard({ focusId = null } = {}) {
       listEl.innerHTML = hasFilters
         ? (search
           ? (() => {
-            const browsePlatform = platform || suggestedPlatformForSearch(search);
-            return `<div class="empty-state empty-state--search"><strong>No verified updates found for “${H(search)}”.</strong><span>That usually means no matching official release is inside PatchTicker’s 240-day window—not that a patch exists without details.</span><div class="empty-search-actions">${browsePlatform ? `<button class="link-btn" type="button" data-empty-platform="${H(browsePlatform)}">Browse ${H(platformLabel(browsePlatform))} releases</button>` : ''}<button class="link-btn" id="clear-inline" type="button">Clear filters</button></div></div>`;
+            const emptyIntent = resolveSearchIntentForPlatform(searchIntentForQuery(search), platform);
+            const browsePlatform = platform || emptyIntent.platform || suggestedPlatformForSearch(search);
+            const emptyTitle = emptyIntent.productId && emptyIntent.sourceLabel
+              ? `No current verified ${emptyIntent.sourceLabel} release.`
+              : `No verified updates found for “${search}”.`;
+            const emptyDetail = emptyIntent.productId
+              ? `PatchTicker found the exact Steam product (App ${emptyIntent.productId}), but no qualifying official release is inside the 240-day display window.`
+              : 'That usually means no matching official release is inside PatchTicker’s 240-day window—not that a patch exists without details.';
+            return `<div class="empty-state empty-state--search"><strong>${H(emptyTitle)}</strong><span>${H(emptyDetail)}</span><div class="empty-search-actions">${browsePlatform ? `<button class="link-btn" type="button" data-empty-platform="${H(browsePlatform)}">Browse ${H(platformLabel(browsePlatform))} releases</button>` : ''}<button class="link-btn" id="clear-inline" type="button">Clear filters</button></div></div>`;
           })()
           : '<p class="empty-state">No updates match your filters. <button class="link-btn" id="clear-inline">Clear filters</button></p>')
         : '<p class="empty-state">No updates found.</p>';

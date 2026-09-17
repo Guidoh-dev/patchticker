@@ -216,6 +216,8 @@ test('search results expose staged platform facets, verification timing, and hon
   assert.match(mainSource, /Matching records verified \$\{H\(timeAgo\(latestCheck\)\)\}/);
   assert.match(mainSource, /Exact Steam product · App \$\{H\(resolvedSearchIntent\.productId\)\}/);
   assert.match(mainSource, /function suggestedPlatformForSearch\(query\)/);
+  assert.match(mainSource, /const browsePlatform = platform \|\| emptyIntent\.platform \|\| suggestedPlatformForSearch\(search\)/);
+  assert.match(mainSource, /PatchTicker found the exact Steam product \(App \$\{emptyIntent\.productId\}\)/);
   assert.match(mainSource, /no matching official release is inside PatchTicker’s 240-day window/);
   assert.match(mainSource, /data-empty-platform="\$\{H\(browsePlatform\)\}"/);
   assert.match(mainSource, /setDraftFilters\(\{ platform: nextPlatform \}\)/);
