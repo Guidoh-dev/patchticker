@@ -341,6 +341,16 @@ test('auth, feed, and history controls meet the touch target floor', () => {
   assert.match(cssSource, /\.dash-chat-gate a,\s*\.dash-side-copy a\s*\{[^}]*min-height:\s*44px/s);
 });
 
+test('dashboard status, logos, facts, and footer use valid accessible semantics', () => {
+  assert.match(mainSource, /<span class="nav-system-status">/);
+  assert.match(mainSource, /<div class="service-ticker" aria-hidden="true">/);
+  assert.doesNotMatch(mainSource, /class="\$\{classes\}" aria-label=/);
+  assert.match(mainSource, /<dd class="\$\{scoreToneClass\(ratingValue\)\}">[\s\S]*?<small>\$\{H\(ratingSource\)\}<\/small><\/dd>/);
+  assert.match(cssSource, /\.mini-update-facts small\s*\{[^}]*display:\s*block;/s);
+  assert.match(cssSource, /\.site-footer-status\s*\{[^}]*color:\s*var\(--text-2\)/s);
+  assert.match(cssSource, /\.site-footer-link\s*\{[^}]*color:\s*var\(--text-2\)/s);
+});
+
 test('signup copy matches the enforced password policy and handles email outages', () => {
   assert.doesNotMatch(mainSource, /Min 8 chars/);
   assert.match(mainSource, /placeholder="12\+ characters"/);

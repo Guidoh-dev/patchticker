@@ -252,7 +252,7 @@ function renderNav(user) {
         <a class="nav-brand" href="#/">
           <span class="brand-pulse">Patch</span>Ticker
         </a>
-        <span class="nav-system-status" aria-label="PatchTicker live source monitor active">
+        <span class="nav-system-status">
           <i aria-hidden="true"></i><span>System</span><strong>Live</strong>
         </span>
       </div>
@@ -1407,8 +1407,8 @@ function renderPlatformLogo(platform, extraClass = '') {
   const short = PLATFORM_SHORT[platform] ?? String(platform || '').slice(0, 3).toUpperCase();
   const src = platformLogoPath(platform);
   const classes = `platform-logo platform--${pSuffix}${extraClass ? ` ${extraClass}` : ''}`;
-  if (!src) return `<span class="${classes} platform-logo--fallback" aria-label="${H(label)}">${H(short)}</span>`;
-  return `<span class="${classes}" aria-label="${H(label)}"><img src="${H(src)}" alt="" loading="eager" decoding="async" /><span class="sr-only">${H(label)}</span></span>`;
+  if (!src) return `<span class="${classes} platform-logo--fallback"><span aria-hidden="true">${H(short)}</span><span class="sr-only">${H(label)}</span></span>`;
+  return `<span class="${classes}"><img src="${H(src)}" alt="" loading="eager" decoding="async" /><span class="sr-only">${H(label)}</span></span>`;
 }
 function serviceLogoKey(service) {
   return ({
@@ -2413,7 +2413,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
       <dl class="mini-update-facts" aria-label="Update facts">
         <div><dt>Released</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
         <div class="${packageSize.available ? '' : 'is-unavailable'}"><dt>Size</dt><dd>${H(packageSize.value)}</dd></div>
-        <div><dt>${H(scoreLabel)}</dt><dd class="${scoreToneClass(ratingValue)}">${H(ratingDisplay)}${ratingValue === null ? '' : '/10'}</dd><small>${H(ratingSource)}</small></div>
+        <div><dt>${H(scoreLabel)}</dt><dd class="${scoreToneClass(ratingValue)}">${H(ratingDisplay)}${ratingValue === null ? '' : '/10'}<small>${H(ratingSource)}</small></dd></div>
       </dl>
       <div class="mini-update-freshness freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)} · ${H(freshness.detail)}</div>
       <p class="mini-update-copy">${H(u.verdict || u.affects || 'Recent patch coverage available.')}</p>
@@ -2682,7 +2682,7 @@ async function renderDashboard({ focusId = null } = {}) {
     <div class="dash-wrap dash-wrap--simple dash-wrap--triad">
       <div id="sub-banner-slot" class="dash-sub-banner-slot"></div>
 
-      <div class="service-ticker" aria-label="Supported PatchTicker services">
+      <div class="service-ticker" aria-hidden="true">
         <div class="service-ticker-track">
           ${[...TICKER_SERVICES, ...TICKER_SERVICES].map(service => `
             ${renderServiceTickerItem(service)}
