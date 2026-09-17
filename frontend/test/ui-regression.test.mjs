@@ -723,7 +723,7 @@ test('update details continue into honestly ranked related releases', () => {
   assert.match(cssSource, /\.detail-related-header > a\s*\{[^}]*min-height:\s*44px/s);
 });
 
-test('every update detail exposes a source-backed compatibility workspace and clear section map', () => {
+test('update details expose an evidence-aware compatibility workspace and clear section map', () => {
   assert.match(mainSource, /id="detail-info"/);
   assert.match(mainSource, /data-detail-target="detail-info"/);
   assert.match(mainSource, /Update information/);
@@ -731,6 +731,8 @@ test('every update detail exposes a source-backed compatibility workspace and cl
   assert.match(mainSource, /data-detail-target="detail-changes"/);
   assert.match(mainSource, /data-detail-target="detail-issues"/);
   assert.match(mainSource, /data-detail-target="detail-compatibility"/);
+  assert.match(mainSource, /const hasCompatibilityMatrix = compatibilityProfile\?\.authoritative === true[\s\S]*?compatibilityProfile\.operatingSystems/);
+  assert.match(mainSource, /const compatibilityWorkspaceHTML = hasCompatibilityMatrix \? `/);
   assert.match(mainSource, /Your hardware entry is not transmitted or stored/);
   assert.match(mainSource, /list="compatibility-models"/);
   assert.match(mainSource, /Windows 11 26H1/);
@@ -738,6 +740,12 @@ test('every update detail exposes a source-backed compatibility workspace and cl
   assert.match(mainSource, /Device Manager → Display adapters/);
   assert.match(mainSource, /Matches only a vendor-listed GPU model or family/);
   assert.match(mainSource, /Preserves laptop, prebuilt, handheld, and Boot Camp caveats/);
+  assert.match(mainSource, /MODEL RESULT NOT OFFERED/);
+  assert.match(mainSource, /PatchTicker leaves compatibility unverified rather than guessing/);
+  assert.match(mainSource, /Check official requirements ↗/);
+  assert.match(mainSource, /Game and device requirements/);
+  assert.match(mainSource, /Windows eligibility and requirements/);
+  assert.match(mainSource, /Console compatibility/);
   assert.match(mainSource, /evaluateCompatibility\(compatibilityProfile/);
   assert.match(mainSource, /async function renderUpdateDetail\(id, \{ hardware = '' \} = \{\}\)/);
   assert.match(mainSource, /value="\$\{H\(requestedHardware\)\}"/);
@@ -757,6 +765,8 @@ test('every update detail exposes a source-backed compatibility workspace and cl
   assert.match(cssSource, /\.detail-compatibility-checks\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
   assert.match(cssSource, /\.detail-compatibility-controls\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(140px, 170px\);[^}]*min-width:\s*0;/s);
   assert.match(cssSource, /\.detail-compatibility-submit\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s);
+  assert.match(cssSource, /\.detail-compatibility-unavailable\s*\{[^}]*grid-template-columns:/s);
+  assert.match(cssSource, /@media \(max-width: 560px\)[\s\S]*?\.detail-compatibility-unavailable\s*\{\s*grid-template-columns:\s*1fr;/s);
   assert.match(cssSource, /\.detail-update-info-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
 });
 

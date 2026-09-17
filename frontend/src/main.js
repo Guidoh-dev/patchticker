@@ -4443,6 +4443,9 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
   const compatibilityModels = [...new Set((compatibilityProfile?.hardware || [])
     .map(entry => String(entry?.label || '').trim())
     .filter(Boolean))];
+  const hasCompatibilityMatrix = compatibilityProfile?.authoritative === true
+    && compatibilityModels.length > 0
+    && (compatibilityProfile.operatingSystems || []).length > 0;
   const compatibilityModelOptionsHTML = compatibilityModels
     .slice(0, 160)
     .map(label => `<option value="${H(label)}"></option>`)
@@ -4480,6 +4483,124 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
     : sec.level && sec.level !== 'none'
       ? `${secLevel} security context`
       : 'No security classification published';
+
+  const compatibilityFallbacks = {
+    Steam: {
+      title: u.sourceKind === 'steamos-news' ? 'Steam Deck and SteamOS requirements' : 'Game and device requirements',
+      status: u.sourceKind === 'steamos-news' ? 'SteamOS release scope' : 'Publisher requirements',
+      summary: u.sourceKind === 'steamos-news'
+        ? 'This release applies through SteamOS update channels. Valve did not attach a model-by-model hardware matrix to the checked notes.'
+        : 'The publisher did not include a complete CPU, GPU, operating-system, or storage matrix in this update announcement.',
+      action: u.sourceKind === 'steamos-news'
+        ? 'Confirm your SteamOS channel and read Valve’s release notes before switching channels or installing manually.'
+        : 'Use the game’s current Steam store requirements, then check mod and save compatibility in the official patch notes before installing.',
+    },
+    Windows: {
+      title: 'Windows eligibility and requirements',
+      status: 'KB applicability',
+      summary: 'Microsoft determines eligibility through Windows Update, servicing-channel, edition, architecture, and safeguard-hold rules—not a universal hardware list inside each KB article.',
+      action: 'Confirm the KB applies to your Windows version and review Microsoft’s known-issues and safeguard guidance before forcing a manual install.',
+    },
+    Apple: {
+      title: 'iPhone and iPad compatibility',
+      status: 'Apple device scope',
+      summary: 'Apple did not publish a complete model table inside the checked security record for this release.',
+      action: 'Confirm that your exact iPhone or iPad appears in Apple’s supported-device guidance before attempting a manual update.',
+    },
+    macOS: {
+      title: 'Mac compatibility',
+      status: 'Apple device scope',
+      summary: 'Apple did not publish a complete Mac model table inside the checked security record for this release.',
+      action: 'Confirm your exact Mac model and available storage in Apple’s supported-device guidance before upgrading.',
+    },
+    PS5: {
+      title: 'Console compatibility',
+      status: 'PS5 system software',
+      summary: 'This firmware targets PlayStation 5 consoles; Sony does not publish a separate component-level hardware matrix for the package.',
+      action: 'Install only through the PS5 system updater or Sony’s official recovery workflow. Do not use firmware artifacts from third-party sites.',
+    },
+    Xbox: {
+      title: 'Console compatibility',
+      status: 'Xbox system update',
+      summary: 'Xbox distributes the appropriate system build by console and update ring; no user-selectable hardware matrix accompanies this record.',
+      action: 'Use the console’s built-in updater and confirm any Insider-ring requirements before applying preview builds.',
+    },
+    Switch: {
+      title: 'Console compatibility',
+      status: 'Nintendo system update',
+      summary: 'Nintendo distributes compatible firmware through the console updater; this release does not provide a component-level hardware matrix.',
+      action: 'Use System Settings → System Update and verify Nintendo’s official notes before troubleshooting with manual recovery steps.',
+    },
+  };
+  const compatibilityFallback = compatibilityFallbacks[u.platform] || {
+    title: 'Compatibility and requirements',
+    status: `${platformLabel(u.platform)} release scope`,
+    summary: `The checked ${platformLabel(u.platform)} release source does not publish a complete model-by-model hardware support table.`,
+    action: 'Confirm the supported operating system and current application requirements in the official release source before installing manually.',
+  };
+  const compatibilitySectionTitle = hasCompatibilityMatrix
+    ? 'Will this update support your hardware?'
+    : compatibilityFallback.title;
+  const compatibilitySectionDescription = hasCompatibilityMatrix
+    ? 'PatchTicker compares the exact model and Windows release you enter with the compatibility table published by the vendor. No generated assumptions or browser fingerprint guesses are used.'
+    : 'No model result is inferred when the vendor does not publish a complete compatibility matrix for this exact release.';
+  const compatibilityWorkspaceHTML = hasCompatibilityMatrix ? `
+    <div class="detail-compatibility-checks" aria-label="Compatibility verification method">
+      <div><span>01</span><strong>Exact model</strong><small>Matches only a vendor-listed GPU model or family.</small></div>
+      <div><span>02</span><strong>Windows release</strong><small>Checks the selected OS against the published support range.</small></div>
+      <div><span>03</span><strong>OEM limits</strong><small>Preserves laptop, prebuilt, handheld, and Boot Camp caveats.</small></div>
+    </div>
+    <div class="detail-compatibility-layout">
+      <form class="detail-compatibility-form" id="compatibility-form">
+        <label for="compatibility-hardware">Graphics model from Device Manager</label>
+        <div class="detail-compatibility-controls">
+          <input id="compatibility-hardware" class="field-input" type="text" maxlength="120" autocomplete="off" list="compatibility-models" aria-describedby="compatibility-entry-help" placeholder="${H(compatibilityPlaceholder)}" value="${H(requestedHardware)}" />
+          <datalist id="compatibility-models">${compatibilityModelOptionsHTML}</datalist>
+          <select id="compatibility-os" class="field-input" aria-label="Operating system">
+            <option value="not-sure">OS: Not sure</option>
+            <option value="windows-11-26h1">Windows 11 26H1</option>
+            <option value="windows-11-25h2">Windows 11 25H2</option>
+            <option value="windows-11-24h2">Windows 11 24H2</option>
+            <option value="windows-11-23h2">Windows 11 23H2</option>
+            <option value="windows-10-22h2">Windows 10 22H2</option>
+            <option value="windows-10-21h2">Windows 10 21H2</option>
+            <option value="other">macOS, Linux, or other</option>
+          </select>
+          <button class="detail-compatibility-submit" type="submit">Check compatibility</button>
+        </div>
+        <p class="detail-compatibility-coverage" id="compatibility-entry-help">${H(compatibilityCoverage)} loaded from the linked vendor source.</p>
+        <details class="detail-compatibility-help">
+          <summary>How to find the exact model</summary>
+          <p>On Windows, open Device Manager → Display adapters and copy the full graphics name. For laptops and prebuilt PCs, also check the manufacturer’s driver page before replacing its customized driver.</p>
+        </details>
+        <p class="detail-compatibility-privacy">Runs locally in your browser. Your hardware entry is not transmitted or stored.</p>
+      </form>
+      <aside class="detail-compatibility-proof is-verified">
+        <span>Verified support table loaded</span>
+        <strong>${H(compatibilityVendor)}</strong>
+        <small>${H(compatibilityProfile.sourceLabel || `${compatibilityVendor} compatibility list`)}</small>
+        <small>${H(compatibilityCoverage)}</small>
+        <small>Source checked ${H(compatibilityCheckedAt)}</small>
+        ${compatibilityOsHTML ? `<div class="detail-compatibility-os">${compatibilityOsHTML}</div>` : ''}
+        ${compatibilitySourceLinksHTML}
+      </aside>
+    </div>
+    <div class="detail-compatibility-result" id="compatibility-result" data-status="needs-input" aria-live="polite">
+      <span class="detail-compatibility-result-icon" aria-hidden="true">◇</span>
+      <div><strong>Ready to check</strong><p>Enter the exact model—not only “Radeon,” “Arc,” or a computer brand.</p></div>
+    </div>` : `
+    <div class="detail-compatibility-unavailable" role="note">
+      <div class="detail-compatibility-unavailable-status">
+        <span>MODEL RESULT NOT OFFERED</span>
+        <strong>${H(compatibilityFallback.status)}</strong>
+      </div>
+      <div class="detail-compatibility-unavailable-copy">
+        <p>${H(compatibilityFallback.summary)}</p>
+        <p>${H(compatibilityFallback.action)}</p>
+        <small>PatchTicker leaves compatibility unverified rather than guessing from a product name or generic requirements.</small>
+      </div>
+      ${officialSourceUrl ? `<a class="detail-compatibility-source" href="${H(officialSourceUrl)}" target="_blank" rel="noopener">Check official requirements ↗</a>` : ''}
+    </div>`;
 
   const detailChangeLimit = 6;
   const detailIssueLimit = 4;
@@ -4682,51 +4803,8 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
           </section>
 
           <section class="detail-section detail-compatibility" id="detail-compatibility">
-            ${detailSectionHeading('05 · Device check', 'Will this update support your hardware?', 'PatchTicker compares the exact model and Windows release you enter with the compatibility table published by the vendor. No generated assumptions or browser fingerprint guesses are used.')}
-            <div class="detail-compatibility-checks" aria-label="Compatibility verification method">
-              <div><span>01</span><strong>Exact model</strong><small>Matches only a vendor-listed GPU model or family.</small></div>
-              <div><span>02</span><strong>Windows release</strong><small>Checks the selected OS against the published support range.</small></div>
-              <div><span>03</span><strong>OEM limits</strong><small>Preserves laptop, prebuilt, handheld, and Boot Camp caveats.</small></div>
-            </div>
-            <div class="detail-compatibility-layout">
-              <form class="detail-compatibility-form" id="compatibility-form">
-                <label for="compatibility-hardware">Graphics model from Device Manager</label>
-                <div class="detail-compatibility-controls">
-                  <input id="compatibility-hardware" class="field-input" type="text" maxlength="120" autocomplete="off" list="compatibility-models" aria-describedby="compatibility-entry-help" placeholder="${H(compatibilityPlaceholder)}" value="${H(requestedHardware)}" />
-                  <datalist id="compatibility-models">${compatibilityModelOptionsHTML}</datalist>
-                  <select id="compatibility-os" class="field-input" aria-label="Operating system">
-                    <option value="not-sure">OS: Not sure</option>
-                    <option value="windows-11-26h1">Windows 11 26H1</option>
-                    <option value="windows-11-25h2">Windows 11 25H2</option>
-                    <option value="windows-11-24h2">Windows 11 24H2</option>
-                    <option value="windows-11-23h2">Windows 11 23H2</option>
-                    <option value="windows-10-22h2">Windows 10 22H2</option>
-                    <option value="windows-10-21h2">Windows 10 21H2</option>
-                    <option value="other">macOS, Linux, or other</option>
-                  </select>
-                  <button class="detail-compatibility-submit" type="submit">Check compatibility</button>
-                </div>
-                <p class="detail-compatibility-coverage" id="compatibility-entry-help">${H(compatibilityCoverage)} loaded from the linked vendor source.</p>
-                <details class="detail-compatibility-help">
-                  <summary>How to find the exact model</summary>
-                  <p>On Windows, open Device Manager → Display adapters and copy the full graphics name. For laptops and prebuilt PCs, also check the manufacturer’s driver page before replacing its customized driver.</p>
-                </details>
-                <p class="detail-compatibility-privacy">Runs locally in your browser. Your hardware entry is not transmitted or stored.</p>
-              </form>
-              <aside class="detail-compatibility-proof ${compatibilityProfile ? 'is-verified' : 'is-limited'}">
-                <span>${compatibilityProfile ? 'Verified support table loaded' : 'Model table unavailable'}</span>
-                <strong>${H(compatibilityVendor)}</strong>
-                <small>${H(compatibilityProfile?.sourceLabel || 'No authoritative compatibility source attached')}</small>
-                <small>${H(compatibilityCoverage)}</small>
-                <small>Source checked ${H(compatibilityCheckedAt)}</small>
-                ${compatibilityOsHTML ? `<div class="detail-compatibility-os">${compatibilityOsHTML}</div>` : '<p>This page will return “unverified” rather than infer support from marketing text.</p>'}
-                ${compatibilitySourceLinksHTML}
-              </aside>
-            </div>
-            <div class="detail-compatibility-result" id="compatibility-result" data-status="needs-input" aria-live="polite">
-              <span class="detail-compatibility-result-icon" aria-hidden="true">◇</span>
-              <div><strong>Ready to check</strong><p>Enter the exact model—not only “Radeon,” “Arc,” or a computer brand.</p></div>
-            </div>
+            ${detailSectionHeading('05 · Device check', compatibilitySectionTitle, compatibilitySectionDescription)}
+            ${compatibilityWorkspaceHTML}
           </section>
 
         </div>
