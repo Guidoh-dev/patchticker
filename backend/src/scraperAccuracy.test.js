@@ -755,6 +755,23 @@ describe('scraper accuracy guards', () => {
     ]));
   });
 
+  test('Intel source-date conflicts preserve both dates and prefer the explicit release-notes date', () => {
+    expect(__test.reconcileIntelReleaseDates('09/02/2026 00:00:00', 'September 10, 2026')).toEqual({
+      releasedAt: '2026-09-10',
+      catalogDate: '2026-09-02',
+      releaseNotesDate: '2026-09-10',
+      hasDiscrepancy: true,
+      discrepancyDays: 8,
+    });
+    expect(__test.reconcileIntelReleaseDates('09/02/2026 00:00:00', null)).toEqual({
+      releasedAt: '2026-09-02',
+      catalogDate: '2026-09-02',
+      releaseNotesDate: null,
+      hasDiscrepancy: false,
+      discrepancyDays: 0,
+    });
+  });
+
   test('official Intel and PlayStation artifact metadata preserves vendor package sizes', () => {
     expect(__test.parseIntelPackageSize(`
       <ul><li>Windows 11 Family</li><li>Size: 877.4 MB</li><li>SHA256: abc123</li></ul>

@@ -1201,6 +1201,24 @@ select.field-input { cursor: pointer; }
   line-height: 1.45;
 }
 
+.detail-evidence-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  margin-top: 5px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.detail-evidence-meta em {
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+
 .detail-evidence-arrow {
   position: absolute;
   top: 10px;

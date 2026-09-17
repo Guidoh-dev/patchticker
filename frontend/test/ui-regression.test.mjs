@@ -556,6 +556,14 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(cssSource, /\.dash-coverage-pulse\.is-degraded\s*\{[^}]*var\(--yellow\)/s);
 });
 
+test('update evidence cards distinguish source dates from verification time', () => {
+  assert.match(mainSource, /function evidenceDateMeta\(evidence\)/);
+  assert.match(mainSource, /'catalog-updated': 'Catalog metadata'/);
+  assert.match(mainSource, /detail-evidence-meta/);
+  assert.match(mainSource, /Verified \$\{timeAgo\(evidence\.checkedAt\)\}/);
+  assert.match(cssSource, /\.detail-evidence-meta\s*\{[^}]*flex-wrap:\s*wrap/s);
+});
+
 test('source-depth labels distinguish full notes from version-only verification', () => {
   assert.match(mainSource, /function analysisMethodMeta\(update\)/);
   assert.match(mainSource, /Build verified · notes limited/);

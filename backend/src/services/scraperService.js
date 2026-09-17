@@ -500,6 +500,23 @@ function parseIntelReleaseNotes(pdfText) {
   };
 }
 
+function reconcileIntelReleaseDates(catalogDate, releaseNotesDate) {
+  const catalog = toIsoDate(catalogDate);
+  const releaseNotes = toIsoDate(releaseNotesDate);
+  const releasedAt = releaseNotes || catalog;
+  const discrepancyDays = catalog && releaseNotes
+    ? Math.round(Math.abs(Date.parse(releaseNotes) - Date.parse(catalog)) / 86_400_000)
+    : 0;
+
+  return {
+    releasedAt,
+    catalogDate: catalog,
+    releaseNotesDate: releaseNotes,
+    hasDiscrepancy: Boolean(catalog && releaseNotes && catalog !== releaseNotes),
+    discrepancyDays,
+  };
+}
+
 function absoluteUrl(url, base) {
   if (!url) return base;
   try { return new globalThis.URL(url, base).toString(); }
@@ -2579,6 +2596,7 @@ async function detectIntel() {
       }
     }
     const parsed = parseIntelReleaseNotes(releasePdfText);
+    const sourceDates = reconcileIntelReleaseDates(date, parsed.releasedAt);
     const compatibility = mergeCompatibilityProfiles(parseIntelDownloadCompatibility($), parsed.compatibility);
     const pageHighlights = sectionBullets($, ['Highlights'], 5).map(item => cleanDriverText(item));
     const changelog = parsed.changelog.length
@@ -2597,12 +2615,16 @@ async function detectIntel() {
       platform: 'Intel',
       name: `Intel Arc Graphics Driver ${parsedVersion}${isWhql ? ' WHQL' : ' Non-WHQL'}`.slice(0, 120),
       version: parsedVersion,
-      releasedAt: parsed.releasedAt || toIsoDate(date),
+      releasedAt: sourceDates.releasedAt,
       affects: 'Intel Arc GPUs / Core Ultra Arc graphics / Windows graphics driver / game compatibility',
       changelog,
       knownIssues: parsed.knownIssues,
       knownIssuesAuthoritative: Boolean(releasePdfText),
       riskFactors: [
+        ...(sourceDates.hasDiscrepancy ? [{
+          level: 'low',
+          text: `Intel's download catalog is dated ${sourceDates.catalogDate}, while the release-notes document is dated ${sourceDates.releaseNotesDate}. PatchTicker uses the explicit release-notes date and preserves both source dates for review.`,
+        }] : []),
         ...(!isWhql ? [{ level: 'medium', text: 'This is a Non-WHQL driver; it has not completed Microsoft’s WHQL certification path.' }] : []),
         { level: 'low', text: 'Intel warns that its generic package overwrites OEM-customized graphics drivers; laptops and prebuilt systems should check the manufacturer’s validated build first.' },
       ],
@@ -2613,8 +2635,19 @@ async function detectIntel() {
         ? `Intel’s official release notes document ${impactMeta.gameSupportCount} Game On title${impactMeta.gameSupportCount === 1 ? '' : 's'}, ${impactMeta.gameFixCount} distinct fixed issue${impactMeta.gameFixCount === 1 ? '' : 's'}, and ${impactMeta.knownIssueCount} distinct known issue${impactMeta.knownIssueCount === 1 ? '' : 's'} across supported Arc and Core Ultra families.`
         : 'Intel’s download page confirms the current package and Game On support, but the detailed release-notes PDF could not be parsed during this check.',
       evidence: [
-        ...sourceEvidence('Intel Download Center', url, `${title} version ${parsedVersion}; official download metadata and OEM overwrite guidance.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta }),
-        ...(officialReleaseNotesUrl ? sourceEvidence('Intel Release Notes', officialReleaseNotesUrl, `Official ${isWhql ? 'WHQL' : 'Non-WHQL'} release-notes PDF for driver ${parsedVersion}; ${impactMeta.gameFixCount} fixed and ${impactMeta.knownIssueCount} known issues documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta, compatibility: compatibility || undefined }) : []),
+        ...sourceEvidence('Intel Download Center', url, `${title} version ${parsedVersion}; official download metadata and OEM overwrite guidance.${sourceDates.catalogDate ? ` Catalog metadata dated ${sourceDates.catalogDate}.` : ''}`, {
+          dateBasis: releasePdfText ? 'catalog-updated' : 'released',
+          publishedAt: sourceDates.catalogDate || undefined,
+          releaseType: 'official-release',
+          ...impactMeta,
+        }),
+        ...(officialReleaseNotesUrl ? sourceEvidence('Intel Release Notes', officialReleaseNotesUrl, `Official ${isWhql ? 'WHQL' : 'Non-WHQL'} release-notes PDF for driver ${parsedVersion}; ${impactMeta.gameFixCount} fixed and ${impactMeta.knownIssueCount} known issues documented.${sourceDates.releaseNotesDate ? ` Document dated ${sourceDates.releaseNotesDate}.` : ''}`, {
+          dateBasis: 'released',
+          publishedAt: sourceDates.releaseNotesDate || undefined,
+          releaseType: 'official-release-notes',
+          ...impactMeta,
+          compatibility: compatibility || undefined,
+        }) : []),
       ],
       sourceUrl: url,
     };
@@ -2755,5 +2788,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
 };

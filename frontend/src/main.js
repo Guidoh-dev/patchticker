@@ -2053,6 +2053,24 @@ function renderSourceTimeline(update) {
   `;
 }
 
+function evidenceDateMeta(evidence) {
+  const basisLabels = {
+    released: 'Release date',
+    published: 'Published',
+    announced: 'Announced',
+    'artifact-published': 'Artifact date',
+    'source-updated': 'Source updated',
+    'catalog-updated': 'Catalog metadata',
+  };
+  const sourceDate = evidence?.publishedAt && Number.isFinite(Date.parse(evidence.publishedAt))
+    ? `${basisLabels[evidence.dateBasis] || 'Source date'} · ${formatReleaseDate(evidence.publishedAt)}`
+    : '';
+  const checkedAt = evidence?.checkedAt && Number.isFinite(Date.parse(evidence.checkedAt))
+    ? `Verified ${timeAgo(evidence.checkedAt)}`
+    : '';
+  return [sourceDate, checkedAt].filter(Boolean);
+}
+
 function securitySignalMeta(update) {
   const security = update?.securityCriticality || {};
   const cves = Array.isArray(security.cves) ? security.cves : [];
@@ -4158,13 +4176,16 @@ async function renderUpdateDetail(id) {
     </div>
   `).join('');
 
-  const evidenceHTML = (u.evidence || []).map(e => `
-    <a class="detail-evidence-item" href="${H(e.url)}" target="_blank" rel="noopener">
-      <span class="detail-evidence-source">${H(e.source)}</span>
-      <span class="detail-evidence-text">${H(e.text)}</span>
-      <span class="detail-evidence-arrow">↗</span>
-    </a>
-  `).join('');
+  const evidenceHTML = (u.evidence || []).map(e => {
+    const dateMeta = evidenceDateMeta(e);
+    return `
+      <a class="detail-evidence-item" href="${H(e.url)}" target="_blank" rel="noopener">
+        <span class="detail-evidence-source">${H(e.source)}</span>
+        <span class="detail-evidence-text">${H(e.text)}</span>
+        ${dateMeta.length ? `<span class="detail-evidence-meta">${dateMeta.map(item => `<em>${H(item)}</em>`).join('')}</span>` : ''}
+        <span class="detail-evidence-arrow">↗</span>
+      </a>`;
+  }).join('');
   const officialEvidence = (u.evidence || []).find(e =>
     e?.url && !/(?:reddit\.com|^r\/)/i.test(`${e.source || ''} ${e.url}`)
   );
