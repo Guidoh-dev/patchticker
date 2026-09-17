@@ -609,6 +609,8 @@ test('every update detail exposes a source-backed compatibility workspace and cl
   assert.match(mainSource, /evaluateCompatibility\(compatibilityProfile/);
   assert.match(compatibilitySource, /PatchTicker will not guess from the product name/);
   assert.match(cssSource, /\.detail-compatibility-layout\s*\{[\s\S]*?grid-template-columns/);
+  assert.match(cssSource, /\.detail-compatibility-controls\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(140px, 170px\);[^}]*min-width:\s*0;/s);
+  assert.match(cssSource, /\.detail-compatibility-submit\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s);
 });
 
 test('source heartbeat makes per-platform check recency visible and filterable', () => {

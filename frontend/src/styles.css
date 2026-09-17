@@ -9578,12 +9578,15 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
 }
 .detail-compatibility-controls {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) 170px auto;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 170px);
   gap: 8px;
+  min-width: 0;
 }
 .detail-compatibility-controls .field-input { min-height: 46px; }
 .detail-compatibility-submit {
+  grid-column: 1 / -1;
   min-height: 46px;
+  width: 100%;
   border: 1px solid color-mix(in srgb, var(--green-primary) 55%, var(--border));
   border-radius: 2px;
   padding: 0 18px;
@@ -9654,7 +9657,6 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
 @media (max-width: 920px) {
   .detail-compatibility-layout { grid-template-columns: 1fr; }
   .detail-compatibility-controls { grid-template-columns: minmax(0, 1fr) 160px; }
-  .detail-compatibility-submit { grid-column: 1 / -1; }
 }
 
 @media (max-width: 560px) {
