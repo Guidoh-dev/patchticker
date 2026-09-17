@@ -30,6 +30,8 @@ let _steamGameScanJob= null;
 let _startupScanTimer= null;
 let _isRunning       = false;
 let _lastManualRun    = null;
+const _pendingScans  = new Map();
+let _pendingDrainScheduled = false;
 
 // ── Security-priority platforms — scanned hourly ──────────────────────────────
 const SECURITY_PLATFORMS = SECURITY_PLATFORM_KEYS;
@@ -39,10 +41,41 @@ const HIGH_VELOCITY_PLATFORMS = Object.freeze([
   'SteamDeck',
 ]);
 
+function schedulePendingDrain() {
+  if (_pendingDrainScheduled || _isRunning || !_pendingScans.size) {
+    return;
+  }
+  _pendingDrainScheduled = true;
+  Promise.resolve().then(async () => {
+    _pendingDrainScheduled = false;
+    if (_isRunning || !_pendingScans.size) {
+      return;
+    }
+    const [key, pending] = _pendingScans.entries().next().value;
+    _pendingScans.delete(key);
+    logger.info('[cron] Running deferred scan', { scan: key, remaining: _pendingScans.size });
+    try {
+      await pending();
+    } catch (err) {
+      logger.error('[cron] Deferred scan failed', { scan: key, error: err.message });
+    }
+  });
+}
+
+function queuePendingScan(key, runner) {
+  const alreadyQueued = _pendingScans.has(key);
+  if (!alreadyQueued) {
+    _pendingScans.set(key, runner);
+  }
+  logger.info(`[cron] ${alreadyQueued ? 'Coalesced' : 'Queued'} ${key} scan — pipeline already running`, {
+    pending: [..._pendingScans.keys()],
+  });
+  return { queued: true, coalesced: alreadyQueued };
+}
+
 async function runTargetedScan(label, platforms) {
   if (_isRunning) {
-    logger.info(`[cron] Skipping ${label} scan — pipeline already running`);
-    return;
+    return queuePendingScan(label, () => runTargetedScan(label, platforms));
   }
   _isRunning = true;
   logger.info(`[cron] ${label} scan starting`, { platforms });
@@ -72,6 +105,7 @@ async function runTargetedScan(label, platforms) {
     logger.error(`[cron] ${label} scan error`, { error: err.message });
   } finally {
     _isRunning = false;
+    schedulePendingDrain();
   }
 }
 
@@ -85,8 +119,7 @@ async function runFastScan() {
 
 async function runFullScan() {
   if (_isRunning) {
-    logger.info('[cron] Skipping full scan — already running');
-    return;
+    return queuePendingScan('Full', runFullScan);
   }
   _isRunning = true;
   logger.info('[cron] Full pipeline scan starting');
@@ -98,13 +131,13 @@ async function runFullScan() {
     logger.error('[cron] Full scan error', { error: err.message });
   } finally {
     _isRunning = false;
+    schedulePendingDrain();
   }
 }
 
 async function runSteamGameScan() {
   if (_isRunning) {
-    logger.info('[cron] Skipping Steam game scan — pipeline already running');
-    return;
+    return queuePendingScan('Steam game', runSteamGameScan);
   }
   _isRunning = true;
   logger.info('[cron] Material Steam game scan starting');
@@ -122,6 +155,7 @@ async function runSteamGameScan() {
     throw err;
   } finally {
     _isRunning = false;
+    schedulePendingDrain();
   }
 }
 
@@ -198,6 +232,8 @@ function stop() {
   _securityScanJob = null;
   _steamGameScanJob= null;
   _startupScanTimer= null;
+  _pendingScans.clear();
+  _pendingDrainScheduled = false;
   logger.info('[cron] Scheduler stopped');
 }
 
@@ -226,11 +262,12 @@ async function triggerManual(platform = null) {
     throw err;
   } finally {
     _isRunning = false;
+    schedulePendingDrain();
   }
 }
 
 function getPipelineRuntimeState() {
-  return { isRunning: _isRunning, lastManualRun: _lastManualRun };
+  return { isRunning: _isRunning, pendingScans: [..._pendingScans.keys()], lastManualRun: _lastManualRun };
 }
 
 module.exports = { start, stop, triggerManual, getPipelineRuntimeState };

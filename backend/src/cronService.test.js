@@ -21,7 +21,7 @@ jest.mock('./services/ratingReconciliationService', () => ({ run: mockRatingReco
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
 const cronService = require('./services/cronService');
-const { HIGH_VELOCITY_PLATFORM_KEYS } = require('./config/platformRegistry');
+const { HIGH_VELOCITY_PLATFORM_KEYS, SECURITY_PLATFORM_KEYS } = require('./config/platformRegistry');
 
 describe('pipeline scheduler', () => {
   const originalNodeEnv = process.env.NODE_ENV;
@@ -104,5 +104,43 @@ describe('pipeline scheduler', () => {
     cronService.start();
     await mockScheduledJobs[2].handler();
     expect(mockSteamGameRun).toHaveBeenCalledTimes(1);
+  });
+
+  test('overlapping scheduled scans are deferred and duplicate requests coalesce', async () => {
+    let releaseFirstCall;
+    const firstCallGate = new Promise(resolve => { releaseFirstCall = resolve; });
+    let firstCall = true;
+    mockProcessPlatform.mockImplementation(async platform => {
+      if (firstCall) {
+        firstCall = false;
+        await firstCallGate;
+      }
+      return { platform, status: 'unchanged' };
+    });
+
+    cronService.start();
+    const securityRun = mockScheduledJobs[0].handler();
+    await Promise.resolve();
+
+    await expect(mockScheduledJobs[1].handler()).resolves.toEqual({ queued: true, coalesced: false });
+    await expect(mockScheduledJobs[1].handler()).resolves.toEqual({ queued: true, coalesced: true });
+    expect(cronService.getPipelineRuntimeState()).toEqual(expect.objectContaining({
+      isRunning: true,
+      pendingScans: ['High-velocity'],
+    }));
+
+    releaseFirstCall();
+    await securityRun;
+    for (let i = 0; i < 12; i += 1) {
+      await Promise.resolve();
+    }
+
+    expect(mockProcessPlatform).toHaveBeenCalledTimes(
+      SECURITY_PLATFORM_KEYS.length + HIGH_VELOCITY_PLATFORM_KEYS.length + 1
+    );
+    expect(cronService.getPipelineRuntimeState()).toEqual(expect.objectContaining({
+      isRunning: false,
+      pendingScans: [],
+    }));
   });
 });
