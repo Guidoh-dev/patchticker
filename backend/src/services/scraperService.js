@@ -413,6 +413,7 @@ function parseIntelReleaseNotes(pdfText) {
   const gameKnownIssues = dedupeIntelIssues(markedPdfBullets(known));
   const softwareKnownIssues = dedupeIntelIssues(markedPdfBullets(softwareKnown));
   const knownIssueCount = gameKnownIssues.length + softwareKnownIssues.length;
+  const compatibility = parseIntelCompatibility(source);
 
   return {
     version: versionLine?.[1] || null,
@@ -427,6 +428,7 @@ function parseIntelReleaseNotes(pdfText) {
     gameSupportCount: gameTitles.length,
     gameFixCount: fixedIssues.length,
     knownIssueCount,
+    compatibility,
   };
 }
 
@@ -945,6 +947,234 @@ function amdHeadingBullets($, label, max = 12) {
   return unique(bullets, 520).slice(0, max);
 }
 
+function headingSectionRows($, label, max = 40) {
+  const pattern = label instanceof RegExp ? label : new RegExp(label, 'i');
+  const heading = $('h2,h3').filter((_, element) => {
+    pattern.lastIndex = 0;
+    return pattern.test(cleanDriverText($(element).text(), 180));
+  }).first();
+  if (!heading.length) return [];
+
+  const rows = [];
+  let node = heading.next();
+  let guard = 0;
+  while (node.length && guard++ < 12 && !/^h[23]$/i.test(node[0]?.tagName || '')) {
+    node.find('tr').each((_, row) => {
+      $(row).find('th,td').each((__, cell) => {
+        const text = cleanDriverText($(cell).text(), 240);
+        if (text && !/^(?:desktop|mobile)$/i.test(text)) rows.push(text);
+      });
+    });
+    node.find('li').each((_, item) => {
+      const text = cleanDriverText($(item).text(), 240);
+      if (text) rows.push(text);
+    });
+    node = node.next();
+  }
+  return unique(rows, 240).slice(0, max);
+}
+
+function amdHardwareAliases(label) {
+  const text = cleanDriverText(label, 240);
+  const aliases = [];
+  const addModels = (pattern, prefix) => {
+    for (const match of text.matchAll(pattern)) {
+      const model = cleanDriverText(match[0], 24).toLowerCase();
+      aliases.push(`${prefix} ${model}`, model);
+    }
+  };
+
+  if (/Radeon\s+RX/i.test(text)) addModels(/\b\d{4}M?\b/gi, 'radeon rx');
+  else if (/Radeon\s+AI\s+PRO/i.test(text)) addModels(/\bR\d{4}[A-Z]?\b/gi, 'radeon ai pro');
+  else if (/Radeon\s+PRO/i.test(text)) addModels(/\bW\d{4}M?\b/gi, 'radeon pro');
+
+  return unique(aliases, 80).map(alias => alias.toLowerCase());
+}
+
+function parseAmdCompatibility($) {
+  const desktop = headingSectionRows($, /^Radeon Product Compatibility$/i);
+  const mobility = headingSectionRows($, /^Mobility Radeon Product Compatibility$/i);
+  const processor = headingSectionRows($, /Processors with Radeon Graphics Product Compatibility/i);
+  const operatingSystems = headingSectionRows($, /^Compatible Operating Systems$/i);
+  const hardware = [
+    ...desktop.map(label => ({ label, category: 'desktop', matchType: 'model-family', aliases: amdHardwareAliases(label) })),
+    ...mobility.map(label => ({ label, category: 'mobile', matchType: 'model-family', aliases: amdHardwareAliases(label) })),
+    ...processor.map(label => ({
+      label,
+      category: 'integrated',
+      matchType: 'family',
+      aliases: [cleanDriverText(label, 160).toLowerCase()],
+    })),
+  ].filter(entry => entry.aliases.length);
+
+  if (!hardware.length || !operatingSystems.length) return null;
+  return {
+    schemaVersion: 1,
+    vendor: 'AMD',
+    scope: 'graphics-driver',
+    authoritative: true,
+    catalogCompleteness: 'explicit-discrete-models-and-broad-integrated-families',
+    hardware,
+    operatingSystems,
+    exclusions: [
+      { label: 'Apple Boot Camp', aliases: ['apple boot camp', 'boot camp', 'macos', 'mac os'] },
+      { label: 'Handheld gaming devices require an OEM driver', aliases: ['steam deck', 'rog ally', 'legion go', 'handheld gaming'] },
+    ],
+    guidance: 'AMD identifies this as a reference driver. Laptop, all-in-one, and integrated-graphics systems should prefer the computer manufacturer’s validated driver.',
+  };
+}
+
+function parseIntelCompatibility(pdfText) {
+  const section = pdfSection(
+    pdfText,
+    /^\s*Operating System Support:\s*$/im,
+    /^\s*More on Intel Products:\s*$/im,
+  );
+  if (!section) return null;
+  const searchable = section.replace(/[®™]/g, '').replace(/\s+/g, ' ');
+
+  const modelTokens = unique(
+    [...section.matchAll(/\b(?:A\d{3,4}(?:M|E)?|B\d{2,3})(?:\s+LP)?\b/gi)].map(match => match[0]),
+    24,
+  );
+  const hardware = modelTokens.map(token => {
+    const model = cleanDriverText(token, 24);
+    const isPro = /^B(?:50|60|65|70)$/i.test(model);
+    const label = `Intel Arc${isPro ? ' Pro' : ''} ${model}`;
+    return {
+      label,
+      category: /M$/i.test(model) ? 'mobile' : 'graphics',
+      matchType: 'exact-model',
+      aliases: [`intel arc ${model}`, `arc ${model}`, model].map(alias => alias.toLowerCase()),
+    };
+  });
+
+  if (/Core Ultra Series 3/i.test(searchable)) {
+    hardware.push({
+      label: 'Intel Core Ultra Series 3 with built-in Intel Arc graphics',
+      category: 'integrated',
+      matchType: 'family',
+      aliases: ['intel core ultra series 3', 'core ultra series 3', 'panther lake'],
+    });
+  }
+  if (/Core Ultra with built-in Intel/i.test(searchable)) {
+    hardware.push({
+      label: 'Intel Core Ultra with built-in Intel Arc graphics',
+      category: 'integrated',
+      matchType: 'family',
+      aliases: ['core ultra with intel arc', 'meteor lake', 'lunar lake', 'arrow lake'],
+    });
+  }
+  if (/Core Series 3 with built-in/i.test(searchable)) {
+    hardware.push({
+      label: 'Intel Core Series 3 with built-in Intel graphics',
+      category: 'integrated',
+      matchType: 'family',
+      aliases: ['intel core series 3', 'core series 3', 'wildcat lake'],
+    });
+  }
+
+  if (!hardware.length) return null;
+  return {
+    schemaVersion: 1,
+    vendor: 'Intel',
+    scope: 'graphics-driver',
+    authoritative: true,
+    catalogCompleteness: 'official-driver-support-table',
+    hardware,
+    operatingSystems: [
+      'Windows 11 64-bit versions 21H2 through 25H2',
+      'Windows 10 64-bit version 22H2',
+    ],
+    exclusions: [],
+    guidance: 'Intel’s generic driver supports the listed graphics families, but computer manufacturers may provide a customized driver. Corporate and OEM-managed systems should use the manufacturer-validated package.',
+  };
+}
+
+function parseIntelDownloadCompatibility($) {
+  const labels = unique(
+    $('.dc-page-detailed-other-valid-products-panel__product--fixed')
+      .map((_, link) => cleanDriverText($(link).text(), 180))
+      .get()
+      .filter(Boolean),
+    180,
+  );
+  const graphics = labels.filter(label => /\bIntel\s+Arc\b/i.test(label));
+  if (!graphics.length) return null;
+
+  const hardware = graphics.map(label => {
+    const compact = cleanDriverText(label.replace(/\s*\([^)]*\)\s*/g, ' '), 150);
+    const model = compact.match(/\b(?:A\d{3,4}(?:M|E)?|B\d{2,3}|1[034]\d[TV])(?:\s+LP)?\b/i)?.[0] || '';
+    const aliases = unique([
+      compact.toLowerCase(),
+      compact.replace(/^Intel\s+/i, '').toLowerCase(),
+      model ? `intel arc ${model}`.toLowerCase() : '',
+      model ? `arc ${model}`.toLowerCase() : '',
+      model.toLowerCase(),
+    ].filter(Boolean), 80);
+    return {
+      label: compact,
+      category: /M$/i.test(model) ? 'mobile' : /\b(?:130|140)[TV]\b/i.test(model) ? 'integrated' : 'graphics',
+      matchType: 'exact-model',
+      aliases,
+    };
+  });
+
+  // Do not truncate before the platform-support block; Intel's long valid-
+  // products list can push that text well beyond a generic summary limit.
+  const body = String($('body').text() || '').replace(/[®™]/g, '').replace(/\s+/g, ' ').trim();
+  if (/Intel Core Ultra processor family/i.test(body)) {
+    hardware.push({
+      label: 'Intel Core Ultra processors with built-in Intel Arc graphics',
+      category: 'integrated',
+      matchType: 'family',
+      aliases: ['intel core ultra', 'core ultra'],
+    });
+  }
+  if (/Intel\s+Core\s+processor family\s*\(Codename Wildcat Lake\)/i.test(body)) {
+    hardware.push({
+      label: 'Intel Core processor family (Wildcat Lake) with built-in Intel graphics',
+      category: 'integrated',
+      matchType: 'family',
+      aliases: ['wildcat lake', 'intel core series 3', 'core series 3'],
+    });
+  }
+
+  return {
+    schemaVersion: 1,
+    vendor: 'Intel',
+    scope: 'graphics-driver',
+    authoritative: true,
+    catalogCompleteness: 'official-download-valid-products-and-release-notes',
+    hardware,
+    operatingSystems: [
+      'Windows 11 64-bit versions 21H2 through 25H2',
+      'Windows 10 64-bit version 22H2',
+    ],
+    exclusions: [],
+    guidance: 'Intel’s generic driver supports the listed graphics families, but computer manufacturers may provide a customized driver. Corporate and OEM-managed systems should use the manufacturer-validated package.',
+  };
+}
+
+function mergeCompatibilityProfiles(primary, secondary) {
+  if (!primary) return secondary || null;
+  if (!secondary) return primary;
+  const seen = new Set();
+  const hardware = [...(primary.hardware || []), ...(secondary.hardware || [])].filter(entry => {
+    const key = cleanDriverText(entry.label, 180).toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return {
+    ...secondary,
+    ...primary,
+    hardware,
+    operatingSystems: unique([...(primary.operatingSystems || []), ...(secondary.operatingSystems || [])], 180),
+    exclusions: [...(primary.exclusions || []), ...(secondary.exclusions || [])],
+  };
+}
+
 function compareVersionParts(left, right) {
   const a = String(left || '').split('.').map(Number);
   const b = String(right || '').split('.').map(Number);
@@ -1012,6 +1242,7 @@ function parseAmdReleaseNotes(html, sourceUrl, options = {}) {
     ...amdHeadingBullets($, /^Known Issues$/i, 12),
     ...amdNestedBullets($, /^Known Issues$/i, 12),
   ], 520).slice(0, 12);
+  const compatibility = parseAmdCompatibility($);
   const supportedGames = unique([...gameTitles, ...fsrTitles], 140);
   const changelog = unique([
     gameTitles.length ? `Game support — ${gameTitles.join('; ')}.` : '',
@@ -1032,6 +1263,7 @@ function parseAmdReleaseNotes(html, sourceUrl, options = {}) {
     knownIssueCount: knownIssues.length,
     productSupportCount: productSupport.length,
     whql: Boolean(options.whql),
+    compatibility,
   };
 }
 
@@ -1323,7 +1555,7 @@ async function detectAmd() {
         reasoning: `AMD’s official ${parsed.whql ? 'WHQL ' : ''}release documents ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} fixed issue${parsed.gameFixCount === 1 ? '' : 's'}, ${parsed.productSupportCount} newly supported product${parsed.productSupportCount === 1 ? '' : 's'}, and ${parsed.knownIssueCount} known issue${parsed.knownIssueCount === 1 ? '' : 's'}.`,
         evidence: [
           ...(discovered ? sourceEvidence('AMD Driver Downloads', driverPageUrl, `AMD’s Radeon RX driver page identifies Adrenalin Edition ${parsed.version} as the current ${parsed.whql ? 'WHQL ' : ''}package.`, { dateBasis: 'checked', releaseType: 'official-download-index', ...impactMeta }) : []),
-          ...sourceEvidence('AMD Release Notes', url, `${parsed.title}; ${parsed.gameFixCount} fixed and ${parsed.knownIssueCount} known issues documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }),
+          ...sourceEvidence('AMD Release Notes', url, `${parsed.title}; ${parsed.gameFixCount} fixed and ${parsed.knownIssueCount} known issues documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta, compatibility: parsed.compatibility || undefined }),
         ],
         sourceUrl: url,
       };
@@ -1811,6 +2043,7 @@ async function detectIntel() {
       }
     }
     const parsed = parseIntelReleaseNotes(releasePdfText);
+    const compatibility = mergeCompatibilityProfiles(parseIntelDownloadCompatibility($), parsed.compatibility);
     const pageHighlights = sectionBullets($, ['Highlights'], 5).map(item => cleanDriverText(item));
     const changelog = parsed.changelog.length
       ? parsed.changelog
@@ -1845,7 +2078,7 @@ async function detectIntel() {
         : 'Intel’s download page confirms the current package and Game On support, but the detailed release-notes PDF could not be parsed during this check.',
       evidence: [
         ...sourceEvidence('Intel Download Center', url, `${title} version ${parsedVersion}; official download metadata and OEM overwrite guidance.`, { dateBasis: 'released', releaseType: 'official-release', ...impactMeta }),
-        ...(officialReleaseNotesUrl ? sourceEvidence('Intel Release Notes', officialReleaseNotesUrl, `Official ${isWhql ? 'WHQL' : 'Non-WHQL'} release-notes PDF for driver ${parsedVersion}; ${impactMeta.gameFixCount} fixed and ${impactMeta.knownIssueCount} known issues documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta }) : []),
+        ...(officialReleaseNotesUrl ? sourceEvidence('Intel Release Notes', officialReleaseNotesUrl, `Official ${isWhql ? 'WHQL' : 'Non-WHQL'} release-notes PDF for driver ${parsedVersion}; ${impactMeta.gameFixCount} fixed and ${impactMeta.knownIssueCount} known issues documented.`, { dateBasis: 'released', releaseType: 'official-release-notes', ...impactMeta, compatibility: compatibility || undefined }) : []),
       ],
       sourceUrl: url,
     };
@@ -1983,5 +2216,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
 };

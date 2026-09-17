@@ -3,6 +3,7 @@
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
 const { __test } = require('./services/scraperService');
+const cheerio = require('cheerio');
 
 describe('scraper accuracy guards', () => {
   beforeEach(() => {
@@ -564,6 +565,87 @@ describe('scraper accuracy guards', () => {
       'content-length': '1',
     })).toBe(1247471104);
     expect(__test.artifactSizeBytes({ 'content-length': '20' })).toBeNull();
+  });
+
+  test('AMD compatibility parser preserves the official discrete, mobile, OS, and exclusion scope', () => {
+    const parsed = __test.parseAmdReleaseNotes(`
+      <h1>AMD Software: Adrenalin Edition 26.9.1 Optional Driver Release Notes</h1>
+      <p>Last Updated: September 3rd, 2026.</p>
+      <h2>Radeon Product Compatibility</h2>
+      <table><tr><td>AMD Radeon RX 7900/7800/7700 Series Graphics</td></tr></table>
+      <h2>Mobility Radeon Product Compatibility</h2>
+      <table><tr><td>AMD Radeon RX 7900M/7800M Series Graphics</td></tr></table>
+      <h2>AMD Processors with Radeon Graphics Product Compatibility</h2>
+      <table><tr><th>DESKTOP</th><th>MOBILE</th></tr><tr><td>AMD Ryzen Processors with Radeon Graphics</td><td>AMD Ryzen AI Series Processors with Radeon Graphics</td></tr></table>
+      <h2>Compatible Operating Systems</h2>
+      <ul><li>Windows 11 version 21H2 and later</li><li>Windows 10 64-bit version 21H2 and later</li></ul>
+    `, 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-9-1.html');
+
+    expect(parsed.compatibility).toMatchObject({
+      vendor: 'AMD',
+      authoritative: true,
+      operatingSystems: [
+        'Windows 11 version 21H2 and later',
+        'Windows 10 64-bit version 21H2 and later',
+      ],
+    });
+    expect(parsed.compatibility.hardware).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: expect.stringContaining('RX 7900/7800/7700'), aliases: expect.arrayContaining(['radeon rx 7900', '7900']) }),
+      expect.objectContaining({ label: expect.stringContaining('RX 7900M/7800M'), aliases: expect.arrayContaining(['radeon rx 7900m', '7900m']) }),
+    ]));
+    expect(parsed.compatibility.exclusions.map(item => item.label)).toEqual(expect.arrayContaining([
+      'Apple Boot Camp',
+      'Handheld gaming devices require an OEM driver',
+    ]));
+  });
+
+  test('Intel compatibility parser reads exact Arc models and supported Windows releases from the official PDF table', () => {
+    const compatibility = __test.parseIntelCompatibility(`
+      Operating System Support:
+      Microsoft Windows 11 64-bit September 2025 Update (25H2)
+      Microsoft Windows 10 64-bit October 2022 Update (22H2)
+      Intel Core Ultra Series 3 with built-in Intel Arc GPUs B390, B370 and Intel Graphics (Codename Panther Lake)
+      Intel Arc B580, B570 Graphics (Codename Battlemage)
+      Intel Arc Pro B50, Pro B60, Pro B65, and Pro B70 GPUs
+      Intel Core Ultra with built-in Intel Arc GPUs (Codename Meteor Lake, Lunar Lake, Arrow Lake)
+      Intel Arc A770, A750, A580, A380, A310, A770M, A730M Graphics (Codename Alchemist)
+      More on Intel Products:
+    `);
+
+    expect(compatibility).toMatchObject({
+      vendor: 'Intel',
+      authoritative: true,
+      operatingSystems: expect.arrayContaining([
+        expect.stringContaining('Windows 11'),
+        expect.stringContaining('Windows 10'),
+      ]),
+    });
+    expect(compatibility.hardware).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Intel Arc B580', aliases: expect.arrayContaining(['arc b580', 'b580']) }),
+      expect.objectContaining({ label: 'Intel Arc A770', aliases: expect.arrayContaining(['arc a770', 'a770']) }),
+      expect.objectContaining({ label: 'Intel Arc A770M', category: 'mobile' }),
+      expect.objectContaining({ label: expect.stringContaining('Core Ultra Series 3'), matchType: 'family' }),
+    ]));
+  });
+
+  test('Intel download compatibility includes officially listed integrated Arc products omitted from PDF shorthand', () => {
+    const $ = cheerio.load(`
+      <body>
+        <p>Intel Core Ultra processor family (Codename Meteor Lake, Lunar Lake, Arrow Lake-S, Panther Lake)</p>
+        <p>Intel Core processor family (Codename Wildcat Lake)</p>
+        <a class="dc-page-detailed-other-valid-products-panel__product--fixed">Intel Arc 140V GPU</a>
+        <a class="dc-page-detailed-other-valid-products-panel__product--fixed">Intel Arc B580 Graphics</a>
+        <a class="dc-page-detailed-other-valid-products-panel__product--fixed">Intel Arc A770 Graphics (16GB)</a>
+      </body>
+    `);
+    const compatibility = __test.parseIntelDownloadCompatibility($);
+
+    expect(compatibility.hardware).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Intel Arc 140V GPU', aliases: expect.arrayContaining(['arc 140v', '140v']) }),
+      expect.objectContaining({ label: 'Intel Arc B580 Graphics', aliases: expect.arrayContaining(['arc b580', 'b580']) }),
+      expect.objectContaining({ label: expect.stringContaining('Core Ultra'), matchType: 'family' }),
+      expect.objectContaining({ label: expect.stringContaining('Wildcat Lake'), matchType: 'family' }),
+    ]));
   });
 
   test('detectors fail closed without a source date or official HTTPS source', () => {

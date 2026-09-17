@@ -11,6 +11,7 @@ const apiSource = await readFile(resolve(root, 'src/api.js'), 'utf8');
 const routerSource = await readFile(resolve(root, 'src/router.js'), 'utf8');
 const filterLogicSource = await readFile(resolve(root, 'src/filterLogic.js'), 'utf8');
 const steamCandidatesSource = await readFile(resolve(root, 'src/steamGameCandidates.js'), 'utf8');
+const compatibilitySource = await readFile(resolve(root, 'src/compatibility.js'), 'utf8');
 
 test('router resolves exact and dynamic update directories', () => {
   const updatesHandler = () => 'updates';
@@ -479,7 +480,7 @@ test('source-depth labels distinguish full notes from version-only verification'
   assert.match(mainSource, /Official security advisory/);
   assert.match(mainSource, /Official release notes/);
   assert.match(mainSource, /class="source-depth-signal source-depth-signal--\$\{H\(methodMeta\.tone\)\}"/);
-  assert.match(mainSource, /\$\{H\(detailMethodMeta\.heading\)\}/);
+  assert.match(mainSource, /detailSectionHeading\('02 · Release contents', detailMethodMeta\.heading/);
   assert.match(mainSource, /\$\{H\(detailMethodMeta\.note\)\}/);
   assert.match(cssSource, /\.source-depth-signal--limited\s*\{[^}]*var\(--yellow\)/s);
   assert.match(cssSource, /\.detail-section-context\s*\{[^}]*font-family:\s*var\(--font-mono\)/s);
@@ -583,6 +584,17 @@ test('update details continue into honestly ranked related releases', () => {
   assert.match(mainSource, /View \$\{H\(platformLabel\(u\.platform\)\)\} history/);
   assert.match(cssSource, /\.detail-related-grid\s*\{[^}]*repeat\(auto-fit, minmax\(min\(100%, 220px\), 1fr\)\)/s);
   assert.match(cssSource, /\.detail-related-header > a\s*\{[^}]*min-height:\s*44px/s);
+});
+
+test('every update detail exposes a source-backed compatibility workspace and clear section map', () => {
+  assert.match(mainSource, /id="detail-compatibility"/);
+  assert.match(mainSource, /data-detail-target="detail-changes"/);
+  assert.match(mainSource, /data-detail-target="detail-issues"/);
+  assert.match(mainSource, /data-detail-target="detail-compatibility"/);
+  assert.match(mainSource, /Your hardware entry is not transmitted or stored/);
+  assert.match(mainSource, /evaluateCompatibility\(compatibilityProfile/);
+  assert.match(compatibilitySource, /PatchTicker will not guess from the product name/);
+  assert.match(cssSource, /\.detail-compatibility-layout\s*\{[\s\S]*?grid-template-columns/);
 });
 
 test('source heartbeat makes per-platform check recency visible and filterable', () => {

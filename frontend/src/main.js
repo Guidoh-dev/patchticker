@@ -25,6 +25,7 @@ import {
 } from './analytics.js';
 import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCandidates.js';
 import { SETUP_LENSES, filterUpdatesBySetup } from './filterLogic.js';
+import { compatibilityProfileFromUpdate, evaluateCompatibility } from './compatibility.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -4075,6 +4076,24 @@ async function renderUpdateDetail(id) {
     : hasSameLaneRelease
       ? 'Explore recent verified patches from the same update lane.'
       : `Explore other verified ${platformLabel(u.platform)} releases inside the 240-day window.`;
+  const compatibilityProfile = compatibilityProfileFromUpdate(u);
+  const compatibilityVendor = compatibilityProfile?.vendor || platformLabel(u.platform);
+  const compatibilityPlaceholder = compatibilityProfile?.vendor === 'AMD'
+    ? 'Example: Radeon RX 7900 XTX'
+    : compatibilityProfile?.vendor === 'Intel'
+      ? 'Example: Intel Arc A770'
+      : 'Enter the exact hardware or device model';
+  const compatibilityCheckedAt = compatibilityProfile?.checkedAt
+    ? formatVerifiedMoment(compatibilityProfile.checkedAt)
+    : 'Not published for this release';
+  const compatibilityOsHTML = (compatibilityProfile?.operatingSystems || [])
+    .map(label => `<span>${H(label)}</span>`).join('');
+  const detailSectionHeading = (eyebrow, title, description = '') => `
+    <header class="detail-section-heading">
+      <p class="detail-section-eyebrow">${H(eyebrow)}</p>
+      <h2 class="detail-section-title">${H(title)}</h2>
+      ${description ? `<p class="detail-section-description">${H(description)}</p>` : ''}
+    </header>`;
   const decisionFactsHTML = decisionPanelFacts(u, freshness).map(fact => `
     <div class="detail-decision-fact detail-decision-fact--${H(fact.tone)}">
       <strong>${H(fact.value)}</strong><span>${H(fact.label)}</span>
@@ -4121,7 +4140,7 @@ async function renderUpdateDetail(id) {
       </div>
 
       <!-- Hero -->
-      <div class="detail-hero detail-hero--brief">
+      <div class="detail-hero detail-hero--brief" id="detail-overview">
         <div class="detail-hero-left">
           ${renderPlatformLogo(u.platform, 'update-platform-icon detail-platform-icon')}
           <div>
@@ -4180,30 +4199,69 @@ async function renderUpdateDetail(id) {
         <button class="detail-action-btn detail-action-btn--danger" id="report-issue-btn" type="button">Report Issue</button>
       </div>
 
+      <nav class="detail-section-nav" aria-label="Update page sections">
+        <button type="button" data-detail-target="detail-overview">Summary</button>
+        <button type="button" data-detail-target="detail-changes">Changes</button>
+        <button type="button" data-detail-target="detail-issues">Known issues</button>
+        <button type="button" data-detail-target="detail-compatibility">Compatibility</button>
+        <button type="button" data-detail-target="detail-sources">Sources</button>
+      </nav>
+
       <!-- Main content grid -->
       <div class="detail-grid">
 
         <!-- Left col: Reasoning + Changelog + Issues -->
         <div class="detail-col-main">
 
-          <section class="detail-section">
-            <h2 class="detail-section-title">Update brief</h2>
+          <section class="detail-section" id="detail-brief">
+            ${detailSectionHeading('01 · Decision context', 'Update brief', 'The practical reason to install, wait, or avoid this release.')}
             <p class="detail-reasoning">${H(u.reasoning || 'Our notes for this update are not published yet. Check back after the community monitoring window, typically 72 hours after release.')}</p>
           </section>
 
-          <section class="detail-section">
-            <h2 class="detail-section-title">${H(detailMethodMeta.heading)}</h2>
+          <section class="detail-section" id="detail-changes">
+            ${detailSectionHeading('02 · Release contents', detailMethodMeta.heading, 'Vendor-published changes, fixes, and additions relevant to this release.')}
             <p class="detail-section-context">${H(detailMethodMeta.note)}</p>
             <ul class="detail-list">${changelogHTML || '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">—</span>No changelog available</li>'}</ul>
           </section>
 
-          <section class="detail-section">
-            <h2 class="detail-section-title">Known issues</h2>
+          <section class="detail-section" id="detail-issues">
+            ${detailSectionHeading('03 · Before installing', 'Known issues', 'Unresolved problems explicitly captured from the checked source material.')}
             <ul class="detail-list">${issuesHTML}</ul>
           </section>
 
+          <section class="detail-section detail-compatibility" id="detail-compatibility">
+            ${detailSectionHeading('04 · Device check', 'Will this update support your hardware?', 'PatchTicker compares the model you enter with the compatibility table published by the vendor. No generated assumptions are used.')}
+            <div class="detail-compatibility-layout">
+              <form class="detail-compatibility-form" id="compatibility-form">
+                <label for="compatibility-hardware">Graphics or device model</label>
+                <div class="detail-compatibility-controls">
+                  <input id="compatibility-hardware" class="field-input" type="text" maxlength="120" autocomplete="off" placeholder="${H(compatibilityPlaceholder)}" />
+                  <select id="compatibility-os" class="field-input" aria-label="Operating system">
+                    <option value="not-sure">OS: Not sure</option>
+                    <option value="windows-11">Windows 11</option>
+                    <option value="windows-10">Windows 10</option>
+                    <option value="other">macOS, Linux, or other</option>
+                  </select>
+                  <button class="detail-compatibility-submit" type="submit">Check compatibility</button>
+                </div>
+                <p class="detail-compatibility-privacy">Runs locally in your browser. Your hardware entry is not transmitted or stored.</p>
+              </form>
+              <aside class="detail-compatibility-proof ${compatibilityProfile ? 'is-verified' : 'is-limited'}">
+                <span>${compatibilityProfile ? 'Verified support table loaded' : 'Model table unavailable'}</span>
+                <strong>${H(compatibilityVendor)}</strong>
+                <small>${H(compatibilityCheckedAt)}</small>
+                ${compatibilityOsHTML ? `<div class="detail-compatibility-os">${compatibilityOsHTML}</div>` : '<p>This page will return “unverified” rather than infer support from marketing text.</p>'}
+                ${compatibilityProfile?.sourceUrl ? `<a href="${H(compatibilityProfile.sourceUrl)}" target="_blank" rel="noopener">View compatibility source ↗</a>` : ''}
+              </aside>
+            </div>
+            <div class="detail-compatibility-result" id="compatibility-result" data-status="needs-input" aria-live="polite">
+              <span class="detail-compatibility-result-icon" aria-hidden="true">◇</span>
+              <div><strong>Ready to check</strong><p>Enter the exact model—not only “Radeon,” “Arc,” or a computer brand.</p></div>
+            </div>
+          </section>
+
           <section class="detail-section detail-section--requirements">
-            <h2 class="detail-section-title">Systems affected & performance impact</h2>
+            ${detailSectionHeading('05 · Scope', 'Systems affected & performance impact', 'What this update touches and how broadly it can change the system.')}
             <div class="detail-requirement-grid">
               <div><span>Applies to</span><strong>${H(u.affects || platformLabel(u.platform))}</strong></div>
               <div><span>Version</span><strong>${H(u.version || 'Current release')}</strong></div>
@@ -4219,7 +4277,7 @@ async function renderUpdateDetail(id) {
 
           <!-- Security Criticality -->
           <section class="detail-section">
-            <h2 class="detail-section-title">Security notes</h2>
+            ${detailSectionHeading('Security', 'Security notes', 'Published vulnerability context and bounded CVE evidence.')}
             <div class="detail-security-card detail-security-card--${H(secLevel)}">
               <div class="detail-security-header">
                 <span class="detail-security-icon">${secIcon}</span>
@@ -4232,9 +4290,7 @@ async function renderUpdateDetail(id) {
 
           ${ur?.totalVotes ? `
           <section class="detail-section">
-            <h2 class="detail-section-title">User Rating
-              ${ratingsLive ? '<span class="section-title-badge section-title-badge--live">LIVE</span>' : ''}
-            </h2>
+            ${detailSectionHeading('Community', 'User Rating', 'Appears only after real PatchTicker users cast votes.')}
             <div id="rating-display">${ratingHTML(ur, userVote)}</div>
             ${isLoggedIn() ? `
             <div class="detail-vote-bar" id="vote-bar">
@@ -4247,22 +4303,20 @@ async function renderUpdateDetail(id) {
           </section>` : ''}
 
           <section class="detail-section">
-            <h2 class="detail-section-title">Watch for</h2>
+            ${detailSectionHeading('Risk', 'Watch for', 'Conditions that can change whether this release is right for your setup.')}
             <div class="detail-risk-list">
               ${riskHTML || '<p class="detail-empty-note">No specific risk factors recorded.</p>'}
             </div>
           </section>
 
-          <section class="detail-section">
-            <h2 class="detail-section-title">Sources</h2>
+          <section class="detail-section" id="detail-sources">
+            ${detailSectionHeading('Evidence', 'Sources', 'Official pages, advisories, artifacts, and release notes used for this record.')}
             <div class="detail-evidence-list">
               ${evidenceHTML || '<p class="detail-empty-note">No evidence sources recorded yet.</p>'}
             </div>
           </section>
           <section class="detail-section">
-            <h2 class="detail-section-title">Community Bug Reports
-              <span class="section-title-badge section-title-badge--live">LIVE</span>
-            </h2>
+            ${detailSectionHeading('Reports · Live', 'Community bug reports', 'User-submitted issues associated with this exact update.')}
             <div id="detail-bug-feed">
               <div class="detail-loading-inline">${spinner()}</div>
             </div>
@@ -4289,6 +4343,30 @@ async function renderUpdateDetail(id) {
     </div>
   `);
   attachNavHandlers(user);
+  document.querySelectorAll('[data-detail-target]').forEach(button => {
+    button.addEventListener('click', () => {
+      const target = document.getElementById(button.dataset.detailTarget);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  const compatibilityForm = document.getElementById('compatibility-form');
+  compatibilityForm?.addEventListener('submit', event => {
+    event.preventDefault();
+    const hardware = document.getElementById('compatibility-hardware')?.value || '';
+    const operatingSystem = document.getElementById('compatibility-os')?.value || 'not-sure';
+    const result = evaluateCompatibility(compatibilityProfile, { hardware, operatingSystem });
+    const resultNode = document.getElementById('compatibility-result');
+    if (!resultNode) return;
+    resultNode.dataset.status = result.status;
+    const icon = resultNode.querySelector('.detail-compatibility-result-icon');
+    const title = resultNode.querySelector('strong');
+    const detail = resultNode.querySelector('p');
+    if (icon) icon.textContent = ({ supported: '✓', unsupported: '×', unverified: '?', 'needs-input': '◇' })[result.status] || '?';
+    if (title) title.textContent = result.title;
+    if (detail) detail.textContent = [result.detail, result.guidance].filter(Boolean).join(' ');
+  });
+
   document.querySelector('.detail-source-primary[href]')?.addEventListener('click', () => {
     captureAnalytics('official_source_clicked', {
       update_id: u.id,
