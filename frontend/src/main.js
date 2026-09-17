@@ -1635,6 +1635,11 @@ function searchTermGroups(raw) {
   return [[q]];
 }
 
+function isReleaseIdentityQuery(raw) {
+  const query = correctSearchQuery(raw);
+  return /^(?:kb)?\d+(?:[._-]\d+)*$/i.test(query);
+}
+
 function normaliseSearchDocument(value) {
   return String(value || '')
     .toLowerCase()
@@ -3341,7 +3346,9 @@ async function renderDashboard({ focusId = null } = {}) {
       const groups = searchTermGroups(intent.semanticQuery);
       if (groups.length) {
         filtered = filtered.filter(u => {
-          const haystack = searchableTextForUpdate(u);
+          const haystack = isReleaseIdentityQuery(intent.semanticQuery)
+            ? [u.name, u.version, u.internalVersion].filter(Boolean).join(' ')
+            : searchableTextForUpdate(u);
           return u.compatibilitySearchFallback
             || groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
         });

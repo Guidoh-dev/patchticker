@@ -382,6 +382,11 @@ function buildSearchTermGroups(rawSearch) {
   if (tokens.length > 1) return [...new Set(tokens)].map(token => [token]);
   return [expandSearchTerms(query)];
 }
+
+function isReleaseIdentityQuery(rawSearch) {
+  const query = correctSearchQuery(rawSearch);
+  return /^(?:kb)?\d+(?:[._-]\d+)*$/i.test(query);
+}
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PLACEHOLDER_VERSION_PLATFORMS = new Set(['Xbox', 'PS5', 'BattleNet', 'GOG']);
 const MONTH_NAMES = 'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
@@ -1476,12 +1481,14 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       }
       const searchGroups = buildSearchTermGroups(searchIntent.semanticQuery);
       if (searchGroups.length) {
-        const searchDocument = `LOWER(CONCAT_WS(' ',
-          name, platform, version, COALESCE(display_version, ''),
-          COALESCE(product_id, ''), COALESCE(affects, ''),
-          COALESCE(verdict, ''), COALESCE(reasoning, ''),
-          changelog::text, known_issues::text, risk_factors::text, evidence::text
-        ))`;
+        const searchDocument = isReleaseIdentityQuery(searchIntent.semanticQuery)
+          ? `LOWER(CONCAT_WS(' ', name, version, COALESCE(display_version, '')))`
+          : `LOWER(CONCAT_WS(' ',
+              name, platform, version, COALESCE(display_version, ''),
+              COALESCE(product_id, ''), COALESCE(affects, ''),
+              COALESCE(verdict, ''), COALESCE(reasoning, ''),
+              changelog::text, known_issues::text, risk_factors::text, evidence::text
+            ))`;
         const normalizedSearchDocument = `CONCAT(' ', TRIM(REGEXP_REPLACE(${searchDocument}, '[^a-z0-9]+', ' ', 'g')), ' ')`;
         const normalizedSqlTerm = term => `CONCAT(' ', TRIM(REGEXP_REPLACE(${term}, '[^a-z0-9]+', ' ', 'g')), ' ')`;
         const groupParams = searchGroups.map(group => {
@@ -1581,13 +1588,15 @@ async function getUpdates({ platform, status, sort, search } = {}) {
     const groups = buildSearchTermGroups(searchIntent.semanticQuery);
     if (groups.length) {
       updates = updates.filter(u => {
-        const document = [
-          u.name, u.platform, u.version, u.internalVersion, u.productId,
-          u.affects, u.verdict, u.reasoning,
-          compatibilitySearchText(u),
-          JSON.stringify(u.changelog || []), JSON.stringify(u.knownIssues || []),
-          JSON.stringify(u.riskFactors || []), JSON.stringify(u.evidence || []),
-        ].filter(Boolean).join(' ').toLowerCase();
+        const document = (isReleaseIdentityQuery(searchIntent.semanticQuery)
+          ? [u.name, u.version, u.internalVersion]
+          : [
+              u.name, u.platform, u.version, u.internalVersion, u.productId,
+              u.affects, u.verdict, u.reasoning,
+              compatibilitySearchText(u),
+              JSON.stringify(u.changelog || []), JSON.stringify(u.knownIssues || []),
+              JSON.stringify(u.riskFactors || []), JSON.stringify(u.evidence || []),
+            ]).filter(Boolean).join(' ').toLowerCase();
         return groups.every(group => group.some(term => searchDocumentContains(document, term)));
       });
     }
@@ -1793,6 +1802,7 @@ module.exports = {
     correctSearchQuery,
     expandSearchTerms,
     buildSearchTermGroups,
+    isReleaseIdentityQuery,
     exactPlatformForSearch,
     parseSearchIntent,
     hardwareCompatibilitySearchPlatform,

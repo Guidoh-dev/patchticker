@@ -368,6 +368,23 @@ test('multi-part searches require every term while aliases remain alternatives',
   ]);
 });
 
+test('version-only searches cannot match incidental evidence dates or CVE identifiers', async () => {
+  expect(updatesService.__test.isReleaseIdentityQuery('27')).toBe(true);
+  expect(updatesService.__test.isReleaseIdentityQuery('26.6')).toBe(true);
+  expect(updatesService.__test.isReleaseIdentityQuery('KB5129194')).toBe(true);
+  expect(updatesService.__test.isReleaseIdentityQuery('RTX 5090')).toBe(false);
+  expect(updatesService.__test.isReleaseIdentityQuery('M4')).toBe(false);
+
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'iPad OS 27', sort: 'date_desc' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toContain("LOWER(CONCAT_WS(' ', name, version, COALESCE(display_version, '')))");
+  expect(sql).not.toContain("name, platform, version, COALESCE(display_version, '')");
+  expect(params).toEqual(['Apple', ['27']]);
+});
+
 test('exact platform searches use platform equality instead of incidental note text', async () => {
   expect(updatesService.__test.exactPlatformForSearch('NVIDIA')).toBe('NVIDIA');
   expect(updatesService.__test.exactPlatformForSearch('GeForce')).toBe('NVIDIA');

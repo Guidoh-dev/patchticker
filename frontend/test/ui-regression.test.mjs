@@ -245,6 +245,8 @@ test('platform and release-lane search intent excludes incidental mentions', () 
   assert.match(mainSource, /\\bplay\\s\+station\\b/);
   assert.match(mainSource, /function correctSearchQuery\(raw\)/);
   assert.match(mainSource, /function searchCorrection\(raw\)/);
+  assert.match(mainSource, /function isReleaseIdentityQuery\(raw\)/);
+  assert.match(mainSource, /\[u\.name, u\.version, u\.internalVersion\]/);
   assert.match(mainSource, /Interpreted as “\$\{correctedSearch\}”/);
   assert.match(mainSource, /function exactPlatformForSearch\(raw\)/);
   assert.match(mainSource, /function searchIntentForQuery\(raw\)/);
