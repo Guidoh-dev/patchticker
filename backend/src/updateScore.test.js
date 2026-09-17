@@ -296,4 +296,30 @@ describe('deterministic update scoring', () => {
     expect(breakdown.signals.materialGameEvidence).toBe(true);
     expect(breakdown.score).toBeGreaterThanOrEqual(7.5);
   });
+
+  test('recognizes an explicitly major first-party gameplay patch without a redundant length signal', () => {
+    const breakdown = deriveDeterministicScoreBreakdown({
+      sourceKind: 'steam-game-news',
+      changelog: [
+        'Gameplay balance — 35 heroes, 16 items, and 2 neutral-item entries changed.',
+        'Hero damage, armor, charge timing, and talent values changed.',
+        'Item costs and neutral-item bonuses changed.',
+      ],
+      knownIssues: [],
+      riskFactors: [],
+      evidence: [{
+        source: 'Official Steam announcement',
+        url: 'https://store.steampowered.com/news/app/570/view/2',
+        releaseType: 'official-game-update',
+        materialSignals: ['gameplay', 'major-release'],
+      }, {
+        source: 'Official structured patch notes',
+        url: 'https://www.dota2.com/patches/7.41f',
+        releaseType: 'official-release-notes',
+      }],
+    });
+    expect(breakdown.signals.materialGameEvidence).toBe(true);
+    expect(breakdown.signals.cleanDocumentedRelease).toBe(true);
+    expect(breakdown.score).toBeGreaterThanOrEqual(7.5);
+  });
 });

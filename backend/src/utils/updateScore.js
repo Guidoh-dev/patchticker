@@ -124,8 +124,17 @@ function hasMaterialGameEvidence(input) {
     const releaseType = String(item?.releaseType || '').toLowerCase();
     const signals = list(item?.materialSignals).map(signal => String(signal).toLowerCase());
     return releaseType === 'official-game-update'
-      && signals.includes('substantial-notes')
-      && signals.some(signal => ['gameplay', 'requirements', 'major-release'].includes(signal));
+      && (
+        // The Steam eligibility pipeline only emits major-release after a
+        // first-party post passes release, gameplay/requirements, prerelease,
+        // and small-update gates. Requiring the separate text-length signal as
+        // well wrongly demotes concise but explicitly major gameplay patches.
+        signals.includes('major-release')
+        || (
+          signals.includes('substantial-notes')
+          && signals.some(signal => ['gameplay', 'requirements'].includes(signal))
+        )
+      );
   });
 }
 
