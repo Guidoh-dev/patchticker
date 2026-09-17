@@ -131,6 +131,41 @@ describe('scraper accuracy guards', () => {
     expect(JSON.stringify(parsed)).not.toContain('2026.807');
   });
 
+  test('PS5 release-notes parser keeps the current official build and excludes older releases', () => {
+    const parsed = __test.parsePs5SystemSoftwareInfo(`
+      <div class="txt-block__paragraph">
+        <h3> Version:&nbsp;26.06-14.00.00 </h3>
+        <ul>
+          <li>We've turned on <strong>Enhance PSSR Image Quality</strong> by default.
+            <ul><li>This feature is available only on PS5 Pro.</li></ul>
+          </li>
+          <li>We've added the Community Activity widget.</li>
+        </ul>
+      </div>
+      <div class="txt-block__paragraph">
+        <h3>Version: 26.05-13.60.00</h3>
+        <ul><li>Old release note that must not leak into the current build.</li></ul>
+      </div>
+    `);
+
+    expect(parsed).toEqual({
+      version: '26.06-14.00.00',
+      changelog: [
+        "We've turned on Enhance PSSR Image Quality by default. This feature is available only on PS5 Pro.",
+        "We've added the Community Activity widget.",
+      ],
+    });
+    expect(parsed.changelog.join(' ')).not.toContain('Old release note');
+    expect(parsed.changelog.filter(note => note.includes('PS5 Pro'))).toHaveLength(1);
+  });
+
+  test('PS5 release-notes parser fails closed when no console build heading exists', () => {
+    expect(__test.parsePs5SystemSoftwareInfo(`
+      <input name="lastcodedeployed-releaseversion" value="Release Version: 2026.910" />
+      <h3>Previous system software updates</h3>
+    `)).toBeNull();
+  });
+
   test('GOG parser uses the official installer version and artifact timestamp', () => {
     const parsed = __test.parseGogRemoteConfig({
       content: {

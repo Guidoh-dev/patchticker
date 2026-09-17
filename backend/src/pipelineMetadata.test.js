@@ -75,6 +75,35 @@ describe('pipeline source metadata preservation', () => {
     expect(params[14]).toBe(false);
   });
 
+  test('same-version PS5 refresh upgrades the synthetic artifact identity with Sony display metadata', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+
+    await __test.updateExistingMetadata('PS5', 'PUP-2026.09.15-1eb4b184', {
+      platform: 'PS5',
+      name: 'PS5 System Software 26.06-14.00.00',
+      version: 'PUP-2026.09.15-1eb4b184',
+      displayVersion: '26.06-14.00.00',
+      sourceKind: 'official-release-notes',
+      sourceRef: 'ps5-system:1eb4b18451e0f064fc23b5bd4c95cae7f6489f9ad1148b5dfb0d66452a108ebc',
+      releasedAt: '2026-09-15',
+      changelog: ['We have added the Community Activity widget.'],
+      evidence: [{
+        source: 'PlayStation System Software Update Features',
+        url: 'https://www.playstation.com/en-us/support/hardware/ps5/system-software-info/',
+        releaseType: 'official-release-notes',
+        officialVersion: '26.06-14.00.00',
+      }],
+    });
+
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('display_version = COALESCE($16, display_version)');
+    expect(sql).toContain('source_kind = COALESCE($17, source_kind)');
+    expect(sql).toContain('source_ref = COALESCE($18, source_ref)');
+    expect(params[15]).toBe('26.06-14.00.00');
+    expect(params[16]).toBe('official-release-notes');
+    expect(params[17]).toMatch(/^ps5-system:1eb4b184/);
+  });
+
   test('authoritative source refreshes can clear a resolved known-issue list', async () => {
     db.query.mockResolvedValue({ rows: [] });
 

@@ -1494,6 +1494,42 @@ function parsePs5SupportPage(html) {
   };
 }
 
+function parsePs5SystemSoftwareInfo(html) {
+  const $ = cheerio.load(String(html || ''));
+  const versionHeading = $('h1,h2,h3,h4,h5,h6')
+    .filter((_, heading) => /^\s*Version\s*:\s*[0-9]{2}\.[0-9]{2}-[0-9.]+\s*$/i.test(cleanText($(heading).text(), 120)))
+    .first();
+  if (!versionHeading.length) return null;
+
+  const version = cleanText(versionHeading.text(), 120)
+    .match(/^\s*Version\s*:\s*([0-9]{2}\.[0-9]{2}-[0-9.]+)\s*$/i)?.[1] || null;
+  if (!version) return null;
+
+  // Sony places each release heading and its list in one content block. Read
+  // only the list attached to the first (current) heading so an expanded
+  // "Previous updates" accordion cannot leak old notes into the new release.
+  const releaseBlock = versionHeading.parent();
+  const primaryList = versionHeading.nextAll('ul,ol').first();
+  const list = primaryList.length ? primaryList : releaseBlock.find('ul,ol').first();
+  const changelog = [];
+  list.children('li').each((_, item) => {
+    const node = $(item);
+    const summaryNode = node.clone();
+    summaryNode.find('ul,ol').remove();
+    const summary = cleanText(summaryNode.text(), 520);
+    const details = node.children('ul,ol').first().children('li').map((__, detail) => (
+      cleanText($(detail).text(), 360)
+    )).get().filter(Boolean);
+    const combined = [summary, ...details].filter(Boolean).join(' ');
+    if (combined) changelog.push(combined);
+  });
+
+  return {
+    version,
+    changelog: unique(changelog, 520).slice(0, 10),
+  };
+}
+
 // ── Parse RSS helper ──────────────────────────────────────────────────────────
 
 function parseRssItems(xml, limit = 5) {
@@ -2622,30 +2658,73 @@ async function detectXbox() {
 async function detectPs5() {
   try {
     const url = 'https://www.playstation.com/en-us/support/hardware/ps5/system-software/';
-    const html = await fetchHtml(url);
+    const releaseNotesUrl = 'https://www.playstation.com/en-us/support/hardware/ps5/system-software-info/';
+    const [html, releaseNotesHtml] = await Promise.all([
+      fetchHtml(url),
+      fetchHtml(releaseNotesUrl).catch(error => {
+        logger.warn('[scraper] PS5 release-notes page unavailable; retaining artifact-only verification', { error: error.message });
+        return '';
+      }),
+    ]);
     const parsed = parsePs5SupportPage(html);
     if (!parsed) return null;
+    const release = parsePs5SystemSoftwareInfo(releaseNotesHtml);
     const artifact = await fetchOfficialArtifactMetadata(parsed.artifactUrl, ['pc.ps5.update.playstation.net']);
     const releasedAt = toIsoDate(artifact.headers['last-modified']);
     if (!releasedAt) return null;
     const artifactId = parsed.artifactHash.slice(0, 8);
     const version = `PUP-${releasedAt.replace(/-/g, '.')}-${artifactId}`;
+    const hasOfficialNotes = Boolean(release?.version && release.changelog.length);
+    const displayVersion = release?.version || null;
+    const name = displayVersion
+      ? `PS5 System Software ${displayVersion}`
+      : `PS5 System Software — ${releasedAt}`;
+    const changelog = hasOfficialNotes ? release.changelog : [
+      `Sony’s current official PS5 system software artifact was published ${releasedAt}.`,
+      `Artifact fingerprint ${artifactId}; package build path ${parsed.artifactBuildDate}.`,
+      'Sony’s detailed release-notes page was temporarily unavailable, so PatchTicker retained the verified package identity without inferring undocumented changes.',
+    ];
+    const evidence = [
+      ...sourceEvidence('PlayStation System Software Package', url, `Official PS5 package ${artifactId} published ${releasedAt}; package build path ${parsed.artifactBuildDate}.`, {
+        dateBasis: 'artifact-published',
+        releaseType: 'official-artifact',
+        publishedAt: releasedAt,
+        artifactHash: parsed.artifactHash,
+        sizeBytes: artifact.sizeBytes || undefined,
+      }),
+      ...(hasOfficialNotes ? sourceEvidence(
+        'PlayStation System Software Update Features',
+        releaseNotesUrl,
+        `Sony’s current release-notes page identifies PS5 system software ${displayVersion} and lists ${release.changelog.length} top-level changes.`,
+        {
+          releaseType: 'official-release-notes',
+          officialVersion: displayVersion,
+          pairedWithArtifact: artifactId,
+        }
+      ) : []),
+    ];
     return {
       platform: 'PS5',
-      name: `PS5 System Software — ${releasedAt}`,
+      name,
       version,
+      displayVersion,
+      sourceKind: hasOfficialNotes ? 'official-release-notes' : 'official-artifact',
+      sourceRef: `ps5-system:${parsed.artifactHash}`,
       releasedAt,
       affects: 'PlayStation 5 / system software / online services / controller and game compatibility',
-      changelog: [
-        `Sony’s current official PS5 system software artifact was published ${releasedAt}.`,
-        `Artifact fingerprint ${artifactId}; package build path ${parsed.artifactBuildDate}.`,
-        'Sony does not expose a public console build number or per-build changelog on this support page, so PatchTicker identifies the release by the official package fingerprint instead of the page’s unrelated CMS revision.',
-      ],
+      changelog,
       knownIssues: [],
-      riskFactors: [{ level: 'low', text: 'System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.' }],
+      riskFactors: [
+        { level: 'low', text: 'System updates are usually required for online features, but phased releases can surface early regressions in rest mode, network, or accessory behavior.' },
+        ...(hasOfficialNotes && changelog.some(note => /PS5 Pro|PSSR/i.test(note))
+          ? [{ level: 'low', text: 'Some graphics changes apply only to PS5 Pro; standard PS5 consoles do not receive those model-specific features.' }]
+          : []),
+      ],
       verdict: 'Install for online play and system security unless early user reports flag a PS5-specific regression.',
-      reasoning: 'PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker validates Sony’s official system package URL and Last-Modified timestamp; it does not mislabel the support page’s CMS deployment revision as console firmware.',
-      evidence: sourceEvidence('PlayStation System Software', url, `Official PS5 package ${artifactId} published ${releasedAt}; package build path ${parsed.artifactBuildDate}.`, { dateBasis: 'artifact-published', releaseType: 'official-artifact', publishedAt: releasedAt, artifactHash: parsed.artifactHash, sizeBytes: artifact.sizeBytes || undefined }),
+      reasoning: hasOfficialNotes
+        ? `Sony identifies the current public build as ${displayVersion}. PatchTicker pairs those official release notes with Sony’s current signed package fingerprint and publication timestamp, rather than treating the support page’s unrelated CMS revision as firmware.`
+        : 'PS5 system software updates can affect online play, firmware behavior, controller support, and system stability. PatchTicker validates Sony’s official system package URL and Last-Modified timestamp and does not invent release-note details when Sony’s notes page cannot be read.',
+      evidence,
       sourceUrl: url,
     };
   } catch (err) {
@@ -2877,5 +2956,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
 };
