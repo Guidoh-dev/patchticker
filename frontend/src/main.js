@@ -4614,10 +4614,11 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
             <p class="detail-related-kicker">Keep exploring</p>
             <h2 id="detail-related-heading">${H(relatedHeading)}</h2>
             <p>${H(relatedContext)}</p>
+            <span class="detail-related-mobile-hint">Swipe to explore related releases →</span>
           </div>
           <a href="#/platform/${encodeURIComponent(u.platform)}">View ${H(platformLabel(u.platform))} history →</a>
         </header>
-        <div class="detail-related-grid">
+        <div class="detail-related-grid" aria-label="Related releases">
           ${relatedReleases.map(renderRelatedReleaseCard).join('')}
         </div>
       </section>` : ''}

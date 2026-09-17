@@ -690,6 +690,10 @@ test('update details continue into honestly ranked related releases', () => {
   assert.match(mainSource, /relatedReleases\.map\(renderRelatedReleaseCard\)/);
   assert.match(mainSource, /View \$\{H\(platformLabel\(u\.platform\)\)\} history/);
   assert.match(cssSource, /\.detail-related-grid\s*\{[^}]*repeat\(auto-fit, minmax\(min\(100%, 220px\), 1fr\)\)/s);
+  assert.match(mainSource, /Swipe to explore related releases/);
+  assert.match(mainSource, /class="detail-related-grid" aria-label="Related releases"/);
+  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-related-grid\s*\{[^}]*display:\s*flex;[^}]*overflow-x:\s*auto;[^}]*scroll-snap-type:\s*x mandatory;/s);
+  assert.match(cssSource, /\.detail-related-item\s*\{[^}]*flex:\s*0 0 min\(82vw, 300px\);[^}]*scroll-snap-align:\s*start;/s);
   assert.match(cssSource, /\.detail-related-header > a\s*\{[^}]*min-height:\s*44px/s);
 });
 
