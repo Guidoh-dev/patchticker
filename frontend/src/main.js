@@ -26,7 +26,7 @@ import {
 import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCandidates.js';
 import { SETUP_LENSES, filterUpdatesBySetup } from './filterLogic.js';
 import { compatibilityProfileFromUpdate, evaluateCompatibility } from './compatibility.js';
-import { selectUpdateBrief } from './updateBrief.js';
+import { preferredReleaseAt, selectUpdateBrief } from './updateBrief.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -1251,7 +1251,7 @@ async function hydrateLandingSignals() {
     const [updatesResponse, summaryResponse] = await Promise.all([fetchUpdates({ sort: 'date_desc' }), fetchSummary()]);
     const updates = normaliseUpdatesResponse(updatesResponse)
       .filter(update => isUpdateWithinDisplayWindow(update))
-      .sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt));
+      .sort((a, b) => Date.parse(preferredReleaseAt(b)) - Date.parse(preferredReleaseAt(a)));
     const latest = updates[0];
     const summary = summaryResponse?.data || summaryResponse;
 
@@ -1294,7 +1294,7 @@ async function hydrateLandingSignals() {
       const liveVotes = Number(latest.userRating?.totalVotes || 0);
       meta.innerHTML = liveVotes > 0
         ? `<span>${H(String(liveVotes))} verified vote${liveVotes === 1 ? '' : 's'}</span><span>Install ${H(String(latest.userRating.breakdown?.install ?? 0))}%</span><span>Wait ${H(String(latest.userRating.breakdown?.wait ?? 0))}%</span><span>Avoid ${H(String(latest.userRating.breakdown?.avoid ?? 0))}%</span>`
-        : `<span>${H(platformLabel(latest.platform))}</span><span>Released ${H(timeAgo(latest.releasedAt))}</span><span>Source checked ${H(timeAgo(latest.lastCheckedAt))}</span>`;
+        : `<span>${H(platformLabel(latest.platform))}</span><span>Released ${H(timeAgo(preferredReleaseAt(latest)))}</span><span>Source checked ${H(timeAgo(latest.lastCheckedAt))}</span>`;
     }
     if (link) {
       link.href = `#/updates/${encodeURIComponent(latest.id)}`;
@@ -2367,7 +2367,7 @@ function updateReturnBrief(updates = []) {
     : (isReturning ? 'You’re caught up' : `${updates.length} current releases are ready`);
   detail.textContent = sinceLastVisit.length
     ? `Newest arrival: ${latest.name}`
-    : `Latest release: ${latest.name} · ${timeAgo(latest.releasedAt)}`;
+    : `Latest release: ${latest.name} · ${timeAgo(preferredReleaseAt(latest))}`;
   logos.innerHTML = featured.map(update => renderPlatformLogo(update.platform, 'dash-return-logo')).join('');
   brief.onclick = () => navigate(`/updates/${encodeURIComponent(latest.id)}`);
   brief.setAttribute('aria-label', `Open ${latest.name}`);
@@ -2517,7 +2517,7 @@ function renderUpdateCard(u) {
   const decision = decisionForUpdate(u);
   const rating = peerRatingMeta(u);
   const risk = primaryRiskText(u);
-  const age = timeAgo(u.releasedAt);
+  const age = timeAgo(preferredReleaseAt(u));
   const freshness = freshnessMeta(u);
   const securitySignal = securitySignalMeta(u);
   const driverImpact = driverImpactMeta(u);
@@ -2602,7 +2602,7 @@ function normaliseUpdatesResponse(res) {
 function annotateReleasePositions(updates = []) {
   const latestByLane = new Map();
   for (const update of updates) {
-    const parsedReleaseMs = Date.parse(update?.releasedAt || '');
+    const parsedReleaseMs = Date.parse(preferredReleaseAt(update) || '');
     const releasedMs = Number.isFinite(parsedReleaseMs) ? parsedReleaseMs : 0;
     const tieBreakMs = Date.parse(update?.createdAt || update?.updatedAt || '') || 0;
     const laneKey = releaseLaneKey(update);
@@ -3354,8 +3354,8 @@ async function renderDashboard({ focusId = null } = {}) {
     }
 
     const sorters = {
-      date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
-      date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
+      date_desc:  (a, b) => Date.parse(preferredReleaseAt(b)) - Date.parse(preferredReleaseAt(a)),
+      date_asc:   (a, b) => Date.parse(preferredReleaseAt(a)) - Date.parse(preferredReleaseAt(b)),
       score_desc: (a, b) => (validScoreOrNull(b.score) ?? -1) - (validScoreOrNull(a.score) ?? -1),
       score_asc:  (a, b) => (validScoreOrNull(a.score) ?? 11) - (validScoreOrNull(b.score) ?? 11),
       relevance:  (a, b) => updateSearchRelevance(b, search) - updateSearchRelevance(a, search),
@@ -3679,7 +3679,7 @@ async function renderDashboard({ focusId = null } = {}) {
   });
 
   function renderTapeAndLatest(updates, message = 'Live patch feed is reconnecting. Showing recent PatchTicker coverage.') {
-    const newest = [...(updates || [])].sort((a, b) => new Date(b.releasedAt) - new Date(a.releasedAt));
+    const newest = [...(updates || [])].sort((a, b) => Date.parse(preferredReleaseAt(b)) - Date.parse(preferredReleaseAt(a)));
     const tapeReleases = latestUniqueUpdates(newest, discoveryLaneKey);
     const featuredReleases = latestUniqueUpdates(newest, update => update?.platform || 'unknown').slice(0, 3);
 
@@ -3724,7 +3724,7 @@ async function renderDashboard({ focusId = null } = {}) {
           const decision = decisionForUpdate(update);
           return `<a class="feed-verified-item" href="#/updates/${H(update.id)}">
             ${renderPlatformLogo(update.platform, 'feed-verified-logo')}
-            <span><strong>${H(update.name)}</strong><small>${H(platformLabel(update.platform))} · ${H(timeAgo(update.releasedAt))}</small></span>
+            <span><strong>${H(update.name)}</strong><small>${H(platformLabel(update.platform))} · ${H(timeAgo(preferredReleaseAt(update)))}</small></span>
             <em class="feed-verified-score feed-verified-score--${H(decision.cls)}">${H(scoreDisplay(update.score))}</em>
           </a>`;
         }).join('') || '<span class="feed-empty">Verified patch data is reconnecting…</span>'}

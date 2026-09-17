@@ -3,8 +3,22 @@ function timestamp(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+export function preferredReleaseAt(update = {}) {
+  const fallback = update?.releasedAt || null;
+  const fallbackTime = timestamp(fallback);
+  if (!fallbackTime) return fallback;
+
+  const releaseDay = new Date(fallbackTime).toISOString().slice(0, 10);
+  const timedEvidence = (Array.isArray(update?.evidence) ? update.evidence : [])
+    .filter(item => typeof item?.publishedAt === 'string' && /T\d{2}:\d{2}/.test(item.publishedAt))
+    .filter(item => timestamp(item.publishedAt) && new Date(timestamp(item.publishedAt)).toISOString().slice(0, 10) === releaseDay);
+  const primaryEvidence = timedEvidence.find(item => item.url && item.url === update.sourceUrl);
+
+  return primaryEvidence?.publishedAt || timedEvidence[0]?.publishedAt || fallback;
+}
+
 function releaseTime(update) {
-  return timestamp(update?.releasedAt);
+  return timestamp(preferredReleaseAt(update));
 }
 
 function arrivalTime(update) {
