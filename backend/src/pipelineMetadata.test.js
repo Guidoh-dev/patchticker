@@ -1,5 +1,8 @@
 'use strict';
 
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+
 jest.mock('./config/db', () => ({
   isAvailable: jest.fn(() => true),
   query: jest.fn(),
@@ -21,6 +24,13 @@ const { processPlatform, __test } = require('./services/pipelineService');
 
 describe('pipeline source metadata preservation', () => {
   beforeEach(() => jest.clearAllMocks());
+
+  test('admin pipeline freshness comes from official source check timestamps', () => {
+    const adminRoute = readFileSync(resolve(__dirname, 'routes/admin.js'), 'utf8');
+    expect(adminRoute).toContain("MAX((source ->> 'checkedAt')::timestamptz) AS last_verified");
+    expect(adminRoute).toContain('COALESCE(MAX(source_check.last_verified), MAX(updates.created_at)) AS last_verified');
+    expect(adminRoute).not.toContain('MAX(created_at)  AS last_detected');
+  });
 
   test('platform context carries official security metadata into persistence', () => {
     const securityCriticality = {

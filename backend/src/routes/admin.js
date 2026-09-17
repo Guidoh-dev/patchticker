@@ -365,21 +365,26 @@ router.get('/pipeline/status', async (req, res, next) => {
   if (!db.isAvailable()) return res.status(503).json({ error: 'Database unavailable' });
   try {
     const rows = await db.query(`
-      SELECT platform,
-             MAX(created_at)  AS last_detected,
-             MAX(released_at) AS last_release,
-             (ARRAY_AGG(version ORDER BY released_at DESC, created_at DESC))[1] AS latest_version,
+      SELECT updates.platform,
+             COALESCE(MAX(source_check.last_verified), MAX(updates.created_at)) AS last_verified,
+             MAX(updates.released_at) AS last_release,
+             (ARRAY_AGG(updates.version ORDER BY updates.released_at DESC, updates.created_at DESC))[1] AS latest_version,
              COUNT(*)         AS total_versions
-      FROM software_updates
-      GROUP BY platform
-      ORDER BY platform
+      FROM software_updates AS updates
+      LEFT JOIN LATERAL (
+        SELECT MAX((source ->> 'checkedAt')::timestamptz) AS last_verified
+        FROM jsonb_array_elements(COALESCE(updates.evidence, '[]'::jsonb)) AS source
+        WHERE source ? 'checkedAt'
+      ) AS source_check ON TRUE
+      GROUP BY updates.platform
+      ORDER BY updates.platform
     `);
     const byPlatform = new Map(rows.rows.map(row => [row.platform, row]));
     const data = PLATFORM_KEYS.map(platform => ({
       platform,
       latest_version: byPlatform.get(platform)?.latest_version || null,
       last_release: byPlatform.get(platform)?.last_release || null,
-      last_detected: byPlatform.get(platform)?.last_detected || null,
+      last_verified: byPlatform.get(platform)?.last_verified || null,
       total_versions: Number(byPlatform.get(platform)?.total_versions || 0),
       detector_registered: !!scraperService.DETECTORS[platform],
     }));

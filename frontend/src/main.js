@@ -4933,7 +4933,7 @@ async function renderAdmin() {
             </select>
             <button class="btn btn--outline btn--sm" id="pipeline-run-one">Run selected</button>
           </div>
-          <p class="pipeline-note">Scans run automatically every 6 hours. Security platforms (Windows, Apple, macOS, Chrome, Firefox, Edge) scan every hour.</p>
+          <p class="pipeline-note">Full scans run every 6 hours. Security sources scan hourly; drivers, launchers, Steam client, SteamOS, and qualifying game releases scan every 2 hours. Overlapping jobs queue once instead of being dropped.</p>
         </div>
         <div id="pipeline-status-wrap" class="admin-table-wrap">${spinner()}</div>
         <div class="pipeline-controls pipeline-controls--email">
@@ -5106,6 +5106,7 @@ async function renderAdmin() {
       const { fetchPipelineStatus } = await import('./api.js');
       const res  = await fetchPipelineStatus();
       const rows = res.data || [];
+      const runtime = res.runtime || {};
       const wrap = document.getElementById('pipeline-status-wrap');
       if (!wrap) return;
 
@@ -5114,13 +5115,21 @@ async function renderAdmin() {
         return;
       }
 
+      const pendingScans = Array.isArray(runtime.pendingScans) ? runtime.pendingScans : [];
+      const lastManual = runtime.lastManualRun || null;
+      const runtimeTone = runtime.isRunning ? 'running' : pendingScans.length ? 'queued' : 'idle';
       wrap.innerHTML = `
+        <div class="pipeline-runtime pipeline-runtime--${H(runtimeTone)}" role="status">
+          <div><span>Pipeline</span><strong>${runtime.isRunning ? 'Scan in progress' : 'Idle and monitoring'}</strong></div>
+          <div><span>Deferred queue</span><strong>${pendingScans.length ? H(pendingScans.join(' → ')) : 'Clear'}</strong></div>
+          <div><span>Last manual run</span><strong>${lastManual?.finishedAt ? `${lastManual.ok ? 'Passed' : 'Failed'} · ${H(timeAgo(lastManual.finishedAt))}` : 'Not run this session'}</strong></div>
+        </div>
         <table class="admin-table">
           <thead><tr>
             <th class="admin-th">Platform</th>
             <th class="admin-th">Latest Version</th>
             <th class="admin-th">Last Release</th>
-            <th class="admin-th">Last Detected</th>
+            <th class="admin-th">Last Verified</th>
             <th class="admin-th">Total Versions</th>
           </tr></thead>
           <tbody>
@@ -5128,7 +5137,7 @@ async function renderAdmin() {
               <td class="admin-td"><a class="admin-platform-link" href="#/platform/${H(r.platform)}">${H(r.platform)}</a></td>
               <td class="admin-td admin-version-value">${H(r.latest_version || '—')}</td>
               <td class="admin-td admin-td--date">${r.last_release ? new Date(r.last_release).toLocaleDateString() : '—'}</td>
-              <td class="admin-td admin-td--date">${r.last_detected ? new Date(r.last_detected).toLocaleString() : '—'}</td>
+              <td class="admin-td admin-td--date">${r.last_verified ? new Date(r.last_verified).toLocaleString() : '—'}</td>
               <td class="admin-td">${r.total_versions}</td>
             </tr>`).join('')}
           </tbody>

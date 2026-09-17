@@ -148,6 +148,16 @@ test('search autofill is live-backed and excludes explicitly removed game sugges
   assert.doesNotMatch(suggestionBlock, /cs2|counter[ -]?strike|helldivers|hd2/i);
 });
 
+test('admin pipeline status exposes real source verification and deferred scans', () => {
+  assert.match(mainSource, /const pendingScans = Array\.isArray\(runtime\.pendingScans\)/);
+  assert.match(mainSource, /Pipeline[\s\S]*?Scan in progress[\s\S]*?Idle and monitoring/);
+  assert.match(mainSource, /Deferred queue/);
+  assert.match(mainSource, /Last Verified/);
+  assert.match(mainSource, /r\.last_verified/);
+  assert.match(cssSource, /\.pipeline-runtime\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
+  assert.match(cssSource, /@media \(max-width: 700px\)[\s\S]*?\.pipeline-runtime\s*\{\s*grid-template-columns:\s*1fr/s);
+});
+
 test('update detail columns cannot force horizontal page overflow', () => {
   assert.match(cssSource, /\.detail-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(280px, 380px\)/s);
   assert.match(cssSource, /\.detail-col-main,\s*\.detail-col-side\s*\{[^}]*min-width:\s*0/s);
