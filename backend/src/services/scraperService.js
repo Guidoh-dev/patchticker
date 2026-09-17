@@ -1227,11 +1227,14 @@ function parseIntelDownloadCompatibility($) {
 function mergeCompatibilityProfiles(primary, secondary) {
   if (!primary) return secondary || null;
   if (!secondary) return primary;
-  const seen = new Set();
+  const seenLabels = new Set();
+  const seenAliases = new Set();
   const hardware = [...(primary.hardware || []), ...(secondary.hardware || [])].filter(entry => {
     const key = cleanDriverText(entry.label, 180).toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
+    const aliases = unique(entry.aliases || [], 100).map(alias => cleanDriverText(alias, 100).toLowerCase()).filter(Boolean);
+    if (!key || seenLabels.has(key) || aliases.some(alias => seenAliases.has(alias))) return false;
+    seenLabels.add(key);
+    aliases.forEach(alias => seenAliases.add(alias));
     return true;
   });
   return {

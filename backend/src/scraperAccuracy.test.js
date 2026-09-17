@@ -847,6 +847,39 @@ describe('scraper accuracy guards', () => {
     ]));
   });
 
+  test('merged compatibility tables collapse duplicate Intel models by official aliases', () => {
+    const merged = __test.mergeCompatibilityProfiles({
+      schemaVersion: 1,
+      vendor: 'Intel',
+      authoritative: true,
+      hardware: [{
+        label: 'Intel Arc A770 Graphics',
+        aliases: ['intel arc a770 graphics', 'intel arc a770', 'arc a770', 'a770'],
+        matchType: 'exact-model',
+      }],
+      operatingSystems: ['Windows 11 64-bit versions 21H2 through 25H2'],
+      exclusions: [],
+    }, {
+      schemaVersion: 1,
+      vendor: 'Intel',
+      authoritative: true,
+      hardware: [{
+        label: 'Intel Arc A770',
+        aliases: ['intel arc a770', 'arc a770', 'a770'],
+        matchType: 'exact-model',
+      }],
+      operatingSystems: ['Windows 10 64-bit version 22H2'],
+      exclusions: [],
+    });
+
+    expect(merged.hardware).toHaveLength(1);
+    expect(merged.hardware[0].label).toBe('Intel Arc A770 Graphics');
+    expect(merged.operatingSystems).toEqual(expect.arrayContaining([
+      expect.stringContaining('Windows 11'),
+      expect.stringContaining('Windows 10'),
+    ]));
+  });
+
   test('detectors fail closed without a source date or official HTTPS source', () => {
     const base = { name: 'Vendor Update 1.2.3', version: '1.2.3', sourceUrl: 'https://vendor.example/release' };
     expect(() => __test.validateDetectedUpdate('Vendor', base)).toThrow('no trustworthy release/source date');

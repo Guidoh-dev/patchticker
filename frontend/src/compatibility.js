@@ -45,6 +45,87 @@ function looksLikeVendorModel(profile, hardware) {
   return false;
 }
 
+function releaseOrdinal(value) {
+  const match = String(value || '').toUpperCase().match(/^(\d{2})H([12])$/);
+  return match ? (Number(match[1]) * 2) + Number(match[2]) : null;
+}
+
+function selectedOperatingSystem(value) {
+  const match = String(value || '').toLowerCase().match(/^windows-(10|11)(?:-(\d{2}h[12]))?$/);
+  if (!match) return null;
+  return {
+    family: `Windows ${match[1]}`,
+    release: match[2]?.toUpperCase() || null,
+  };
+}
+
+function operatingSystemSupport(profile, value) {
+  if (!value || value === 'not-sure') return { supported: null, detail: '' };
+  if (value === 'other') {
+    return {
+      supported: false,
+      detail: `The official package lists ${(profile?.operatingSystems || []).join(' and ') || 'Windows only'}.`,
+    };
+  }
+
+  const selected = selectedOperatingSystem(value);
+  const published = Array.isArray(profile?.operatingSystems) ? profile.operatingSystems : [];
+  if (!selected || !published.length) return { supported: null, detail: '' };
+
+  const familyRows = published.filter(label => normalize(label).includes(normalize(selected.family)));
+  if (!familyRows.length) {
+    return {
+      supported: false,
+      detail: `The official package does not list ${selected.family}. It lists ${published.join(' and ')}.`,
+    };
+  }
+  if (!selected.release) {
+    return { supported: true, detail: `${selected.family} is listed by the vendor.` };
+  }
+
+  const selectedOrdinal = releaseOrdinal(selected.release);
+  let sawVersionConstraint = false;
+  for (const row of familyRows) {
+    const upper = row.toUpperCase();
+    const through = upper.match(/(\d{2}H[12])\s+THROUGH\s+(\d{2}H[12])/);
+    if (through) {
+      sawVersionConstraint = true;
+      const start = releaseOrdinal(through[1]);
+      const end = releaseOrdinal(through[2]);
+      if (selectedOrdinal >= start && selectedOrdinal <= end) {
+        return { supported: true, detail: `${selected.family} ${selected.release} is inside the vendor’s published ${through[1]}–${through[2]} range.` };
+      }
+      continue;
+    }
+
+    const later = upper.match(/(\d{2}H[12])\s+(?:AND\s+)?LATER/);
+    if (later) {
+      sawVersionConstraint = true;
+      const minimum = releaseOrdinal(later[1]);
+      if (selectedOrdinal >= minimum) {
+        return { supported: true, detail: `${selected.family} ${selected.release} meets the vendor’s ${later[1]}-or-later requirement.` };
+      }
+      continue;
+    }
+
+    const explicit = [...upper.matchAll(/\b(\d{2}H[12])\b/g)].map(match => match[1]);
+    if (explicit.length) {
+      sawVersionConstraint = true;
+      if (explicit.includes(selected.release)) {
+        return { supported: true, detail: `${selected.family} ${selected.release} is explicitly listed by the vendor.` };
+      }
+    }
+  }
+
+  if (!sawVersionConstraint) {
+    return { supported: true, detail: `${selected.family} is listed; the vendor does not narrow support to a specific feature release.` };
+  }
+  return {
+    supported: false,
+    detail: `${selected.family} ${selected.release} is outside the vendor’s published support range: ${familyRows.join(' and ')}.`,
+  };
+}
+
 export function evaluateCompatibility(profile, { hardware, operatingSystem = 'not-sure' } = {}) {
   const enteredHardware = String(hardware || '').trim();
   if (!enteredHardware) {
@@ -76,11 +157,12 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
     };
   }
 
-  if (operatingSystem === 'other') {
+  const osSupport = operatingSystemSupport(profile, operatingSystem);
+  if (osSupport.supported === false) {
     return {
       status: 'unsupported',
       title: 'Operating system not supported',
-      detail: `The official package lists ${profile.operatingSystems.join(' and ')}.`,
+      detail: osSupport.detail,
     };
   }
 
@@ -103,7 +185,7 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
     return {
       status: 'supported',
       title: best.matchType === 'family' ? 'Supported hardware family' : 'Supported by this package',
-      detail: `Matched the vendor’s official compatibility entry: ${best.label}.`,
+      detail: [`Matched the vendor’s official compatibility entry: ${best.label}.`, osSupport.detail].filter(Boolean).join(' '),
       matchedLabel: best.label,
       guidance: profile.guidance || '',
     };

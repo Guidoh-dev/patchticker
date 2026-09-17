@@ -532,7 +532,7 @@ test('source-depth labels distinguish full notes from version-only verification'
   assert.match(mainSource, /Official security advisory/);
   assert.match(mainSource, /Official release notes/);
   assert.match(mainSource, /class="source-depth-signal source-depth-signal--\$\{H\(methodMeta\.tone\)\}"/);
-  assert.match(mainSource, /detailSectionHeading\('02 · Release contents', detailMethodMeta\.heading/);
+  assert.match(mainSource, /detailSectionHeading\('03 · Release contents', detailMethodMeta\.heading/);
   assert.match(mainSource, /\$\{H\(detailMethodMeta\.note\)\}/);
   assert.match(mainSource, /limitedScoreEvidence \? 'Provisional score' : 'Safety score'/);
   assert.match(mainSource, /limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
@@ -644,16 +644,23 @@ test('update details continue into honestly ranked related releases', () => {
 });
 
 test('every update detail exposes a source-backed compatibility workspace and clear section map', () => {
+  assert.match(mainSource, /id="detail-info"/);
+  assert.match(mainSource, /data-detail-target="detail-info"/);
+  assert.match(mainSource, /Update information/);
   assert.match(mainSource, /id="detail-compatibility"/);
   assert.match(mainSource, /data-detail-target="detail-changes"/);
   assert.match(mainSource, /data-detail-target="detail-issues"/);
   assert.match(mainSource, /data-detail-target="detail-compatibility"/);
   assert.match(mainSource, /Your hardware entry is not transmitted or stored/);
+  assert.match(mainSource, /list="compatibility-models"/);
+  assert.match(mainSource, /Windows 11 26H1/);
+  assert.match(mainSource, /Device Manager → Display adapters/);
   assert.match(mainSource, /evaluateCompatibility\(compatibilityProfile/);
   assert.match(compatibilitySource, /PatchTicker will not guess from the product name/);
   assert.match(cssSource, /\.detail-compatibility-layout\s*\{[\s\S]*?grid-template-columns/);
   assert.match(cssSource, /\.detail-compatibility-controls\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(140px, 170px\);[^}]*min-width:\s*0;/s);
   assert.match(cssSource, /\.detail-compatibility-submit\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s);
+  assert.match(cssSource, /\.detail-update-info-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
 });
 
 test('source heartbeat makes per-platform check recency visible and filterable', () => {

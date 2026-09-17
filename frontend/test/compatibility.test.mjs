@@ -89,6 +89,47 @@ test('Intel compatibility validates Arc models and rejects unsupported graphics 
   }).status, 'unsupported');
 });
 
+test('compatibility checks the selected Windows release against the official vendor range', () => {
+  const amdCurrent = evaluateCompatibility(amdProfile, {
+    hardware: 'Radeon RX 7900 XTX',
+    operatingSystem: 'windows-11-26h1',
+  });
+  assert.equal(amdCurrent.status, 'supported');
+  assert.match(amdCurrent.detail, /21H2-or-later requirement/i);
+
+  const intelCurrent = evaluateCompatibility(intelProfile, {
+    hardware: 'Intel Arc A770',
+    operatingSystem: 'windows-11-25h2',
+  });
+  assert.equal(intelCurrent.status, 'supported');
+  assert.match(intelCurrent.detail, /21H2–25H2 range/i);
+
+  const intelTooNew = evaluateCompatibility(intelProfile, {
+    hardware: 'Intel Arc A770',
+    operatingSystem: 'windows-11-26h1',
+  });
+  assert.equal(intelTooNew.status, 'unsupported');
+  assert.match(intelTooNew.detail, /outside the vendor’s published support range/i);
+});
+
+test('Intel Windows 10 compatibility stays exact instead of accepting every Windows 10 build', () => {
+  const profile = {
+    ...intelProfile,
+    operatingSystems: [
+      'Windows 11 64-bit versions 21H2 through 25H2',
+      'Windows 10 64-bit version 22H2',
+    ],
+  };
+  assert.equal(evaluateCompatibility(profile, {
+    hardware: 'Intel Arc A770',
+    operatingSystem: 'windows-10-22h2',
+  }).status, 'supported');
+  assert.equal(evaluateCompatibility(profile, {
+    hardware: 'Intel Arc A770',
+    operatingSystem: 'windows-10-21h2',
+  }).status, 'unsupported');
+});
+
 test('missing compatibility evidence produces an honest unverified result', () => {
   const result = evaluateCompatibility(null, { hardware: 'GeForce RTX 4090' });
   assert.equal(result.status, 'unverified');

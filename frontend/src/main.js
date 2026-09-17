@@ -1943,6 +1943,7 @@ function freshnessMeta(update) {
 }
 
 function formatVerifiedMoment(value) {
+  if (!value) return 'Pending';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return 'Pending';
   return parsed.toLocaleString(undefined, {
@@ -1953,10 +1954,16 @@ function formatVerifiedMoment(value) {
 }
 
 function renderSourceTimeline(update) {
-  const firstSeenAt = update?.firstSeenAt || update?.createdAt || null;
-  const lastCheckedAt = update?.lastCheckedAt || update?.updatedAt
+  const credibleTimestamp = (value) => {
+    const parsed = Date.parse(value || '');
+    const earliest = Date.UTC(2020, 0, 1);
+    const latest = Date.now() + (48 * 60 * 60 * 1000);
+    return Number.isFinite(parsed) && parsed >= earliest && parsed <= latest ? value : null;
+  };
+  const firstSeenAt = credibleTimestamp(update?.firstSeenAt || update?.createdAt);
+  const lastCheckedAt = credibleTimestamp(update?.lastCheckedAt || update?.updatedAt
     || (update?.evidence || []).find(item => item?.checkedAt)?.checkedAt
-    || null;
+    || null);
   const points = [
     {
       label: updateDateLabel(update),
@@ -4118,17 +4125,39 @@ async function renderUpdateDetail(id) {
     : 'Not published for this release';
   const compatibilityOsHTML = (compatibilityProfile?.operatingSystems || [])
     .map(label => `<span>${H(label)}</span>`).join('');
+  const compatibilityModels = [...new Set((compatibilityProfile?.hardware || [])
+    .map(entry => String(entry?.label || '').trim())
+    .filter(Boolean))];
+  const compatibilityModelOptionsHTML = compatibilityModels
+    .slice(0, 160)
+    .map(label => `<option value="${H(label)}"></option>`)
+    .join('');
+  const compatibilityCoverage = compatibilityProfile
+    ? `${compatibilityModels.length} official model or family entr${compatibilityModels.length === 1 ? 'y' : 'ies'}`
+    : 'No complete vendor table for this release';
   const detailSectionHeading = (eyebrow, title, description = '') => `
     <header class="detail-section-heading">
       <p class="detail-section-eyebrow">${H(eyebrow)}</p>
       <h2 class="detail-section-title">${H(title)}</h2>
       ${description ? `<p class="detail-section-description">${H(description)}</p>` : ''}
     </header>`;
-  const decisionFactsHTML = decisionPanelFacts(u, freshness).map(fact => `
+  const decisionFacts = decisionPanelFacts(u, freshness);
+  const decisionFactsHTML = decisionFacts.map(fact => `
     <div class="detail-decision-fact detail-decision-fact--${H(fact.tone)}">
       <strong>${H(fact.value)}</strong><span>${H(fact.label)}</span>
     </div>
   `).join('');
+  const updateContextFact = decisionFacts[1] || { value: 'Vendor', label: 'Release channel' };
+  const issueCoverageLabel = (u.knownIssues || []).length
+    ? `${(u.knownIssues || []).length} vendor-documented issue${(u.knownIssues || []).length === 1 ? '' : 's'}`
+    : u.knownIssuesAuthoritative
+      ? 'Vendor lists no known issues'
+      : 'Known-issue coverage unavailable';
+  const securityCoverageLabel = secCveTotal
+    ? `${secCveTotal} documented CVE${secCveTotal === 1 ? '' : 's'}`
+    : sec.level && sec.level !== 'none'
+      ? `${secLevel} security context`
+      : 'No security classification published';
 
   const changelogHTML = (u.changelog || []).map(c => `
     <li class="detail-list-item detail-list-item--positive">
@@ -4231,6 +4260,7 @@ async function renderUpdateDetail(id) {
 
       <nav class="detail-section-nav" aria-label="Update page sections">
         <button type="button" data-detail-target="detail-overview">Summary</button>
+        <button type="button" data-detail-target="detail-info">Update info</button>
         <button type="button" data-detail-target="detail-changes">Changes</button>
         <button type="button" data-detail-target="detail-issues">Known issues</button>
         <button type="button" data-detail-target="detail-compatibility">Compatibility</button>
@@ -4243,43 +4273,110 @@ async function renderUpdateDetail(id) {
         <!-- Left col: Reasoning + Changelog + Issues -->
         <div class="detail-col-main">
 
+          <section class="detail-section detail-update-info" id="detail-info">
+            ${detailSectionHeading('01 · Verified release', 'Update information', 'A source-backed inventory of this exact release before you make an install decision.')}
+            <div class="detail-update-info-grid">
+              <div>
+                <span>Version / build</span>
+                <strong>${H(u.version || 'Current release')}</strong>
+                <small>${H(platformLabel(u.platform))}</small>
+              </div>
+              <div>
+                <span>${H(updateDateLabel(u))}</span>
+                <strong>${H(formatReleaseDate(u.releasedAt))}</strong>
+                <small>Vendor-published date</small>
+              </div>
+              <div>
+                <span>Package</span>
+                <strong>${H(packageSize.value)}</strong>
+                <small>${H(packageSize.note)}</small>
+              </div>
+              <div>
+                <span>${H(updateContextFact.label)}</span>
+                <strong>${H(updateContextFact.value)}</strong>
+                <small>${H(detailMethodMeta.label)}</small>
+              </div>
+              <div>
+                <span>Issue coverage</span>
+                <strong>${H(issueCoverageLabel)}</strong>
+                <small>${H(freshness.detail)}</small>
+              </div>
+              <div>
+                <span>Security coverage</span>
+                <strong>${H(securityCoverageLabel)}</strong>
+                <small>${H(detailSourceLabel)}</small>
+              </div>
+              <div>
+                <span>Change impact</span>
+                <strong>${impactScore !== null ? `${H(String(impactScore))} / 10` : 'Pending'}</strong>
+                <small>Estimated breadth of system changes</small>
+              </div>
+              <div>
+                <span>Current decision</span>
+                <strong>${H(decisionForUpdate(u).action)}</strong>
+                <small>Based on validated release evidence</small>
+              </div>
+              <div>
+                <span>Source verification</span>
+                <strong>${H(detailSourceLabel)}</strong>
+                <small>${H(freshness.label)} · ${H(freshness.detail)}</small>
+              </div>
+              <div class="detail-update-info-scope">
+                <span>Applies to</span>
+                <strong>${H(u.affects || platformLabel(u.platform))}</strong>
+                <small>Confirm your exact device below when an official compatibility table is available.</small>
+              </div>
+            </div>
+          </section>
+
           <section class="detail-section" id="detail-brief">
-            ${detailSectionHeading('01 · Decision context', 'Update brief', 'The practical reason to install, wait, or avoid this release.')}
+            ${detailSectionHeading('02 · Decision context', 'Update brief', 'The practical reason to install, wait, or avoid this release.')}
             <p class="detail-reasoning">${H(u.reasoning || 'Our notes for this update are not published yet. Check back after the community monitoring window, typically 72 hours after release.')}</p>
           </section>
 
           <section class="detail-section" id="detail-changes">
-            ${detailSectionHeading('02 · Release contents', detailMethodMeta.heading, 'Vendor-published changes, fixes, and additions relevant to this release.')}
+            ${detailSectionHeading('03 · Release contents', detailMethodMeta.heading, 'Vendor-published changes, fixes, and additions relevant to this release.')}
             <p class="detail-section-context">${H(detailMethodMeta.note)}</p>
             <ul class="detail-list">${changelogHTML || '<li class="detail-list-item detail-list-item--none"><span class="detail-list-marker">—</span>No changelog available</li>'}</ul>
           </section>
 
           <section class="detail-section" id="detail-issues">
-            ${detailSectionHeading('03 · Before installing', 'Known issues', 'Unresolved problems explicitly captured from the checked source material.')}
+            ${detailSectionHeading('04 · Before installing', 'Known issues', 'Unresolved problems explicitly captured from the checked source material.')}
             <ul class="detail-list">${issuesHTML}</ul>
           </section>
 
           <section class="detail-section detail-compatibility" id="detail-compatibility">
-            ${detailSectionHeading('04 · Device check', 'Will this update support your hardware?', 'PatchTicker compares the model you enter with the compatibility table published by the vendor. No generated assumptions are used.')}
+            ${detailSectionHeading('05 · Device check', 'Will this update support your hardware?', 'PatchTicker compares the exact model and Windows release you enter with the compatibility table published by the vendor. No generated assumptions or browser fingerprint guesses are used.')}
             <div class="detail-compatibility-layout">
               <form class="detail-compatibility-form" id="compatibility-form">
-                <label for="compatibility-hardware">Graphics or device model</label>
+                <label for="compatibility-hardware">Graphics model from Device Manager</label>
                 <div class="detail-compatibility-controls">
-                  <input id="compatibility-hardware" class="field-input" type="text" maxlength="120" autocomplete="off" placeholder="${H(compatibilityPlaceholder)}" />
+                  <input id="compatibility-hardware" class="field-input" type="text" maxlength="120" autocomplete="off" list="compatibility-models" aria-describedby="compatibility-entry-help" placeholder="${H(compatibilityPlaceholder)}" />
+                  <datalist id="compatibility-models">${compatibilityModelOptionsHTML}</datalist>
                   <select id="compatibility-os" class="field-input" aria-label="Operating system">
                     <option value="not-sure">OS: Not sure</option>
-                    <option value="windows-11">Windows 11</option>
-                    <option value="windows-10">Windows 10</option>
+                    <option value="windows-11-26h1">Windows 11 26H1</option>
+                    <option value="windows-11-25h2">Windows 11 25H2</option>
+                    <option value="windows-11-24h2">Windows 11 24H2</option>
+                    <option value="windows-11-23h2">Windows 11 23H2</option>
+                    <option value="windows-10-22h2">Windows 10 22H2</option>
+                    <option value="windows-10-21h2">Windows 10 21H2</option>
                     <option value="other">macOS, Linux, or other</option>
                   </select>
                   <button class="detail-compatibility-submit" type="submit">Check compatibility</button>
                 </div>
+                <p class="detail-compatibility-coverage" id="compatibility-entry-help">${H(compatibilityCoverage)} loaded from the linked vendor source.</p>
+                <details class="detail-compatibility-help">
+                  <summary>How to find the exact model</summary>
+                  <p>On Windows, open Device Manager → Display adapters and copy the full graphics name. For laptops and prebuilt PCs, also check the manufacturer’s driver page before replacing its customized driver.</p>
+                </details>
                 <p class="detail-compatibility-privacy">Runs locally in your browser. Your hardware entry is not transmitted or stored.</p>
               </form>
               <aside class="detail-compatibility-proof ${compatibilityProfile ? 'is-verified' : 'is-limited'}">
                 <span>${compatibilityProfile ? 'Verified support table loaded' : 'Model table unavailable'}</span>
                 <strong>${H(compatibilityVendor)}</strong>
-                <small>${H(compatibilityCheckedAt)}</small>
+                <small>${H(compatibilityCoverage)}</small>
+                <small>Source checked ${H(compatibilityCheckedAt)}</small>
                 ${compatibilityOsHTML ? `<div class="detail-compatibility-os">${compatibilityOsHTML}</div>` : '<p>This page will return “unverified” rather than infer support from marketing text.</p>'}
                 ${compatibilityProfile?.sourceUrl ? `<a href="${H(compatibilityProfile.sourceUrl)}" target="_blank" rel="noopener">View compatibility source ↗</a>` : ''}
               </aside>
@@ -4287,16 +4384,6 @@ async function renderUpdateDetail(id) {
             <div class="detail-compatibility-result" id="compatibility-result" data-status="needs-input" aria-live="polite">
               <span class="detail-compatibility-result-icon" aria-hidden="true">◇</span>
               <div><strong>Ready to check</strong><p>Enter the exact model—not only “Radeon,” “Arc,” or a computer brand.</p></div>
-            </div>
-          </section>
-
-          <section class="detail-section detail-section--requirements">
-            ${detailSectionHeading('05 · Scope', 'Systems affected & performance impact', 'What this update touches and how broadly it can change the system.')}
-            <div class="detail-requirement-grid">
-              <div><span>Applies to</span><strong>${H(u.affects || platformLabel(u.platform))}</strong></div>
-              <div><span>Version</span><strong>${H(u.version || 'Current release')}</strong></div>
-              <div><span>Impact index</span><strong>${impactScore !== null ? H(String(impactScore)) : 'Pending'}</strong></div>
-              <div><span>Recommendation</span><strong>${H(decisionForUpdate(u).action)}</strong></div>
             </div>
           </section>
 
