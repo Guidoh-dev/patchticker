@@ -20,6 +20,7 @@ const cron            = require('node-cron');
 const logger          = require('../utils/logger');
 const pipelineService = require('./pipelineService');
 const steamGamePipelineService = require('./steamGamePipelineService');
+const ratingReconciliationService = require('./ratingReconciliationService');
 const { SECURITY_PLATFORM_KEYS, HIGH_VELOCITY_PLATFORM_KEYS } = require('../config/platformRegistry');
 
 let _fullScanJob     = null;
@@ -91,7 +92,8 @@ async function runFullScan() {
   logger.info('[cron] Full pipeline scan starting');
   try {
     const summary = await pipelineService.runAll();
-    logger.info('[cron] Full scan complete', summary);
+    const ratings = await ratingReconciliationService.run();
+    logger.info('[cron] Full scan complete', { ...summary, ratingReconciliation: ratings });
   } catch (err) {
     logger.error('[cron] Full scan error', { error: err.message });
   } finally {

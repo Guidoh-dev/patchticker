@@ -61,4 +61,18 @@ describe('pre-persistence update validation', () => {
     expect(result.value.changelog).toEqual([result.value.reasoning]);
     expect(result.warnings).toContain('changelog: replaced empty payload with validated reasoning');
   });
+
+  test('does not replace an explicit release date with a secondary publication date', () => {
+    const result = validateUpdateForPersistence(validUpdate({
+      releasedAt: '2026-09-09',
+      evidence: [{
+        source: 'Vendor security advisory',
+        url: 'https://vendor.example/security/advisory.pdf',
+        dateBasis: 'published',
+        publishedAt: '2026-09-10',
+      }],
+    }));
+    expect(result.value.releasedAt).toBe('2026-09-09T00:00:00.000Z');
+    expect(result.timestampSource).toBe('vendor-release-date');
+  });
 });

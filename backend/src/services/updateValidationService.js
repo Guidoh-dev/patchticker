@@ -92,7 +92,10 @@ function toUtcIso(value) {
 }
 
 function officialPublishedAt(evidence) {
-  const authoritativeDateBasis = /^(?:published|released|artifact-published|source-updated)$/;
+  // A news/advisory publication can precede or follow the actual installable
+  // release. Only evidence explicitly describing the release/artifact date may
+  // replace the detector's supplied release date.
+  const authoritativeDateBasis = /^(?:released|artifact-published|source-updated)$/;
   for (const item of evidence) {
     if (!item || typeof item !== 'object') continue;
     if (!authoritativeDateBasis.test(String(item.dateBasis || ''))) continue;

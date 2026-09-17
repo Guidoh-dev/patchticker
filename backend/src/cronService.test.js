@@ -9,6 +9,7 @@ const mockSchedule = jest.fn((expression, handler) => {
 const mockRunAll = jest.fn(async () => ({ total: 13, newUpdates: 0 }));
 const mockProcessPlatform = jest.fn(async platform => ({ platform, status: 'unchanged' }));
 const mockSteamGameRun = jest.fn(async () => ({ candidates: 81, material: 0, inserted: 0, failed: 0 }));
+const mockRatingReconciliationRun = jest.fn(async () => ({ status: 'current', scanned: 55, changed: 0, updated: 0 }));
 
 jest.mock('node-cron', () => ({ schedule: mockSchedule }));
 jest.mock('./services/pipelineService', () => ({
@@ -16,6 +17,7 @@ jest.mock('./services/pipelineService', () => ({
   processPlatform: mockProcessPlatform,
 }));
 jest.mock('./services/steamGamePipelineService', () => ({ run: mockSteamGameRun }));
+jest.mock('./services/ratingReconciliationService', () => ({ run: mockRatingReconciliationRun }));
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
 const cronService = require('./services/cronService');
@@ -34,6 +36,7 @@ describe('pipeline scheduler', () => {
     mockRunAll.mockClear();
     mockProcessPlatform.mockClear();
     mockSteamGameRun.mockClear();
+    mockRatingReconciliationRun.mockClear();
     process.env.NODE_ENV = 'production';
     process.env.PIPELINE_SCAN_ON_STARTUP = 'true';
     process.env.PIPELINE_STARTUP_SCAN_DELAY_MS = '1000';
@@ -64,6 +67,7 @@ describe('pipeline scheduler', () => {
 
     await jest.advanceTimersByTimeAsync(1000);
     expect(mockRunAll).toHaveBeenCalledTimes(1);
+    expect(mockRatingReconciliationRun).toHaveBeenCalledTimes(1);
     expect(mockSteamGameRun).toHaveBeenCalledTimes(1);
     expect(HIGH_VELOCITY_PLATFORM_KEYS).toEqual([
       'NVIDIA', 'AMD', 'Intel', 'Steam', 'Discord', 'BattleNet', 'GOG',
