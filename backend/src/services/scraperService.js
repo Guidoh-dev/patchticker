@@ -24,6 +24,7 @@
 //   GOG       — GOG GALAXY installer manifest + artifact timestamp
 //   Chrome    — Google Chrome Releases Atom feed (full Stable desktop only)
 //   Firefox   — Mozilla current-version JSON + release notes + security advisory
+//   Edge      — Microsoft Learn Stable release notes + security release notes
 //
 // All detectors fail silently — a scrape failure never crashes the cron job.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,6 +201,18 @@ function cleanText(value, max = 500) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max);
+}
+
+function boundedText(value, max = 360) {
+  const text = cleanText(value, Math.max(max * 4, max + 1));
+  if (text.length <= max) {
+    return text;
+  }
+  const candidate = text.slice(0, Math.max(1, max - 1));
+  const sentenceEnd = Math.max(candidate.lastIndexOf('. '), candidate.lastIndexOf('; '));
+  const wordEnd = candidate.lastIndexOf(' ');
+  const cut = sentenceEnd >= Math.floor(max * 0.55) ? sentenceEnd + 1 : wordEnd;
+  return `${candidate.slice(0, Math.max(1, cut)).trim()}…`;
 }
 
 function unique(values, max = 280) {
@@ -2289,6 +2302,173 @@ async function detectFirefox() {
   }
 }
 
+function trustedMicrosoftLearnUrl(value, expectedPath) {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:'
+      && parsed.hostname === 'learn.microsoft.com'
+      && parsed.pathname.toLowerCase() === expectedPath.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
+  const stableUrl = String(urls.stableUrl || 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnote-stable-channel');
+  const securityUrl = String(urls.securityUrl || 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security');
+  if (!trustedMicrosoftLearnUrl(stableUrl, '/en-us/deployedge/microsoft-edge-relnote-stable-channel')
+    || !trustedMicrosoftLearnUrl(securityUrl, '/en-us/deployedge/microsoft-edge-relnotes-security')) {
+    return null;
+  }
+
+  const stable$ = cheerio.load(String(stableHtml || ''));
+  let releaseHeading = null;
+  let version = null;
+  let releasedAt = null;
+  stable$('.content h2').each((_, element) => {
+    if (releaseHeading) {
+      return;
+    }
+    const text = cleanText(stable$(element).text(), 220);
+    const match = text.match(/^Version\s+(\d+\.\d+\.\d+\.\d+):\s+(.+?)\s+\(Stable\)(?:\s+-.*)?$/i);
+    const date = match ? toIsoDate(match[2]) : null;
+    if (!match || !date || /extended stable/i.test(text)) {
+      return;
+    }
+    releaseHeading = stable$(element);
+    version = match[1];
+    releasedAt = date;
+  });
+  if (!releaseHeading || !version || !releasedAt) {
+    return null;
+  }
+
+  const releaseNodes = releaseHeading.nextUntil('h2');
+  const summaryRows = [];
+  const summaryHeading = releaseNodes.filter('h3').filter((_, element) => /release summary/i.test(cleanText(stable$(element).text(), 80))).first();
+  summaryHeading.next('table').find('tbody tr').each((_, row) => {
+    const cells = stable$(row).find('td');
+    const category = cleanText(cells.eq(0).text(), 80);
+    const description = cleanText(cells.eq(1).text(), 300);
+    if (category && description && !/^(?:security|announcements|feature updates)$/i.test(category)) {
+      summaryRows.push(`${category}: ${description}`);
+    }
+  });
+
+  function edgeSectionBullets(label, limit) {
+    const heading = releaseNodes.filter('h3').filter((_, element) => cleanText(stable$(element).text(), 80).toLowerCase() === label.toLowerCase()).first();
+    if (!heading.length) {
+      return [];
+    }
+    return unique(heading.nextUntil('h2,h3').find('li').map((_, item) => boundedText(stable$(item).text(), 320)).get(), 320).slice(0, limit);
+  }
+
+  const announcements = edgeSectionBullets('Announcement', 2);
+  const featureUpdates = edgeSectionBullets('Feature updates', 5);
+  if (!summaryRows.length && !announcements.length && !featureUpdates.length) {
+    return null;
+  }
+
+  const security$ = cheerio.load(String(securityHtml || ''));
+  let matchingSecuritySection = null;
+  let matchingSecurityText = '';
+  const pendingNotices = [];
+  security$('.content h2').each((_, element) => {
+    const heading = security$(element);
+    const noticeDate = toIsoDate(cleanText(heading.text(), 100));
+    if (!noticeDate) {
+      return;
+    }
+    const nodes = heading.nextUntil('h2');
+    const sectionText = cleanText(nodes.text(), 6000);
+    const escapedVersion = version.replace(/\./g, '\\.');
+    const exactStable = new RegExp(`Microsoft Edge (?:for )?Stable(?: Channel)? \\(Version ${escapedVersion}\\)`, 'i').test(sectionText)
+      && !new RegExp(`(?:Android|iOS)[^.]*(?:Version ${escapedVersion})`, 'i').test(sectionText);
+    if (noticeDate === releasedAt && exactStable) {
+      matchingSecuritySection = nodes;
+      matchingSecurityText = sectionText;
+    }
+    if (Date.parse(noticeDate) > Date.parse(releasedAt)
+      && /recent Chromium security fixes/i.test(sectionText)
+      && /actively working on releasing a security fix/i.test(sectionText)) {
+      pendingNotices.push({ date: noticeDate, text: sectionText });
+    }
+  });
+  if (!matchingSecuritySection) {
+    return null;
+  }
+
+  const cves = unique(matchingSecuritySection.find('a').map((_, link) => {
+    const match = cleanText(security$(link).text(), 80).match(/CVE-\d{4}-\d+/i);
+    return match?.[0]?.toUpperCase() || '';
+  }).get(), 32);
+  const activelyExploited = /exploit(?:ed)? in the wild/i.test(matchingSecurityText);
+  const cveListPending = /CVE'?s will be added as soon as available/i.test(matchingSecurityText);
+  const pendingNotice = pendingNotices.sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0] || null;
+  const pendingText = pendingNotice
+    ? `On ${pendingNotice.date}, Microsoft said it was aware of newer Chromium security fixes and was still preparing an Edge security update.`
+    : '';
+  const securityLevel = activelyExploited ? 'high' : 'medium';
+
+  return {
+    platform: 'Edge',
+    name: `Microsoft Edge Stable ${version}`,
+    version,
+    releasedAt,
+    affects: 'Microsoft Edge Stable / Windows / macOS / Linux / browser security / enterprise policy / WebView2 compatibility',
+    changelog: unique([
+      `Microsoft Edge ${version} was released to the Stable channel on ${releasedAt}.`,
+      ...summaryRows,
+      ...announcements.map(note => `Announcement: ${note}`),
+      ...featureUpdates.map(note => `Feature update: ${note}`),
+    ], 360).slice(0, 12),
+    knownIssues: pendingText ? [pendingText] : [],
+    knownIssuesAuthoritative: false,
+    riskFactors: [
+      ...(pendingText ? [{ level: 'medium', text: pendingText }] : []),
+      ...(cveListPending ? [{ level: 'low', text: 'Microsoft says the CVE list for this Stable release will be added when available.' }] : []),
+    ],
+    securityCriticality: {
+      level: securityLevel,
+      label: pendingText
+        ? 'Newer Chromium security fix pending from Microsoft'
+        : cves.length
+          ? `${cves.length} documented Edge security fix${cves.length === 1 ? '' : 'es'}`
+          : 'Chromium security updates included; CVE list pending',
+      cves,
+      totalCves: cves.length,
+      activelyExploited,
+      pendingVendorFix: Boolean(pendingText),
+    },
+    verdict: pendingText
+      ? `Install Edge ${version} if you are behind, then keep automatic updates enabled—Microsoft says a newer Chromium security fix is still pending.`
+      : activelyExploited
+        ? 'Install promptly and restart Edge; Microsoft identifies an in-the-wild exploit fixed by this Stable release.'
+        : 'Install through Edge’s Stable channel and restart the browser to finish applying the update.',
+    reasoning: pendingText
+      ? `Microsoft’s Stable notes and security notes agree on Edge ${version} dated ${releasedAt}. The release includes documented feature and policy changes, but Microsoft posted a newer ${pendingNotice.date} notice saying another Chromium security fix was still being prepared; PatchTicker therefore keeps that caveat visible instead of treating this build as fully current.`
+      : `Microsoft’s Stable notes and security notes agree on Edge ${version} dated ${releasedAt}. Extended Stable, Beta, Dev, Canary, Android, and iOS entries are excluded from this lane.`,
+    evidence: [
+      ...sourceEvidence('Microsoft Edge Stable Release Notes', stableUrl, `Edge Stable ${version}, released ${releasedAt}; ${featureUpdates.length} feature updates and ${announcements.length} announcements parsed.`, { dateBasis: 'released', releaseType: 'official-release-notes', publishedAt: releasedAt, releaseChannel: 'stable' }),
+      ...sourceEvidence('Microsoft Edge Security Release Notes', securityUrl, `Edge Stable ${version} incorporates Chromium security updates.${pendingText ? ` Microsoft posted a newer pending-fix notice on ${pendingNotice.date}.` : ''}`, { dateBasis: 'released', releaseType: 'official-security-release', publishedAt: releasedAt, releaseChannel: 'stable', securityFixCount: cves.length, cveListPending, pendingVendorFix: Boolean(pendingText), pendingNoticeAt: pendingNotice?.date || null }),
+    ],
+    sourceUrl: stableUrl,
+  };
+}
+
+/** Microsoft Edge — full desktop Stable channel only. */
+async function detectEdge() {
+  const stableUrl = 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnote-stable-channel';
+  const securityUrl = 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security';
+  try {
+    const [stableHtml, securityHtml] = await Promise.all([fetchHtml(stableUrl), fetchHtml(securityUrl)]);
+    return parseEdgeStableRelease(stableHtml, securityHtml, { stableUrl, securityUrl });
+  } catch (err) {
+    logger.warn('[scraper] Edge detection failed', { error: err.message });
+    return null;
+  }
+}
+
 
 /**
  * Xbox — official Xbox Support structured content endpoint.
@@ -2460,6 +2640,7 @@ const DETECTORS = {
   GOG:      detectGog,
   Chrome:   detectChrome,
   Firefox:  detectFirefox,
+  Edge:     detectEdge,
 };
 
 function sleep(ms) {
@@ -2571,5 +2752,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseIntelPackageSize, parseIntelReleaseNotes, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, validateDetectedUpdate },
 };

@@ -1306,9 +1306,9 @@ async function hydrateLandingSignals() {
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 const PLATFORM_CLASS = {
   AMD:'amd', NVIDIA:'nvidia', Apple:'apple', PS5:'ps5', Windows:'windows', Steam:'steam',
-  macOS:'macos', Chrome:'chrome', Firefox:'firefox', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
+  macOS:'macos', Chrome:'chrome', Firefox:'firefox', Edge:'edge', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
 };
-const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Chrome:'CHR', Firefox:'FF', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
+const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Chrome:'CHR', Firefox:'FF', Edge:'EDG', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
 const PLATFORM_LOGOS = {
   AMD:       '/platform-logos/simple-icons/amd.svg',
   NVIDIA:    '/platform-logos/simple-icons/nvidia.svg',
@@ -1326,24 +1326,25 @@ const PLATFORM_LOGOS = {
   GOG:       '/platform-logos/simple-icons/gogdotcom.svg',
   Chrome:    '/platform-logos/simple-icons/googlechrome.svg',
   Firefox:   '/platform-logos/simple-icons/firefoxbrowser.svg',
+  Edge:      '/platform-logos/wikimedia/microsoft-edge.svg',
 };
-const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Chrome','Firefox','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
+const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Chrome','Firefox','Edge','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
 const TICKER_SERVICES = [
-  'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows', 'Google Chrome', 'Mozilla Firefox',
+  'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows', 'Google Chrome', 'Mozilla Firefox', 'Microsoft Edge',
   'Steam', 'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy', 'Switch', 'Xbox', 'PS5',
 ];
 const PLATFORM_CATEGORY_META = {
   pcHardware: { title: 'PC Hardware & Drivers', subtitle: 'GPU, graphics driver, and silicon update lanes.', platforms: ['NVIDIA', 'AMD', 'Intel'] },
   desktopOs:  { title: 'Desktop OS & Apple', subtitle: 'Windows, macOS, and iOS security and stability releases.', platforms: ['Windows', 'Apple', 'macOS'] },
   gaming:     { title: 'Gaming Platforms', subtitle: 'Steam, Steam Deck, consoles, launchers, and live game-service tooling.', platforms: ['Steam', 'Switch', 'Xbox', 'PS5', 'Discord', 'BattleNet', 'GOG'] },
-  browsers:   { title: 'Web Browsers', subtitle: 'Stable desktop browser releases and documented security fixes.', platforms: ['Chrome', 'Firefox'] },
+  browsers:   { title: 'Web Browsers', subtitle: 'Stable desktop browser releases and documented security fixes.', platforms: ['Chrome', 'Firefox', 'Edge'] },
 };
 const PLATFORM_CATEGORY_ORDER = ['pcHardware', 'desktopOs', 'gaming', 'browsers'];
 const PLATFORM_TO_CATEGORY = Object.fromEntries(Object.entries(PLATFORM_CATEGORY_META).flatMap(([key, meta]) => meta.platforms.map(platform => [platform, key])));
 const SEARCH_SUGGESTIONS = [
   'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy',
   'Switch OLED', 'Joy-Con', 'MacBook Pro M3', 'MacBook Air M2',
-  'RTX 4090', 'RTX 50', 'RX 7900 XT', 'Arc A770', 'Chrome security', 'Firefox security', 'VPN', 'anti-cheat',
+  'RTX 4090', 'RTX 50', 'RX 7900 XT', 'Arc A770', 'Chrome security', 'Firefox security', 'Edge security', 'VPN', 'anti-cheat',
 ];
 const SEARCH_ALIASES = {
   steamos: ['steamos', 'steam os', 'steam deck', 'deck', 'valve handheld'],
@@ -1357,6 +1358,7 @@ const SEARCH_ALIASES = {
   gog: ['gog', 'gog galaxy', 'galaxy client', 'cd projekt'],
   chrome: ['chrome', 'google chrome', 'chromium', 'browser security'],
   firefox: ['firefox', 'mozilla firefox', 'gecko', 'browser security'],
+  edge: ['edge', 'microsoft edge', 'edge stable', 'chromium', 'browser security'],
   // Keep model and chip searches literal. The empty-state recovery can offer
   // the macOS lane without claiming an update explicitly supports M1–M4.
   macbook: ['macbook', 'macos', 'mac os'],
@@ -1403,7 +1405,7 @@ function steamGameRosterDescription() {
 }
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
-function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy', Chrome: 'Google Chrome', Firefox: 'Mozilla Firefox' })[p] || p; }
+function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy', Chrome: 'Google Chrome', Firefox: 'Mozilla Firefox', Edge: 'Microsoft Edge' })[p] || p; }
 function platformLogoPath(platform) { return PLATFORM_LOGOS[platform] || null; }
 function renderPlatformLogo(platform, extraClass = '') {
   const pSuffix = platformSuffix(platform);
@@ -1423,6 +1425,7 @@ function serviceLogoKey(service) {
     'GOG Galaxy': 'GOG',
     'Google Chrome': 'Chrome',
     'Mozilla Firefox': 'Firefox',
+    'Microsoft Edge': 'Edge',
   })[service] || service;
 }
 function renderServiceTickerItem(service) {
@@ -2529,12 +2532,12 @@ function renderGroupedUpdateSections(updates, watchedSet = new Set()) {
             <div>
               <p class="dash-section-kicker">Source lane ready</p>
               <h2>${H(meta.title)}</h2>
-              <span>Chrome and Firefox desktop Stable releases are monitored from their official vendor sources. No verified browser release is loaded in this snapshot yet.</span>
+              <span>Chrome, Firefox, and Edge desktop Stable releases are monitored from their official vendor sources. No verified browser release is loaded in this snapshot yet.</span>
             </div>
             <a href="#/updates" data-scroll-target="section-overview">Back to top ↑</a>
           </div>
           <div class="category-coming-soon">
-            <span>Chrome active</span><span>Firefox active</span><span>Edge planned</span>
+            <span>Chrome active</span><span>Firefox active</span><span>Edge active</span><span>More browsers coming soon</span>
           </div>
         </section>
       `;
@@ -4771,7 +4774,7 @@ async function renderAdmin() {
             </select>
             <button class="btn btn--outline btn--sm" id="pipeline-run-one">Run selected</button>
           </div>
-          <p class="pipeline-note">Scans run automatically every 6 hours. Security platforms (Windows, Apple, macOS, Chrome, Firefox) scan every hour.</p>
+          <p class="pipeline-note">Scans run automatically every 6 hours. Security platforms (Windows, Apple, macOS, Chrome, Firefox, Edge) scan every hour.</p>
         </div>
         <div id="pipeline-status-wrap" class="admin-table-wrap">${spinner()}</div>
         <div class="pipeline-controls pipeline-controls--email">

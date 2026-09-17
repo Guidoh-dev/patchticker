@@ -11,12 +11,13 @@ const updates = [
   { id: 'macos', platform: 'macOS' },
   { id: 'chrome', platform: 'Chrome' },
   { id: 'firefox', platform: 'Firefox' },
+  { id: 'edge', platform: 'Edge' },
 ];
 
 test('setup lenses apply OR semantics inside each ecosystem', () => {
   assert.deepEqual(filterUpdatesBySetup(updates, 'console').map(update => update.id), ['steam', 'switch']);
   assert.deepEqual(filterUpdatesBySetup(updates, 'apple').map(update => update.id), ['apple', 'macos']);
-  assert.deepEqual(filterUpdatesBySetup(updates, 'pc').map(update => update.id), ['windows', 'nvidia', 'steam', 'chrome', 'firefox']);
+  assert.deepEqual(filterUpdatesBySetup(updates, 'pc').map(update => update.id), ['windows', 'nvidia', 'steam', 'chrome', 'firefox', 'edge']);
 });
 
 test('everything and unknown setup lenses preserve the full feed', () => {

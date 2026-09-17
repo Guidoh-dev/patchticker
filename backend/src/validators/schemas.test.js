@@ -213,7 +213,7 @@ describe('GetUpdatesQuerySchema', () => {
       expect(passes(GetUpdatesQuerySchema, { platform: 'AMD', status: 'avoid' })).toBe(true);
     });
     it('accepts all platform enum values', () => {
-      for (const p of ['Apple', 'NVIDIA', 'AMD', 'PS5', 'Windows', 'Steam', 'Chrome', 'Firefox']) {
+      for (const p of ['Apple', 'NVIDIA', 'AMD', 'PS5', 'Windows', 'Steam', 'Chrome', 'Firefox', 'Edge']) {
         expect(passes(GetUpdatesQuerySchema, { platform: p })).toBe(true);
       }
     });

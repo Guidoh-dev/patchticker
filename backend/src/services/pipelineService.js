@@ -237,6 +237,11 @@ function platformContext(platform, detected) {
       verdict: 'Install promptly when Mozilla documents high-impact security fixes; restart Firefox to finish applying the release.',
       reasoning: 'Firefox Release updates can close browser security vulnerabilities and change extensions, media, privacy controls, and web-platform behavior. PatchTicker requires Mozilla’s current-version service, matching Release notes, and matching security advisory to agree.',
     },
+    Edge: {
+      affects: 'Microsoft Edge Stable / Windows / macOS / Linux / browser security / enterprise policy / WebView2 compatibility',
+      verdict: 'Install Stable releases promptly, while keeping any newer Microsoft security notice visible until the matching fixed build ships.',
+      reasoning: 'Edge Stable updates can change Chromium security, enterprise policies, privacy behavior, and WebView2 compatibility. PatchTicker requires Microsoft’s Stable and security release notes to agree on the exact desktop build and date.',
+    },
     Steam: {
       affects: 'Steam client / SteamOS / Steam Deck / game library / downloads / compatibility layers',
       verdict: 'Good candidate for Steam Deck or Steam client users unless early reports mention install, compatibility, or download regressions.',
@@ -407,6 +412,7 @@ const PLATFORM_SUBREDDITS = {
   macOS:   ['MacOS', 'apple'],
   Chrome:  ['chrome', 'cybersecurity'],
   Firefox: ['firefox', 'cybersecurity'],
+  Edge:    ['MicrosoftEdge', 'cybersecurity'],
   Steam:   ['Steam', 'SteamDeck', 'linux_gaming'],
   Xbox:    ['XboxSeriesX', 'xboxone'],
   PS5:     ['PS5', 'playstation'],

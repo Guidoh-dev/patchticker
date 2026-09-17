@@ -19,7 +19,7 @@ const SECURITY_BONUSES = Object.freeze({
 
 const RESOLUTION_RE = /\b(?:fixed|fixes|resolved|corrected|addressed|reduced|improved|mitigated|eliminated|prevented)\b/i;
 const DOCUMENTED_BENEFIT_RE = /\b(?:add(?:ed|s)?|introduc(?:e|ed|es)|enabl(?:e|ed|es)|enhanc(?:e|ed|es)|improv(?:e|ed|es)|optimi[sz](?:e|ed|es)|restor(?:e|ed|es)|support(?:ed|s)|upgrad(?:e|ed|es)|fix(?:ed|es)?|resolv(?:e|ed|es)|correct(?:ed|s)?|address(?:ed|es)|reduc(?:e|ed|es)|mitigat(?:e|ed|es)|eliminat(?:e|ed|es)|prevent(?:ed|s)?)\b/i;
-const UNRESOLVED_QUALIFIER_RE = /\b(?:remain(?:s|ing)?|may still|can still|continues? to|workaround|not fixed|unresolved|under investigation)\b/i;
+const UNRESOLVED_QUALIFIER_RE = /\b(?:remain(?:s|ing)?|may still|can still|continues? to|workaround|not fixed|unresolved|under investigation|pending|awaiting|still (?:preparing|working)|fix (?:is )?forthcoming|will be added)\b/i;
 const NEGATIVE_ISSUE_RE = /\b(?:not (?:currently )?aware of any issues?|no known issues?|no issues? (?:are )?(?:known|reported|listed|found|identified)|without known issues?)\b/i;
 
 function clamp(value, min, max) {

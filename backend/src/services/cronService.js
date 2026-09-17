@@ -6,7 +6,7 @@
 //   On production startup — catch-up scan (covers hosts that sleep)
 //   Every 6 hours         — full platform scan (all tracked platforms)
 //   Every 2 hours         — drivers, Steam/client platforms, and material game releases
-//   Every 1 hour          — security-priority platforms (Windows, Apple, macOS)
+//   Every 1 hour          — security-priority OS and browser platforms
 //
 // The 1-hour scan for security platforms ensures zero-days and critical
 // security patches (like Apple WebKit exploits) are surfaced quickly.

@@ -324,6 +324,8 @@ test('exact platform searches use platform equality instead of incidental note t
   expect(updatesService.__test.exactPlatformForSearch('google chrome')).toBe('Chrome');
   expect(updatesService.__test.exactPlatformForSearch('firefox')).toBe('Firefox');
   expect(updatesService.__test.exactPlatformForSearch('mozilla firefox')).toBe('Firefox');
+  expect(updatesService.__test.exactPlatformForSearch('edge')).toBe('Edge');
+  expect(updatesService.__test.exactPlatformForSearch('microsoft edge')).toBe('Edge');
   expect(updatesService.__test.exactPlatformForSearch('nvidia driver')).toBeNull();
 
   mockIsAvailable.mockReturnValue(true);

@@ -70,6 +70,8 @@ describe('deterministic update scoring', () => {
     expect(isResolvedStatement('Fixed a bug that caused the game to crash.')).toBe(true);
     expect(isResolvedStatement('Reduced the crash rate on Nintendo Switch.')).toBe(true);
     expect(isResolvedStatement('Fixed one path, but crashes may still occur.')).toBe(false);
+    expect(isResolvedStatement('Microsoft is still preparing a newer Chromium security fix.')).toBe(false);
+    expect(isResolvedStatement('The matching browser security update is pending.')).toBe(false);
     expect(isNegativeKnownIssueStatement('Microsoft is not currently aware of any issues with this update.')).toBe(true);
 
     const base = {

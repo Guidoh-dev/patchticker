@@ -71,17 +71,24 @@ test('dashboard section links remain inside the hash router', () => {
 
 test('Google Chrome is a real tracked browser lane rather than a decorative placeholder', () => {
   assert.match(mainSource, /Chrome:\s*'\/platform-logos\/simple-icons\/googlechrome\.svg'/);
-  assert.match(mainSource, /browsers:\s*\{[^}]*platforms:\s*\['Chrome', 'Firefox'\]/s);
+  assert.match(mainSource, /browsers:\s*\{[^}]*platforms:\s*\['Chrome', 'Firefox', 'Edge'\]/s);
   assert.match(mainSource, /TRACKED_PLATFORMS = \[[^\]]*'Chrome'/s);
   assert.match(cssSource, /--platform-chrome:\s*#4285f4/);
 });
 
 test('Mozilla Firefox is a source-backed browser lane with distinct branding', () => {
   assert.match(mainSource, /Firefox:\s*'\/platform-logos\/simple-icons\/firefoxbrowser\.svg'/);
-  assert.match(mainSource, /browsers:\s*\{[^}]*platforms:\s*\['Chrome', 'Firefox'\]/s);
+  assert.match(mainSource, /browsers:\s*\{[^}]*platforms:\s*\['Chrome', 'Firefox', 'Edge'\]/s);
   assert.match(mainSource, /TRACKED_PLATFORMS = \[[^\]]*'Firefox'/s);
-  assert.match(mainSource, /<span>Chrome active<\/span><span>Firefox active<\/span><span>Edge planned<\/span>/);
+  assert.match(mainSource, /<span>Chrome active<\/span><span>Firefox active<\/span><span>Edge active<\/span>/);
   assert.match(cssSource, /--platform-firefox:\s*#ff7139/);
+});
+
+test('Microsoft Edge is an active browser lane with its own official asset', () => {
+  assert.match(mainSource, /Edge:\s*'\/platform-logos\/wikimedia\/microsoft-edge\.svg'/);
+  assert.match(mainSource, /TRACKED_PLATFORMS = \[[^\]]*'Edge'/s);
+  assert.match(mainSource, /<span>Edge active<\/span><span>More browsers coming soon<\/span>/);
+  assert.match(cssSource, /--platform-edge:\s*#0bd8b6/);
 });
 
 test('user-facing setup filters no longer use stack terminology', () => {
@@ -418,7 +425,7 @@ test('filter controls stage draft state and only update the feed through Apply',
 
 test('setup lenses use ecosystem OR filters instead of impossible all-term searches', () => {
   assert.match(filterLogicSource, /const SETUP_LENSES = Object\.freeze/);
-  assert.match(filterLogicSource, /pc:\s*\{[^}]*platforms:\s*\['Windows', 'Chrome', 'Firefox', 'NVIDIA', 'AMD', 'Intel', 'Steam'/s);
+  assert.match(filterLogicSource, /pc:\s*\{[^}]*platforms:\s*\['Windows', 'Chrome', 'Firefox', 'Edge', 'NVIDIA', 'AMD', 'Intel', 'Steam'/s);
   assert.match(mainSource, /filtered = filterUpdatesBySetup\(filtered, setup\)/);
   assert.doesNotMatch(mainSource, /data-lens="windows nvidia amd intel/);
 });
