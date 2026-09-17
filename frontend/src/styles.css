@@ -8526,7 +8526,8 @@ html[data-theme="light"] .dash-side-copy { color: var(--text-2); }
     border-radius: 16px;
   }
   #coverage-health,
-  #coverage-last { display: none; }
+  #coverage-last,
+  #coverage-view-sync { display: none; }
   .dash-source-heartbeats {
     grid-template-columns: minmax(0, 1fr);
     margin-top: 6px;

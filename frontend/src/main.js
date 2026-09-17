@@ -158,6 +158,7 @@ const app = document.getElementById('app');
 const THEME_STORAGE_KEY = 'patchticker.theme';
 const MAX_UPDATE_AGE_DAYS = 240;
 const UPDATE_DISPLAY_WINDOW_MS = MAX_UPDATE_AGE_DAYS * 24 * 60 * 60 * 1000;
+const DASHBOARD_REVALIDATE_MS = 5 * 60 * 1000;
 const QUICKBAR_TOP_ZONE_PX = 120;
 const QUICKBAR_SCROLL_EPSILON_PX = 3;
 const UPDATE_VISIT_STORAGE_KEY = 'patchticker.updates.lastSeenAt';
@@ -165,6 +166,7 @@ const _updateVisitBaseline = Date.parse(localStorage.getItem(UPDATE_VISIT_STORAG
 let _updateVisitRecorded = false;
 let _quickbarScrollController = null;
 let _liveFeedCleanup = null;
+let _dashboardRefreshCleanup = null;
 
 function isUpdateWithinDisplayWindow(update, now = Date.now()) {
   const releasedAt = Date.parse(update?.releasedAt);
@@ -208,6 +210,8 @@ function resetPageScroll() {
 function setHTML(html) {
   _quickbarScrollController?.abort();
   _quickbarScrollController = null;
+  _dashboardRefreshCleanup?.();
+  _dashboardRefreshCleanup = null;
   _liveFeedCleanup?.();
   _liveFeedCleanup = null;
   document.body.classList.remove('dashboard-shell-active');
@@ -2955,6 +2959,7 @@ async function renderDashboard({ focusId = null } = {}) {
                 <span id="coverage-fresh">Lane freshness pending</span>
                 <span id="coverage-health">Health check pending</span>
                 <span id="coverage-last">Last sweep pending</span>
+                <span id="coverage-view-sync">View sync pending</span>
               </div>
               <div class="dash-source-heartbeats" role="group" aria-label="Platform source heartbeat">
                 <span>Source heartbeat</span>
@@ -3654,18 +3659,24 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   // ── Initial data load ─────────────────────────────────────────────────────
+  function hydrateDashboardUpdates(response) {
+    _allUpdates = annotateReleasePositions(
+      normaliseUpdatesResponse(response)
+        .filter(update => isUpdateWithinDisplayWindow(update))
+    );
+    refreshSearchSuggestions(_allUpdates);
+    updateReturnBrief(_allUpdates);
+    renderTapeAndLatest(_allUpdates);
+    renderSourceHeartbeats(_allUpdates);
+    renderVerifiedFeedFallback();
+  }
+
   async function loadUpdates() {
     try {
-      _allUpdates = annotateReleasePositions(
-        normaliseUpdatesResponse(await fetchUpdates({}))
-          .filter(update => isUpdateWithinDisplayWindow(update))
-      );
-      refreshSearchSuggestions(_allUpdates);
-      updateReturnBrief(_allUpdates);
-      renderTapeAndLatest(_allUpdates);
-      renderSourceHeartbeats(_allUpdates);
-      renderVerifiedFeedFallback();
+      hydrateDashboardUpdates(await fetchUpdates({}));
       applyFilters();
+      const syncEl = document.getElementById('coverage-view-sync');
+      if (syncEl) syncEl.textContent = 'View synced just now';
     } catch (err) {
       renderOfflineRails(`Live patch feed is reconnecting: ${err.message}`);
     }
@@ -3676,7 +3687,8 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   // ── Hero stats from summary ───────────────────────────────────────────────
-  fetchSummary().then(res => {
+  function refreshDashboardSummary() {
+    return fetchSummary().then(res => {
     const d = res?.data || res;
     if (!d) return;
     const stable  = document.getElementById('stat-stable');
@@ -3717,7 +3729,10 @@ async function renderDashboard({ focusId = null } = {}) {
     if (coverageLast) coverageLast.textContent = d.lastCheckedAt
       ? `Latest check ${timeAgo(d.lastCheckedAt)}`
       : 'Latest check pending';
-  }).catch(() => {});
+    }).catch(() => {});
+  }
+
+  refreshDashboardSummary();
 
   // ── Setup lens buttons ─────────────────────────────────────────────────────
   document.querySelectorAll('.setup-lens').forEach(btn => {
@@ -3869,7 +3884,68 @@ async function renderDashboard({ focusId = null } = {}) {
   document.getElementById('dash-top-apply-filters')?.addEventListener('click', applyDraftFilters);
   syncDraftFilterControls();
 
-  loadUpdates();
+  let lastDashboardSyncAt = Date.now();
+  let dashboardRefreshPending = false;
+
+  async function revalidateDashboard() {
+    if (document.hidden || dashboardRefreshPending || _searchLoading) return;
+    if (!document.getElementById('updates-list')) return;
+    dashboardRefreshPending = true;
+    const activeSearch = _filterState.search && _searchMode === 'server'
+      ? {
+          platform: _filterState.platform,
+          status: _filterState.status,
+          search: _filterState.search,
+          sort: _filterState.sort,
+        }
+      : null;
+    try {
+      const activeSearchKey = activeSearch ? JSON.stringify(activeSearch) : '';
+      const [allResponse, searchResponse] = await Promise.all([
+        fetchUpdates({}),
+        activeSearch ? fetchUpdates(activeSearch).catch(() => null) : Promise.resolve(null),
+      ]);
+      if (!document.getElementById('updates-list')) return;
+      hydrateDashboardUpdates(allResponse);
+      const currentSearchKey = _filterState.search && _searchMode === 'server'
+        ? JSON.stringify({
+            platform: _filterState.platform,
+            status: _filterState.status,
+            search: _filterState.search,
+            sort: _filterState.sort,
+          })
+        : '';
+      if (activeSearch && searchResponse && activeSearchKey === currentSearchKey) {
+        _serverSearchResults = annotateReleasePositions(
+          normaliseUpdatesResponse(searchResponse)
+            .filter(update => isUpdateWithinDisplayWindow(update))
+        );
+      }
+      applyFilters();
+      lastDashboardSyncAt = Date.now();
+      const syncEl = document.getElementById('coverage-view-sync');
+      if (syncEl) syncEl.textContent = 'View synced just now';
+      refreshDashboardSummary();
+    } catch {
+      const syncEl = document.getElementById('coverage-view-sync');
+      if (syncEl) syncEl.textContent = 'View refresh pending';
+    } finally {
+      dashboardRefreshPending = false;
+    }
+  }
+
+  loadUpdates().finally(() => { lastDashboardSyncAt = Date.now(); });
+  const dashboardRefreshTimer = window.setInterval(revalidateDashboard, DASHBOARD_REVALIDATE_MS);
+  const handleDashboardVisibility = () => {
+    if (!document.hidden && Date.now() - lastDashboardSyncAt >= DASHBOARD_REVALIDATE_MS) {
+      revalidateDashboard();
+    }
+  };
+  document.addEventListener('visibilitychange', handleDashboardVisibility);
+  _dashboardRefreshCleanup = () => {
+    window.clearInterval(dashboardRefreshTimer);
+    document.removeEventListener('visibilitychange', handleDashboardVisibility);
+  };
 
   // ── Live community feed ───────────────────────────────────────────────────
   (function initFeed() {

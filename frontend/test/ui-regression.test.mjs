@@ -389,7 +389,8 @@ test('mobile cards prioritize the decision and collapse low-value repetition', (
 test('the client applies the same 240-day update display ceiling as the API', () => {
   assert.match(mainSource, /const MAX_UPDATE_AGE_DAYS = 240/);
   assert.match(mainSource, /function isUpdateWithinDisplayWindow\(update/);
-  assert.match(mainSource, /normaliseUpdatesResponse\(await fetchUpdates\(\{\}\)\)[\s\S]*?\.filter\(update => isUpdateWithinDisplayWindow\(update\)\)/);
+  assert.match(mainSource, /function hydrateDashboardUpdates\(response\)[\s\S]*?normaliseUpdatesResponse\(response\)[\s\S]*?\.filter\(update => isUpdateWithinDisplayWindow\(update\)\)/);
+  assert.match(mainSource, /hydrateDashboardUpdates\(await fetchUpdates\(\{\}\)\)/);
 });
 
 test('mobile ticker viewport clips its moving track without widening the page', () => {
@@ -751,6 +752,17 @@ test('source heartbeat makes per-platform check recency visible and filterable',
   assert.match(cssSource, /\.dash-source-heartbeat-track\s*\{[^}]*overflow-x:\s*auto/s);
   assert.match(cssSource, /\.dash-source-heartbeat\s*\{[^}]*width:\s*44px;[^}]*height:\s*44px/s);
   assert.match(cssSource, /\.dash-source-heartbeat--fresh > i\s*\{[^}]*var\(--green-primary\)/s);
+});
+
+test('an open dashboard revalidates live data without creating a hidden-tab polling loop', () => {
+  assert.match(mainSource, /const DASHBOARD_REVALIDATE_MS = 5 \* 60 \* 1000/);
+  assert.match(mainSource, /function hydrateDashboardUpdates\(response\)/);
+  assert.match(mainSource, /async function revalidateDashboard\(\)/);
+  assert.match(mainSource, /if \(document\.hidden \|\| dashboardRefreshPending \|\| _searchLoading\) return/);
+  assert.match(mainSource, /window\.setInterval\(revalidateDashboard, DASHBOARD_REVALIDATE_MS\)/);
+  assert.match(mainSource, /document\.addEventListener\('visibilitychange', handleDashboardVisibility\)/);
+  assert.match(mainSource, /window\.clearInterval\(dashboardRefreshTimer\)/);
+  assert.match(mainSource, /id="coverage-view-sync">View sync pending/);
 });
 
 test('offline update feeds remain honest instead of reviving demo records', () => {
