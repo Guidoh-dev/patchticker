@@ -69,6 +69,13 @@ test('dashboard section links remain inside the hash router', () => {
   assert.match(mainSource, /data-scroll-target="category-/);
 });
 
+test('Google Chrome is a real tracked browser lane rather than a decorative placeholder', () => {
+  assert.match(mainSource, /Chrome:\s*'\/platform-logos\/simple-icons\/googlechrome\.svg'/);
+  assert.match(mainSource, /browsers:\s*\{[^}]*platforms:\s*\['Chrome'\]/s);
+  assert.match(mainSource, /TRACKED_PLATFORMS = \[[^\]]*'Chrome'/s);
+  assert.match(cssSource, /--platform-chrome:\s*#4285f4/);
+});
+
 test('user-facing setup filters no longer use stack terminology', () => {
   assert.doesNotMatch(mainSource, />[^<]*\bstacks?\b[^<]*</i);
   assert.match(mainSource, />PC &amp; Steam</);
@@ -403,7 +410,7 @@ test('filter controls stage draft state and only update the feed through Apply',
 
 test('setup lenses use ecosystem OR filters instead of impossible all-term searches', () => {
   assert.match(filterLogicSource, /const SETUP_LENSES = Object\.freeze/);
-  assert.match(filterLogicSource, /pc:\s*\{[^}]*platforms:\s*\['Windows', 'NVIDIA', 'AMD', 'Intel', 'Steam'/s);
+  assert.match(filterLogicSource, /pc:\s*\{[^}]*platforms:\s*\['Windows', 'Chrome', 'NVIDIA', 'AMD', 'Intel', 'Steam'/s);
   assert.match(mainSource, /filtered = filterUpdatesBySetup\(filtered, setup\)/);
   assert.doesNotMatch(mainSource, /data-lens="windows nvidia amd intel/);
 });

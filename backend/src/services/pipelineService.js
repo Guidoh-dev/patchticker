@@ -227,6 +227,11 @@ function platformContext(platform, detected) {
       verdict: 'Prioritize security updates, but confirm compatibility for work-critical apps, extensions, VPNs, and device-management tools.',
       reasoning: 'macOS releases can affect security posture, Safari/WebKit behavior, kernel extensions, peripherals, and managed-device workflows.',
     },
+    Chrome: {
+      affects: 'Google Chrome Stable / Windows / macOS / Linux / browser security / extensions and web compatibility',
+      verdict: 'Install promptly when Google documents critical or high-severity security fixes; restart Chrome to finish applying the release.',
+      reasoning: 'Chrome Stable updates can close browser security vulnerabilities and change rendering, extensions, media, and web-platform behavior. PatchTicker tracks only Google’s full Stable desktop channel—not Beta, Dev, Early Stable, or mobile posts.',
+    },
     Steam: {
       affects: 'Steam client / SteamOS / Steam Deck / game library / downloads / compatibility layers',
       verdict: 'Good candidate for Steam Deck or Steam client users unless early reports mention install, compatibility, or download regressions.',
@@ -395,6 +400,7 @@ const PLATFORM_SUBREDDITS = {
   AMD:     ['Amd', 'Amd_drivers'],
   Apple:   ['iphone', 'ios'],
   macOS:   ['MacOS', 'apple'],
+  Chrome:  ['chrome', 'cybersecurity'],
   Steam:   ['Steam', 'SteamDeck', 'linux_gaming'],
   Xbox:    ['XboxSeriesX', 'xboxone'],
   PS5:     ['PS5', 'playstation'],

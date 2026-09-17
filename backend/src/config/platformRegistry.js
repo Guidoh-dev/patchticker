@@ -8,6 +8,7 @@ const PLATFORMS = Object.freeze([
   { key: 'Windows',   label: 'Windows',      lane: 'security', sourceType: 'rss',      priority: 1, freshnessSlaHours: 2, official: true, topTier: true, engagementBoundary: 'platform-wide-system' },
   { key: 'Apple',     label: 'Apple iOS',    lane: 'security', sourceType: 'html',     priority: 1, freshnessSlaHours: 2, official: true, topTier: true, engagementBoundary: 'platform-wide-system' },
   { key: 'macOS',     label: 'macOS',        lane: 'security', sourceType: 'html',     priority: 1, freshnessSlaHours: 2, official: true, topTier: true, engagementBoundary: 'platform-wide-system' },
+  { key: 'Chrome',    label: 'Google Chrome', lane: 'security', sourceType: 'atom',    priority: 1, freshnessSlaHours: 2, official: true, topTier: true, engagementBoundary: 'official-core-client' },
   { key: 'NVIDIA',    label: 'NVIDIA',       lane: 'drivers',  sourceType: 'json',     priority: 2, freshnessSlaHours: 4, official: true, topTier: true, engagementBoundary: 'vendor-current-driver-family' },
   { key: 'AMD',       label: 'AMD',          lane: 'drivers',  sourceType: 'html',     priority: 2, freshnessSlaHours: 4, official: true, topTier: true, engagementBoundary: 'vendor-current-driver-family' },
   { key: 'Intel',     label: 'Intel',        lane: 'drivers',  sourceType: 'html',     priority: 2, freshnessSlaHours: 4, official: true, topTier: true, engagementBoundary: 'vendor-current-driver-family' },

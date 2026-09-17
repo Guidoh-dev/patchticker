@@ -50,6 +50,8 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['ios', 'Apple'],
   ['macos', 'macOS'],
   ['mac os', 'macOS'],
+  ['chrome', 'Chrome'],
+  ['google chrome', 'Chrome'],
   ['windows', 'Windows'],
   ['steam', 'Steam'],
   ['discord', 'Discord'],
@@ -267,6 +269,7 @@ const ARTICLE_RELEASE_URLS = [
   /^support\.apple\.com\/(?:[a-z]{2}-[a-z]{2}\/)?\d+$/i,
   /^www\.amd\.com\/[^?#]*\/release-notes\/rn-[^/]+\.html$/i,
   /^www\.nvidia\.com\/[^?#]*\/drivers\/details\/\d+$/i,
+  /^chromereleases\.googleblog\.com\/\d{4}\/\d{2}\/stable-channel-update-for-desktop[^/]*\.html$/i,
 ];
 
 function canUseStaticUpdates() {

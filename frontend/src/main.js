@@ -1306,9 +1306,9 @@ async function hydrateLandingSignals() {
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 const PLATFORM_CLASS = {
   AMD:'amd', NVIDIA:'nvidia', Apple:'apple', PS5:'ps5', Windows:'windows', Steam:'steam',
-  macOS:'macos', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
+  macOS:'macos', Chrome:'chrome', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
 };
-const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
+const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Chrome:'CHR', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
 const PLATFORM_LOGOS = {
   AMD:       '/platform-logos/simple-icons/amd.svg',
   NVIDIA:    '/platform-logos/simple-icons/nvidia.svg',
@@ -1324,24 +1324,25 @@ const PLATFORM_LOGOS = {
   Discord:   '/platform-logos/simple-icons/discord.svg',
   BattleNet: '/platform-logos/simple-icons/battledotnet.svg',
   GOG:       '/platform-logos/simple-icons/gogdotcom.svg',
+  Chrome:    '/platform-logos/simple-icons/googlechrome.svg',
 };
-const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
+const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Chrome','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
 const TICKER_SERVICES = [
-  'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows',
+  'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows', 'Google Chrome',
   'Steam', 'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy', 'Switch', 'Xbox', 'PS5',
 ];
 const PLATFORM_CATEGORY_META = {
   pcHardware: { title: 'PC Hardware & Drivers', subtitle: 'GPU, graphics driver, and silicon update lanes.', platforms: ['NVIDIA', 'AMD', 'Intel'] },
   desktopOs:  { title: 'Desktop OS & Apple', subtitle: 'Windows, macOS, and iOS security and stability releases.', platforms: ['Windows', 'Apple', 'macOS'] },
   gaming:     { title: 'Gaming Platforms', subtitle: 'Steam, Steam Deck, consoles, launchers, and live game-service tooling.', platforms: ['Steam', 'Switch', 'Xbox', 'PS5', 'Discord', 'BattleNet', 'GOG'] },
-  browsers:   { title: 'Web Browsers', subtitle: 'Browser-specific patch lanes are coming soon once official sources are wired.', platforms: [] },
+  browsers:   { title: 'Web Browsers', subtitle: 'Stable desktop browser releases and documented security fixes.', platforms: ['Chrome'] },
 };
 const PLATFORM_CATEGORY_ORDER = ['pcHardware', 'desktopOs', 'gaming', 'browsers'];
 const PLATFORM_TO_CATEGORY = Object.fromEntries(Object.entries(PLATFORM_CATEGORY_META).flatMap(([key, meta]) => meta.platforms.map(platform => [platform, key])));
 const SEARCH_SUGGESTIONS = [
   'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy',
   'Switch OLED', 'Joy-Con', 'MacBook Pro M3', 'MacBook Air M2',
-  'RTX 4090', 'RTX 50', 'RX 7900 XT', 'Arc A770', 'VPN', 'anti-cheat',
+  'RTX 4090', 'RTX 50', 'RX 7900 XT', 'Arc A770', 'Chrome security', 'VPN', 'anti-cheat',
 ];
 const SEARCH_ALIASES = {
   steamos: ['steamos', 'steam os', 'steam deck', 'deck', 'valve handheld'],
@@ -1353,6 +1354,7 @@ const SEARCH_ALIASES = {
   discord: ['discord', 'voice chat', 'overlay', 'rtc', 'rich presence'],
   battlenet: ['battle.net', 'battlenet', 'blizzard', 'warcraft', 'diablo', 'overwatch'],
   gog: ['gog', 'gog galaxy', 'galaxy client', 'cd projekt'],
+  chrome: ['chrome', 'google chrome', 'chromium', 'browser security'],
   // Keep model and chip searches literal. The empty-state recovery can offer
   // the macOS lane without claiming an update explicitly supports M1–M4.
   macbook: ['macbook', 'macos', 'mac os'],
@@ -1399,7 +1401,7 @@ function steamGameRosterDescription() {
 }
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
-function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy' })[p] || p; }
+function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy', Chrome: 'Google Chrome' })[p] || p; }
 function platformLogoPath(platform) { return PLATFORM_LOGOS[platform] || null; }
 function renderPlatformLogo(platform, extraClass = '') {
   const pSuffix = platformSuffix(platform);
@@ -1417,6 +1419,7 @@ function serviceLogoKey(service) {
     'SteamOS': 'SteamDeck',
     'Battle.net': 'BattleNet',
     'GOG Galaxy': 'GOG',
+    'Google Chrome': 'Chrome',
   })[service] || service;
 }
 function renderServiceTickerItem(service) {
@@ -2521,14 +2524,14 @@ function renderGroupedUpdateSections(updates, watchedSet = new Set()) {
         <section class="category-feed-section category-feed-section--soon" id="category-${H(categoryKey)}">
           <div class="category-section-header">
             <div>
-              <p class="dash-section-kicker">Coming soon</p>
+              <p class="dash-section-kicker">Source lane ready</p>
               <h2>${H(meta.title)}</h2>
-              <span>Google Chrome, Microsoft Edge, and Firefox lanes will appear here after official parsers are enabled.</span>
+              <span>Google Chrome Stable is monitored from Google’s official release feed. No verified browser release is loaded in this snapshot yet.</span>
             </div>
             <a href="#/updates" data-scroll-target="section-overview">Back to top ↑</a>
           </div>
           <div class="category-coming-soon">
-            <span>Chrome</span><span>Edge</span><span>Firefox</span>
+            <span>Chrome active</span><span>Edge planned</span><span>Firefox planned</span>
           </div>
         </section>
       `;

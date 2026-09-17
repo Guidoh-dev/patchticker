@@ -224,6 +224,49 @@ describe('scraper accuracy guards', () => {
     expect(parsed.changelog.join(' ')).not.toMatch(/incident|monitoring|resolved service/i);
   });
 
+  test('Chrome parser admits only the full desktop Stable channel and preserves security severity', () => {
+    const parsed = __test.parseChromeStableFeed(`
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <entry>
+          <published>2026-09-16T16:09:00-07:00</published>
+          <category term="Desktop Update"/><category term="Early Stable Updates"/>
+          <title>Early Stable Update for Desktop</title>
+          <link rel="alternate" href="http://chromereleases.googleblog.com/2026/09/early-stable.html"/>
+          <content type="html">The Stable channel has been updated to 154.0.8037.44/.45.</content>
+        </entry>
+        <entry>
+          <published>2026-09-15T13:13:26-07:00</published>
+          <category term="Desktop Update"/><category term="Stable updates"/>
+          <title>Stable Channel Update for Desktop</title>
+          <link rel="alternate" href="http://chromereleases.googleblog.com/2026/09/stable-channel-update.html"/>
+          <content type="html"><![CDATA[
+            <p>The Stable channel has been updated to 153.0.8010.47/.48 for Windows and Mac and 153.0.8010.47 for Linux, which will roll out over the coming days/weeks.</p>
+            <p>This update includes 3 security fixes.</p>
+            <p>Critical CVE-2026-91726: Out of bounds read in WebGL. Reported by Google</p>
+            <p>High CVE-2026-91724: Use after free in Input. Reported by Researcher</p>
+            <p>Medium CVE-2026-91723: Race condition in WebAppInstalls. Reported by Researcher</p>
+          ]]></content>
+        </entry>
+      </feed>
+    `);
+
+    expect(parsed).toMatchObject({
+      platform: 'Chrome',
+      name: 'Google Chrome Stable 153.0.8010.47/.48',
+      version: '153.0.8010.48',
+      releasedAt: '2026-09-15',
+      sourceUrl: 'https://chromereleases.googleblog.com/2026/09/stable-channel-update.html',
+      securityCriticality: {
+        level: 'critical',
+        totalCves: 3,
+        cves: ['CVE-2026-91726', 'CVE-2026-91724', 'CVE-2026-91723'],
+      },
+    });
+    expect(parsed.reasoning).toMatch(/3 security fixes.*1 critical.*1 high.*1 medium/i);
+    expect(parsed.riskFactors[0].text).toMatch(/rolling.*days and weeks/i);
+    expect(parsed.name).not.toContain('154.0');
+  });
+
   test('Apple advisory parser ranks concrete impacts and preserves the full CVE count', () => {
     const parsed = __test.parseAppleSecurityAdvisory(`
       <div id="sections">

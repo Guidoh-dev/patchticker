@@ -320,6 +320,8 @@ test('exact platform searches use platform equality instead of incidental note t
   expect(updatesService.__test.exactPlatformForSearch('battle net')).toBe('BattleNet');
   expect(updatesService.__test.exactPlatformForSearch('playstation')).toBe('PS5');
   expect(updatesService.__test.exactPlatformForSearch('macbook')).toBe('macOS');
+  expect(updatesService.__test.exactPlatformForSearch('chrome')).toBe('Chrome');
+  expect(updatesService.__test.exactPlatformForSearch('google chrome')).toBe('Chrome');
   expect(updatesService.__test.exactPlatformForSearch('nvidia driver')).toBeNull();
 
   mockIsAvailable.mockReturnValue(true);
