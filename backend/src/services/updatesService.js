@@ -52,6 +52,7 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['steam', 'Steam'],
   ['discord', 'Discord'],
   ['battle.net', 'BattleNet'],
+  ['battle net', 'BattleNet'],
   ['battlenet', 'BattleNet'],
   ['gog', 'GOG'],
   ['gog galaxy', 'GOG'],
@@ -59,7 +60,11 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['nintendo switch', 'Switch'],
   ['xbox', 'Xbox'],
   ['ps5', 'PS5'],
+  ['playstation', 'PS5'],
   ['playstation 5', 'PS5'],
+  // A generic MacBook query is ecosystem navigation intent. Model-specific
+  // terms remain semantic, so "MacBook Pro M4" still requires those words.
+  ['macbook', 'macOS'],
 ]);
 
 const SEARCH_INTENT_STOPWORDS = new Set([
@@ -77,6 +82,7 @@ const SOURCE_SEARCH_INTENTS = [
 
 const STEAM_GAME_SEARCH_ALIASES = new Map([
   ['cs2', '730'],
+  ['counter strike', '730'],
   ['counter strike 2', '730'],
   ['gta v enhanced', '3240220'],
   ['gta 5 enhanced', '3240220'],

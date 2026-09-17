@@ -1364,10 +1364,11 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['apple', 'Apple'], ['ios', 'Apple'],
   ['macos', 'macOS'], ['mac os', 'macOS'],
   ['windows', 'Windows'], ['steam', 'Steam'], ['discord', 'Discord'],
-  ['battle.net', 'BattleNet'], ['battlenet', 'BattleNet'],
+  ['battle.net', 'BattleNet'], ['battle net', 'BattleNet'], ['battlenet', 'BattleNet'],
   ['gog', 'GOG'], ['gog galaxy', 'GOG'],
   ['switch', 'Switch'], ['nintendo switch', 'Switch'],
-  ['xbox', 'Xbox'], ['ps5', 'PS5'], ['playstation 5', 'PS5'],
+  ['xbox', 'Xbox'], ['ps5', 'PS5'], ['playstation', 'PS5'], ['playstation 5', 'PS5'],
+  ['macbook', 'macOS'],
 ]);
 const SEARCH_INTENT_STOPWORDS = new Set([
   'latest', 'current', 'recent', 'new', 'newest',
@@ -1381,7 +1382,7 @@ const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam games', 'steam game'], platform: 'Steam', sourceKind: 'steam-game-news', label: 'Steam games' },
 ];
 const STEAM_GAME_SEARCH_ALIASES = new Map([
-  ['cs2', '730'], ['counter strike 2', '730'],
+  ['cs2', '730'], ['counter strike', '730'], ['counter strike 2', '730'],
   ['gta v enhanced', '3240220'], ['gta 5 enhanced', '3240220'],
   ['rainbow six siege', '359550'], ['r6 siege', '359550'],
   ['dbd', '381210'], ['tf2', '440'], ['ow2', '2357570'],

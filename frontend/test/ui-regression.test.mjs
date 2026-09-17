@@ -196,6 +196,9 @@ test('platform and release-lane search intent excludes incidental mentions', () 
   assert.match(mainSource, /if \(intent\.sourceKind\) filtered = filtered\.filter\(u => u\.sourceKind === intent\.sourceKind\)/);
   assert.match(mainSource, /Platform search · \$\{platformLabel\(intent\.platform\)\}/);
   assert.match(mainSource, /Release lane · \$\{intent\.sourceLabel\}/);
+  assert.match(mainSource, /\['battle net', 'BattleNet'\]/);
+  assert.match(mainSource, /\['playstation', 'PS5'\]/);
+  assert.match(mainSource, /\['macbook', 'macOS'\]/);
 });
 
 test('multi-part searches use strict all-term matching without phrase-order failures', () => {
@@ -572,6 +575,7 @@ test('exact eligible Steam game searches bind to App IDs instead of incidental n
   assert.match(mainSource, /productId: String\(game\.appId\)/);
   assert.match(mainSource, /String\(u\.productId \|\| ''\) === intent\.productId/);
   assert.match(mainSource, /resolveSearchIntentForPlatform/);
+  assert.match(mainSource, /\['counter strike', '730'\]/);
 });
 
 test('update details continue into honestly ranked related releases', () => {

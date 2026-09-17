@@ -294,6 +294,9 @@ test('multi-part searches require every term while aliases remain alternatives',
 test('exact platform searches use platform equality instead of incidental note text', async () => {
   expect(updatesService.__test.exactPlatformForSearch('NVIDIA')).toBe('NVIDIA');
   expect(updatesService.__test.exactPlatformForSearch('Battle.net')).toBe('BattleNet');
+  expect(updatesService.__test.exactPlatformForSearch('battle net')).toBe('BattleNet');
+  expect(updatesService.__test.exactPlatformForSearch('playstation')).toBe('PS5');
+  expect(updatesService.__test.exactPlatformForSearch('macbook')).toBe('macOS');
   expect(updatesService.__test.exactPlatformForSearch('nvidia driver')).toBeNull();
 
   mockIsAvailable.mockReturnValue(true);
@@ -321,6 +324,15 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
   }));
   expect(updatesService.__test.parseSearchIntent('Steam Deck current')).toEqual(expect.objectContaining({
     platform: 'Steam', semanticQuery: '', sourceKind: 'steamos-news',
+  }));
+  expect(updatesService.__test.parseSearchIntent('PlayStation crash')).toEqual(expect.objectContaining({
+    platform: 'PS5', semanticQuery: 'crash', sourceKind: null,
+  }));
+  expect(updatesService.__test.parseSearchIntent('MacBook Pro M4')).toEqual(expect.objectContaining({
+    platform: 'macOS', semanticQuery: 'pro m4', sourceKind: null,
+  }));
+  expect(updatesService.__test.parseSearchIntent('counter strike')).toEqual(expect.objectContaining({
+    platform: 'Steam', sourceKind: 'steam-game-news', productId: '730', semanticQuery: '',
   }));
   expect(updatesService.__test.parseSearchIntent('security update')).toEqual(expect.objectContaining({
     platform: null, semanticQuery: 'security', sourceKind: null,
