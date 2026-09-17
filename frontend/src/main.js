@@ -2411,9 +2411,16 @@ function renderUpdateCard(u) {
     ? `${rating.votes.toLocaleString()} vote${rating.votes === 1 ? '' : 's'}`
     : limitedScoreEvidence ? 'Build verified · full notes unavailable' : sourceLabel;
   const routeId = encodeURIComponent(u.id);
+  const compatibilityQuery = u.compatibilitySearchFallback
+    ? String(u.compatibilityQuery || '').trim().slice(0, 120)
+    : '';
+  const detailRoute = `#/updates/${routeId}${compatibilityQuery ? `?hardware=${encodeURIComponent(compatibilityQuery)}` : ''}`;
+  const detailLabel = compatibilityQuery
+    ? `Check ${compatibilityQuery} compatibility with ${u.name}`
+    : `Open ${u.name} details`;
   return `
     <article class="decision-card decision-card--compact decision-card--${H(decision.cls)}" data-id="${H(u.id)}">
-      <a class="decision-card-link" href="#/updates/${H(routeId)}" aria-label="Open ${H(u.name)} details">
+      <a class="decision-card-link" href="${H(detailRoute)}" aria-label="${H(detailLabel)}">
         <div class="decision-card-content">
           <header class="decision-card-heading">
             ${renderPlatformLogo(u.platform, 'update-platform-icon decision-platform-icon')}
@@ -2767,6 +2774,7 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
       <div class="filtered-update-cards">${updates.map(update => renderUpdateCard({
         ...update,
         matchReason: search ? searchMatchReason(update, search, platform) : null,
+        compatibilityQuery: update.compatibilitySearchFallback ? search : null,
       })).join('')}</div>
     </section>
   `;
@@ -4075,8 +4083,9 @@ async function renderDashboard({ focusId = null } = {}) {
 
 // ── BOOT ──────────────────────────────────────────────────────────────────────
 // ── UPDATE DETAIL PAGE ────────────────────────────────────────────────────────
-async function renderUpdateDetail(id) {
+async function renderUpdateDetail(id, { hardware = '' } = {}) {
   const user = getUser(); // null for guests — page is public
+  const requestedHardware = String(hardware || '').trim().slice(0, 120);
 
   setHTML(`
     ${renderNav(user)}
@@ -4490,7 +4499,7 @@ async function renderUpdateDetail(id) {
               <form class="detail-compatibility-form" id="compatibility-form">
                 <label for="compatibility-hardware">Graphics model from Device Manager</label>
                 <div class="detail-compatibility-controls">
-                  <input id="compatibility-hardware" class="field-input" type="text" maxlength="120" autocomplete="off" list="compatibility-models" aria-describedby="compatibility-entry-help" placeholder="${H(compatibilityPlaceholder)}" />
+                  <input id="compatibility-hardware" class="field-input" type="text" maxlength="120" autocomplete="off" list="compatibility-models" aria-describedby="compatibility-entry-help" placeholder="${H(compatibilityPlaceholder)}" value="${H(requestedHardware)}" />
                   <datalist id="compatibility-models">${compatibilityModelOptionsHTML}</datalist>
                   <select id="compatibility-os" class="field-input" aria-label="Operating system">
                     <option value="not-sure">OS: Not sure</option>
@@ -4630,6 +4639,13 @@ async function renderUpdateDetail(id) {
       result: result.status,
     });
   });
+  if (requestedHardware && compatibilityForm) {
+    compatibilityForm.requestSubmit();
+    requestAnimationFrame(() => {
+      document.getElementById('detail-compatibility')?.scrollIntoView({ behavior: 'auto', block: 'start' });
+      document.getElementById('compatibility-hardware')?.focus({ preventScroll: true });
+    });
+  }
 
   document.querySelector('.detail-source-primary[href]')?.addEventListener('click', () => {
     captureAnalytics('official_source_clicked', {
@@ -5663,8 +5679,8 @@ async function boot() {
   // Register routes
   route('/', () => renderLanding());
   route('/updates', () => renderDashboard());
-  route('/updates/:id', ({ id }) => renderUpdateDetail(id));
-  route('/update/:id', ({ id }) => renderUpdateDetail(id)); // legacy permalink alias
+  route('/updates/:id', ({ id, hardware }) => renderUpdateDetail(id, { hardware }));
+  route('/update/:id', ({ id, hardware }) => renderUpdateDetail(id, { hardware })); // legacy permalink alias
   route('/login', () => isLoggedIn() ? navigate('/updates') : renderLogin());
   route('/register', () => isLoggedIn() ? navigate('/updates') : renderRegister());
   route('/pricing', () => renderPricing());

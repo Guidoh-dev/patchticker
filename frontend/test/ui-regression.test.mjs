@@ -275,6 +275,9 @@ test('search results expose staged platform facets, verification timing, and hon
   assert.match(mainSource, /Official compatibility table · all \$\{H\(String\(matchedTermCount\)\)\} terms matched/);
   assert.match(mainSource, /Compatibility check · current vendor release/);
   assert.match(mainSource, /return u\.compatibilitySearchFallback[\s\S]*?groups\.every/);
+  assert.match(mainSource, /compatibilityQuery: update\.compatibilitySearchFallback \? search : null/);
+  assert.match(mainSource, /\?hardware=\$\{encodeURIComponent\(compatibilityQuery\)\}/);
+  assert.match(mainSource, /Check \$\{compatibilityQuery\} compatibility with \$\{u\.name\}/);
   assert.match(mainSource, /function suggestedPlatformForSearch\(query\)/);
   assert.match(mainSource, /const browsePlatform = platform \|\| emptyIntent\.platform \|\| suggestedPlatformForSearch\(search\)/);
   assert.match(mainSource, /PatchTicker found the exact Steam product \(App \$\{emptyIntent\.productId\}\)/);
@@ -705,6 +708,11 @@ test('every update detail exposes a source-backed compatibility workspace and cl
   assert.match(mainSource, /Matches only a vendor-listed GPU model or family/);
   assert.match(mainSource, /Preserves laptop, prebuilt, handheld, and Boot Camp caveats/);
   assert.match(mainSource, /evaluateCompatibility\(compatibilityProfile/);
+  assert.match(mainSource, /async function renderUpdateDetail\(id, \{ hardware = '' \} = \{\}\)/);
+  assert.match(mainSource, /value="\$\{H\(requestedHardware\)\}"/);
+  assert.match(mainSource, /compatibilityForm\.requestSubmit\(\)/);
+  assert.match(mainSource, /document\.getElementById\('detail-compatibility'\)\?\.scrollIntoView/);
+  assert.match(mainSource, /route\('\/updates\/:id', \(\{ id, hardware \}\) => renderUpdateDetail\(id, \{ hardware \}\)\)/);
   assert.match(compatibilitySource, /PatchTicker will not guess from the product name/);
   assert.match(cssSource, /\.detail-compatibility-layout\s*\{[\s\S]*?grid-template-columns/);
   assert.match(cssSource, /\.detail-compatibility-checks\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
