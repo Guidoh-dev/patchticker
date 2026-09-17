@@ -12,6 +12,7 @@ const routerSource = await readFile(resolve(root, 'src/router.js'), 'utf8');
 const filterLogicSource = await readFile(resolve(root, 'src/filterLogic.js'), 'utf8');
 const steamCandidatesSource = await readFile(resolve(root, 'src/steamGameCandidates.js'), 'utf8');
 const compatibilitySource = await readFile(resolve(root, 'src/compatibility.js'), 'utf8');
+const updateBriefSource = await readFile(resolve(root, 'src/updateBrief.js'), 'utf8');
 
 test('router resolves exact and dynamic update directories', () => {
   const updatesHandler = () => 'updates';
@@ -846,7 +847,9 @@ test('landing page hydrates from verified updates instead of fabricated ratings'
 test('returning visitors receive a truthful live briefing from persisted update history', () => {
   assert.match(mainSource, /UPDATE_VISIT_STORAGE_KEY = 'patchticker\.updates\.lastSeenAt'/);
   assert.match(mainSource, /function updateReturnBrief\(updates = \[\]\)/);
-  assert.match(mainSource, /Date\.parse\(update\.createdAt \|\| update\.releasedAt\) > _updateVisitBaseline/);
+  assert.match(mainSource, /selectUpdateBrief\(updates, _updateVisitBaseline\)/);
+  assert.match(updateBriefSource, /const releases = \[\.\.\.updates\]\.sort\([\s\S]*?releaseTime\(right\) - releaseTime\(left\)/);
+  assert.match(updateBriefSource, /filter\(update => arrivalTime\(update\) > visitBaseline\)/);
   assert.match(mainSource, /updateReturnBrief\(_allUpdates\)/);
   assert.match(mainSource, /id="dash-return-headline"/);
   assert.match(cssSource, /\.dash-return-brief\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto/s);

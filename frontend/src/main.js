@@ -26,6 +26,7 @@ import {
 import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCandidates.js';
 import { SETUP_LENSES, filterUpdatesBySetup } from './filterLogic.js';
 import { compatibilityProfileFromUpdate, evaluateCompatibility } from './compatibility.js';
+import { selectUpdateBrief } from './updateBrief.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -2356,13 +2357,8 @@ function updateReturnBrief(updates = []) {
   const logos = document.getElementById('dash-return-platforms');
   if (!brief || !label || !headline || !detail || !logos || !updates.length) return;
 
-  const newest = [...updates].sort((a, b) => Date.parse(b.createdAt || b.releasedAt) - Date.parse(a.createdAt || a.releasedAt));
-  const isReturning = Number.isFinite(_updateVisitBaseline);
-  const sinceLastVisit = isReturning
-    ? newest.filter(update => Date.parse(update.createdAt || update.releasedAt) > _updateVisitBaseline)
-    : [];
-  const featured = (sinceLastVisit.length ? sinceLastVisit : newest).slice(0, 4);
-  const latest = featured[0];
+  const { isReturning, sinceLastVisit, featured, latest } = selectUpdateBrief(updates, _updateVisitBaseline);
+  if (!latest) return;
 
   brief.classList.toggle('has-new', sinceLastVisit.length > 0);
   label.textContent = isReturning ? 'Since your last visit' : 'Your live briefing';
@@ -2370,7 +2366,7 @@ function updateReturnBrief(updates = []) {
     ? `${sinceLastVisit.length} verified patch${sinceLastVisit.length === 1 ? '' : 'es'} arrived`
     : (isReturning ? 'You’re caught up' : `${updates.length} current releases are ready`);
   detail.textContent = sinceLastVisit.length
-    ? `Newest: ${latest.name}`
+    ? `Newest arrival: ${latest.name}`
     : `Latest release: ${latest.name} · ${timeAgo(latest.releasedAt)}`;
   logos.innerHTML = featured.map(update => renderPlatformLogo(update.platform, 'dash-return-logo')).join('');
   brief.onclick = () => navigate(`/updates/${encodeURIComponent(latest.id)}`);
