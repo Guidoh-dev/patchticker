@@ -111,6 +111,7 @@ function operatingSystemSupport(profile, value) {
 
   const selectedOrdinal = releaseOrdinal(selected.release);
   let sawVersionConstraint = false;
+  let latestSupported = null;
   for (const row of familyRows) {
     const upper = row.toUpperCase();
     const through = upper.match(/(\d{2}H[12])\s+THROUGH\s+(\d{2}H[12])/);
@@ -118,6 +119,7 @@ function operatingSystemSupport(profile, value) {
       sawVersionConstraint = true;
       const start = releaseOrdinal(through[1]);
       const end = releaseOrdinal(through[2]);
+      latestSupported = latestSupported === null ? end : Math.max(latestSupported, end);
       if (selectedOrdinal >= start && selectedOrdinal <= end) {
         return { supported: true, detail: `${selected.family} ${selected.release} is inside the vendor’s published ${through[1]}–${through[2]} range.` };
       }
@@ -137,6 +139,10 @@ function operatingSystemSupport(profile, value) {
     const explicit = [...upper.matchAll(/\b(\d{2}H[12])\b/g)].map(match => match[1]);
     if (explicit.length) {
       sawVersionConstraint = true;
+      const ordinals = explicit.map(releaseOrdinal).filter(Number.isFinite);
+      if (ordinals.length) {
+        latestSupported = latestSupported === null ? Math.max(...ordinals) : Math.max(latestSupported, ...ordinals);
+      }
       if (explicit.includes(selected.release)) {
         return { supported: true, detail: `${selected.family} ${selected.release} is explicitly listed by the vendor.` };
       }
@@ -145,6 +151,12 @@ function operatingSystemSupport(profile, value) {
 
   if (!sawVersionConstraint) {
     return { supported: true, detail: `${selected.family} is listed; the vendor does not narrow support to a specific feature release.` };
+  }
+  if (latestSupported !== null && selectedOrdinal > latestSupported) {
+    return {
+      supported: null,
+      detail: `${selected.family} ${selected.release} is newer than the vendor’s published support table (${familyRows.join(' and ')}). PatchTicker cannot verify it from this release source.`,
+    };
   }
   return {
     supported: false,
@@ -183,6 +195,14 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
     };
   }
 
+  if (unsupportedVendor(profile, enteredHardware)) {
+    return {
+      status: 'unsupported',
+      title: `Not a supported ${profile.vendor} device`,
+      detail: `This ${profile.vendor} package cannot be installed for the hardware entered.`,
+    };
+  }
+
   const osSupport = operatingSystemSupport(profile, operatingSystem);
   if (osSupport.supported === false) {
     return {
@@ -191,12 +211,11 @@ export function evaluateCompatibility(profile, { hardware, operatingSystem = 'no
       detail: osSupport.detail,
     };
   }
-
-  if (unsupportedVendor(profile, enteredHardware)) {
+  if (osSupport.supported === null && osSupport.detail) {
     return {
-      status: 'unsupported',
-      title: `Not a supported ${profile.vendor} device`,
-      detail: `This ${profile.vendor} package cannot be installed for the hardware entered.`,
+      status: 'unverified',
+      title: 'Windows release not verified',
+      detail: osSupport.detail,
     };
   }
 

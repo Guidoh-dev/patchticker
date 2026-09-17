@@ -4572,7 +4572,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
     action: 'Confirm the supported operating system and current application requirements in the official release source before installing manually.',
   };
   const compatibilitySectionTitle = hasCompatibilityMatrix
-    ? 'Will this update support your hardware?'
+    ? 'Check hardware compatibility'
     : compatibilityFallback.title;
   const compatibilitySectionDescription = hasCompatibilityMatrix
     ? 'PatchTicker compares the exact model and Windows release you enter with the compatibility table published by the vendor. No generated assumptions or browser fingerprint guesses are used.'
@@ -4621,6 +4621,11 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
     <div class="detail-compatibility-result" id="compatibility-result" data-status="needs-input" aria-live="polite">
       <span class="detail-compatibility-result-icon" aria-hidden="true">◇</span>
       <div><strong>Ready to check</strong><p>Enter the exact model—not only “Radeon,” “Arc,” or a computer brand.</p></div>
+    </div>
+    <div class="detail-compatibility-legend" aria-label="Compatibility result meanings">
+      <div><span data-tone="supported">Supported</span><p>The entered model or family and selected Windows release appear in the vendor table.</p></div>
+      <div><span data-tone="unverified">Unverified</span><p>The source does not prove a yes or no. This includes Windows releases newer than the published table.</p></div>
+      <div><span data-tone="unsupported">Unsupported</span><p>The package excludes the device, targets another vendor, or omits a model from a complete product list.</p></div>
     </div>` : `
     <div class="detail-compatibility-unavailable" role="note">
       <div class="detail-compatibility-unavailable-status">

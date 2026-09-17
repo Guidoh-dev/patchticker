@@ -171,8 +171,17 @@ test('compatibility checks the selected Windows release against the official ven
     hardware: 'Intel Arc A770',
     operatingSystem: 'windows-11-26h1',
   });
-  assert.equal(intelTooNew.status, 'unsupported');
-  assert.match(intelTooNew.detail, /outside the vendor’s published support range/i);
+  assert.equal(intelTooNew.status, 'unverified');
+  assert.match(intelTooNew.detail, /newer than the vendor’s published support table/i);
+});
+
+test('wrong-vendor hardware remains unsupported even when the selected Windows release is unverified', () => {
+  const result = evaluateCompatibility(intelProfile, {
+    hardware: 'Radeon RX 7900 XTX',
+    operatingSystem: 'windows-11-26h1',
+  });
+  assert.equal(result.status, 'unsupported');
+  assert.match(result.title, /not a supported Intel device/i);
 });
 
 test('Intel Windows 10 compatibility stays exact instead of accepting every Windows 10 build', () => {

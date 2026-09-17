@@ -9955,6 +9955,36 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
 .detail-compatibility-result[data-status="unverified"] { border-color: color-mix(in srgb, var(--yellow) 42%, var(--border)); }
 .detail-compatibility-result[data-status="unverified"] .detail-compatibility-result-icon { border-color: var(--yellow); color: var(--yellow); }
 
+.detail-compatibility-legend {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 12px;
+  padding: 1px;
+  background: var(--border);
+}
+.detail-compatibility-legend > div {
+  min-width: 0;
+  padding: 12px;
+  background: var(--bg-deep);
+}
+.detail-compatibility-legend span {
+  display: inline-block;
+  margin-bottom: 6px;
+  font: 800 9px/1.2 var(--font-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.detail-compatibility-legend span[data-tone="supported"] { color: var(--green-primary); }
+.detail-compatibility-legend span[data-tone="unverified"] { color: var(--yellow); }
+.detail-compatibility-legend span[data-tone="unsupported"] { color: var(--red); }
+.detail-compatibility-legend p {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .detail-compatibility-unavailable {
   display: grid;
   grid-template-columns: minmax(180px, .48fr) minmax(0, 1.35fr) auto;
@@ -10048,6 +10078,7 @@ textarea { transition: color .18s ease, background-color .18s ease, border-color
   .detail-compatibility-checks > div { min-height: 0; }
   .detail-compatibility-controls { grid-template-columns: 1fr; }
   .detail-compatibility-submit { grid-column: auto; }
+  .detail-compatibility-legend { grid-template-columns: 1fr; }
   .detail-compatibility-unavailable { grid-template-columns: 1fr; }
   .detail-compatibility-source { grid-column: auto; justify-content: flex-start; text-align: left; }
 }

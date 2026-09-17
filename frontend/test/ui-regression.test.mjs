@@ -784,6 +784,9 @@ test('update details expose an evidence-aware compatibility workspace and clear 
   assert.match(mainSource, /const hasCompatibilityMatrix = compatibilityProfile\?\.authoritative === true[\s\S]*?compatibilityProfile\.operatingSystems/);
   assert.match(mainSource, /const compatibilityWorkspaceHTML = hasCompatibilityMatrix \? `/);
   assert.match(mainSource, /Your hardware entry is not transmitted or stored/);
+  assert.match(mainSource, /Check hardware compatibility/);
+  assert.match(mainSource, /Compatibility result meanings/);
+  assert.match(mainSource, /Windows releases newer than the published table/);
   assert.match(mainSource, /list="compatibility-models"/);
   assert.match(mainSource, /Windows 11 26H1/);
   assert.match(mainSource, /Example: GeForce RTX 5090/);
@@ -813,6 +816,7 @@ test('update details expose an evidence-aware compatibility workspace and clear 
   assert.match(compatibilitySource, /PatchTicker will not guess from the product name/);
   assert.match(cssSource, /\.detail-compatibility-layout\s*\{[\s\S]*?grid-template-columns/);
   assert.match(cssSource, /\.detail-compatibility-checks\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
+  assert.match(cssSource, /\.detail-compatibility-legend\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3/);
   assert.match(cssSource, /\.detail-compatibility-controls\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(140px, 170px\);[^}]*min-width:\s*0;/s);
   assert.match(cssSource, /\.detail-compatibility-submit\s*\{[^}]*grid-column:\s*1 \/ -1;[^}]*width:\s*100%;/s);
   assert.match(cssSource, /\.detail-compatibility-unavailable\s*\{[^}]*grid-template-columns:/s);
