@@ -37,6 +37,26 @@ const SEARCH_ALIAS_GROUPS = [
   ['switch', 'nintendo switch', 'switch oled', 'switch lite'],
 ];
 
+// Correct only common, unambiguous vendor-name mistakes. This is deliberately
+// not fuzzy matching: release versions, model numbers, and issue terms must
+// still match the verified record exactly enough to avoid invented results.
+const SEARCH_QUERY_CORRECTIONS = [
+  [/\bnvida\b/g, 'nvidia'],
+  [/\bnivdia\b/g, 'nvidia'],
+  [/\bge\s+force\b/g, 'geforce'],
+  [/\bfire\s+fox\b/g, 'firefox'],
+  [/\bmozila\b/g, 'firefox'],
+  [/\bplay\s+station\s+5\b/g, 'playstation 5'],
+];
+
+function correctSearchQuery(rawSearch) {
+  let query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  for (const [pattern, replacement] of SEARCH_QUERY_CORRECTIONS) {
+    query = query.replace(pattern, replacement);
+  }
+  return query.replace(/\s+/g, ' ').trim();
+}
+
 // Exact top-level platform labels are navigation intent, not prose searches.
 // Without this gate, a search for "NVIDIA" can surface a Steam game merely
 // because its release notes mention an NVIDIA-specific fix.
@@ -102,7 +122,7 @@ const STEAM_GAME_SEARCH_ALIASES = new Map([
 ]);
 
 function exactPlatformForSearch(rawSearch) {
-  const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const query = correctSearchQuery(rawSearch);
   return EXACT_PLATFORM_SEARCHES.get(query) || null;
 }
 
@@ -171,7 +191,7 @@ function resolveSearchPlan(intent, explicitPlatform) {
  * cross-platform issue search.
  */
 function parseSearchIntent(rawSearch) {
-  const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const query = correctSearchQuery(rawSearch);
   if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
 
   for (const intent of SOURCE_SEARCH_INTENTS) {
@@ -235,7 +255,7 @@ const HARDWARE_SEARCH_PATTERNS = [
 ];
 
 function hardwareCompatibilitySearchPlatform(rawSearch, explicitPlatform = null) {
-  const query = normaliseSearchDocument(rawSearch);
+  const query = normaliseSearchDocument(correctSearchQuery(rawSearch));
   if (!query) return null;
   const inferred = HARDWARE_SEARCH_PATTERNS.find(({ pattern }) => pattern.test(query))?.platform || null;
 
@@ -247,7 +267,7 @@ function hardwareCompatibilitySearchPlatform(rawSearch, explicitPlatform = null)
 }
 
 function expandSearchTerms(rawSearch) {
-  const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const query = correctSearchQuery(rawSearch);
   if (!query) return [];
   // Device variants are exact setup filters, not synonyms for every product in
   // the wider family. This keeps "Switch OLED" from returning base-Switch game
@@ -279,7 +299,7 @@ function expandSearchTerms(rawSearch) {
  * mention of 8974.
  */
 function buildSearchTermGroups(rawSearch) {
-  const query = String(rawSearch || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const query = correctSearchQuery(rawSearch);
   if (!query) return [];
   if (query === 'switch oled' || query === 'switch lite') return [[query]];
 
@@ -1677,6 +1697,7 @@ module.exports = {
     dedupeArticleReleases,
     releaseInformationQuality,
     analysisMethodForEvidence,
+    correctSearchQuery,
     expandSearchTerms,
     buildSearchTermGroups,
     exactPlatformForSearch,

@@ -236,6 +236,10 @@ test('searches preserve precise terms, rank best matches, and explain each resul
 
 test('platform and release-lane search intent excludes incidental mentions', () => {
   assert.match(mainSource, /const EXACT_PLATFORM_SEARCHES = new Map/);
+  assert.match(mainSource, /const SEARCH_QUERY_CORRECTIONS = \[/);
+  assert.match(mainSource, /function correctSearchQuery\(raw\)/);
+  assert.match(mainSource, /function searchCorrection\(raw\)/);
+  assert.match(mainSource, /Interpreted as “\$\{correctedSearch\}”/);
   assert.match(mainSource, /function exactPlatformForSearch\(raw\)/);
   assert.match(mainSource, /function searchIntentForQuery\(raw\)/);
   assert.match(mainSource, /SEARCH_INTENT_STOPWORDS/);

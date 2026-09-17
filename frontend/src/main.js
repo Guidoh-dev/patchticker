@@ -1367,6 +1367,30 @@ const SEARCH_ALIASES = {
   rtx: ['rtx', 'nvidia', 'dlss', 'game ready'],
   radeon: ['radeon', 'amd', 'rx 7900', 'adrenalin'],
 };
+// Keep correction conservative and explicit. We repair common vendor-name
+// mistakes without fuzzy-matching versions, models, or issue descriptions.
+const SEARCH_QUERY_CORRECTIONS = [
+  [/\bnvida\b/g, 'nvidia'],
+  [/\bnivdia\b/g, 'nvidia'],
+  [/\bge\s+force\b/g, 'geforce'],
+  [/\bfire\s+fox\b/g, 'firefox'],
+  [/\bmozila\b/g, 'firefox'],
+  [/\bplay\s+station\s+5\b/g, 'playstation 5'],
+];
+
+function correctSearchQuery(raw) {
+  let query = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  for (const [pattern, replacement] of SEARCH_QUERY_CORRECTIONS) {
+    query = query.replace(pattern, replacement);
+  }
+  return query.replace(/\s+/g, ' ').trim();
+}
+
+function searchCorrection(raw) {
+  const original = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const corrected = correctSearchQuery(raw);
+  return original && corrected !== original ? corrected : '';
+}
 const EXACT_PLATFORM_SEARCHES = new Map([
   ['amd', 'AMD'], ['radeon', 'AMD'], ['nvidia', 'NVIDIA'], ['geforce', 'NVIDIA'], ['intel', 'Intel'],
   ['apple', 'Apple'], ['ios', 'Apple'],
@@ -1540,7 +1564,7 @@ function refreshSearchSuggestions(updates = []) {
 }
 
 function searchTermGroups(raw) {
-  const q = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const q = correctSearchQuery(raw);
   if (!q) return [];
   if (q === 'switch oled' || q === 'switch lite') return [[q]];
 
@@ -1571,7 +1595,7 @@ function searchDocumentContains(haystack, needle) {
 }
 
 function exactPlatformForSearch(raw) {
-  const query = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const query = correctSearchQuery(raw);
   return EXACT_PLATFORM_SEARCHES.get(query) || null;
 }
 
@@ -1626,7 +1650,7 @@ function resolveSearchIntentForPlatform(intent, explicitPlatform) {
 }
 
 function searchIntentForQuery(raw) {
-  const query = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const query = correctSearchQuery(raw);
   if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
 
   for (const intent of SOURCE_SEARCH_INTENTS) {
@@ -2725,6 +2749,7 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
   const compatibilityFallbackCount = search
     ? updates.filter(update => update.compatibilitySearchFallback).length
     : 0;
+  const correctedSearch = search ? searchCorrection(search) : '';
   let resultScope = 'Filtered verified releases';
   if (search) {
     if (resolvedSearchIntent.productId) {
@@ -2742,6 +2767,7 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
     } else {
       resultScope = 'Verified database matches';
     }
+    if (correctedSearch) resultScope = `Interpreted as “${H(correctedSearch)}” · ${resultScope}`;
   }
   const facets = search ? `
     <div class="search-result-facets" aria-label="Narrow search results by platform">
@@ -3172,7 +3198,7 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   function suggestedPlatformForSearch(query) {
-    const q = String(query || '').toLowerCase();
+    const q = correctSearchQuery(query);
     const suggestions = [
       ['Steam', /steam|deck|steamos|app\s?id|^[0-9]{5,}$/],
       ['NVIDIA', /nvidia|geforce|game ready|rtx|dlss/],
@@ -3288,7 +3314,8 @@ async function renderDashboard({ focusId = null } = {}) {
       searchIntentForQuery(_filterState.search),
       _filterState.platform
     );
-    el.textContent = intent.productId
+    const correctedSearch = searchCorrection(_filterState.search);
+    const statusText = intent.productId
       ? `Exact game · ${intent.sourceLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
       : intent.sourceKind
       ? `Release lane · ${intent.sourceLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
@@ -3297,6 +3324,7 @@ async function renderDashboard({ focusId = null } = {}) {
       : _searchMode === 'server'
       ? `Database search · ${resultCount} ${resultCount === 1 ? 'match' : 'matches'}`
       : `${resultCount} cached ${resultCount === 1 ? 'match' : 'matches'}`;
+    el.textContent = correctedSearch ? `Interpreted as “${correctedSearch}” · ${statusText}` : statusText;
     el.className = 'dash-search-status is-ready';
     syncQuickbarFeedbackVisibility();
   }

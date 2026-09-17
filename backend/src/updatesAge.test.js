@@ -278,6 +278,23 @@ test('search shorthand expands to authoritative product-name aliases', () => {
   expect(updatesService.__test.expandSearchTerms('switch oled')).toEqual(['switch oled']);
 });
 
+test('common platform-name mistakes are corrected without fuzzy matching release data', () => {
+  expect(updatesService.__test.correctSearchQuery('nvida')).toBe('nvidia');
+  expect(updatesService.__test.correctSearchQuery('nivdia latest driver')).toBe('nvidia latest driver');
+  expect(updatesService.__test.correctSearchQuery('Ge Force RTX 5090')).toBe('geforce rtx 5090');
+  expect(updatesService.__test.correctSearchQuery('fire fox security')).toBe('firefox security');
+  expect(updatesService.__test.correctSearchQuery('mozila')).toBe('firefox');
+  expect(updatesService.__test.correctSearchQuery('play station 5')).toBe('playstation 5');
+  expect(updatesService.__test.correctSearchQuery('driver crsh')).toBe('driver crsh');
+
+  expect(updatesService.__test.exactPlatformForSearch('nvida')).toBe('NVIDIA');
+  expect(updatesService.__test.exactPlatformForSearch('fire fox')).toBe('Firefox');
+  expect(updatesService.__test.exactPlatformForSearch('play station 5')).toBe('PS5');
+  expect(updatesService.__test.parseSearchIntent('Ge Force RTX 5090')).toEqual(expect.objectContaining({
+    platform: 'NVIDIA', semanticQuery: 'rtx 5090', sourceKind: null,
+  }));
+});
+
 test('multi-part searches require every term while aliases remain alternatives', async () => {
   expect(updatesService.__test.buildSearchTermGroups('intel 8974')).toEqual([
     ['intel'],
