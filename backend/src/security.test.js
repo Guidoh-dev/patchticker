@@ -463,6 +463,10 @@ describe('securityHeaders middleware', () => {
     expect(pp).toContain('camera=()');
     expect(pp).toContain('microphone=()');
     expect(pp).toContain('geolocation=()');
+    expect(pp).not.toContain('ambient-light-sensor');
+    expect(pp).not.toContain('document-domain');
+    expect(pp).not.toContain('execution-while-not-rendered');
+    expect(pp).not.toContain('navigation-override');
   });
 
   it('does NOT set X-XSS-Protection (deprecated, harmful)', async () => {
