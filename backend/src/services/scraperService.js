@@ -283,7 +283,13 @@ function markedPdfBullets(section) {
   let heading = '';
   let current = null;
   const flush = () => {
-    if (current?.text) entries.push({ heading, text: cleanDriverText(current.text, 520) });
+    if (current?.text) {
+      const text = cleanDriverText(current.text, 620)
+        .replace(/\s+RN-[A-Z0-9._-]+(?:\s+v\d+)?\s*\|[\s\S]*$/i, '')
+        .replace(/\s+--\s*\d+\s+of\s+\d+\s*--[\s\S]*$/i, '')
+        .trim();
+      if (text) entries.push({ heading, text: cleanDriverText(text, 520) });
+    }
     current = null;
   };
 

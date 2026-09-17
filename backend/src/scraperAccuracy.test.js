@@ -445,7 +445,7 @@ describe('scraper accuracy guards', () => {
       > Fixed an issue where virtual displays could not be created after updating [6674464]
       > Remote Desktop sessions may display a black screen after updating [6687328]
       3.2 Open Issues in Version 616.92 WHQL
-      > Prefer Maximum Performance mode may not be applied correctly [6007998]
+      > Prefer Maximum Performance mode may not be applied correctly [6007998] RN-08399-616.92_ v01 | 15 Release 615 Driver for Windows
       3.3 Issues Not Caused by NVIDIA Drivers
     `);
 
@@ -462,6 +462,7 @@ describe('scraper accuracy guards', () => {
       expect.stringContaining('General fix — Fixed an issue where virtual displays'),
     ]));
     expect(parsed.changelog.join(' ')).not.toMatch(/General fix — N\/?A/i);
+    expect(parsed.knownIssues).toEqual(['Prefer Maximum Performance mode may not be applied correctly [6007998]']);
   });
 
   test('AMD driver page discovery selects the newest official Adrenalin notes', () => {
