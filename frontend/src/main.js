@@ -1389,9 +1389,11 @@ const SEARCH_QUERY_CORRECTIONS = [
   [/\bsteem\b/g, 'steam'],
   [/\bintell\b/g, 'intel'],
   [/\bmac\s+book\b/g, 'macbook'],
+  [/\bipad\s*os\b/g, 'ipados'],
   [/\bwindow\s*11\b/g, 'windows 11'],
   [/\bwindows\s*11\b/g, 'windows 11'],
   [/\bplay\s+station\s+5\b/g, 'playstation 5'],
+  [/\bplay\s+station\b/g, 'playstation'],
   [/\bplaystation\s*5\b/g, 'playstation 5'],
   [/\bx\s+box\b/g, 'xbox'],
   [/\bnintedo\s+switch\b/g, 'nintendo switch'],
@@ -1411,8 +1413,8 @@ function searchCorrection(raw) {
   return original && corrected !== original ? corrected : '';
 }
 const EXACT_PLATFORM_SEARCHES = new Map([
-  ['amd', 'AMD'], ['radeon', 'AMD'], ['nvidia', 'NVIDIA'], ['geforce', 'NVIDIA'], ['intel', 'Intel'],
-  ['apple', 'Apple'], ['ios', 'Apple'],
+  ['amd', 'AMD'], ['radeon', 'AMD'], ['nvidia', 'NVIDIA'], ['geforce', 'NVIDIA'], ['game ready driver', 'NVIDIA'], ['intel', 'Intel'],
+  ['apple', 'Apple'], ['ios', 'Apple'], ['ipados', 'Apple'],
   ['macos', 'macOS'], ['mac os', 'macOS'],
   ['chrome', 'Chrome'], ['google chrome', 'Chrome'],
   ['firefox', 'Firefox'], ['mozilla firefox', 'Firefox'],
@@ -1420,7 +1422,7 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['windows', 'Windows'], ['steam', 'Steam'], ['discord', 'Discord'],
   ['battle.net', 'BattleNet'], ['battle net', 'BattleNet'], ['battlenet', 'BattleNet'],
   ['gog', 'GOG'], ['gog galaxy', 'GOG'],
-  ['switch', 'Switch'], ['nintendo switch', 'Switch'],
+  ['switch', 'Switch'], ['nintendo', 'Switch'], ['nintendo switch', 'Switch'],
   ['xbox', 'Xbox'], ['ps5', 'PS5'], ['playstation', 'PS5'], ['playstation 5', 'PS5'],
   ['macbook', 'macOS'],
 ]);

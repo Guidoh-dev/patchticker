@@ -303,9 +303,11 @@ test('common platform-name mistakes are corrected without fuzzy matching release
   expect(updatesService.__test.correctSearchQuery('steem')).toBe('steam');
   expect(updatesService.__test.correctSearchQuery('intell arc')).toBe('intel arc');
   expect(updatesService.__test.correctSearchQuery('mac book')).toBe('macbook');
+  expect(updatesService.__test.correctSearchQuery('ipad os')).toBe('ipados');
   expect(updatesService.__test.correctSearchQuery('window 11')).toBe('windows 11');
   expect(updatesService.__test.correctSearchQuery('windows11')).toBe('windows 11');
   expect(updatesService.__test.correctSearchQuery('play station 5')).toBe('playstation 5');
+  expect(updatesService.__test.correctSearchQuery('play station')).toBe('playstation');
   expect(updatesService.__test.correctSearchQuery('playstation5')).toBe('playstation 5');
   expect(updatesService.__test.correctSearchQuery('x box')).toBe('xbox');
   expect(updatesService.__test.correctSearchQuery('nintedo switch')).toBe('nintendo switch');
@@ -319,6 +321,11 @@ test('common platform-name mistakes are corrected without fuzzy matching release
   expect(updatesService.__test.exactPlatformForSearch('play station 5')).toBe('PS5');
   expect(updatesService.__test.exactPlatformForSearch('playstation5')).toBe('PS5');
   expect(updatesService.__test.exactPlatformForSearch('mac book')).toBe('macOS');
+  expect(updatesService.__test.exactPlatformForSearch('ipad os')).toBe('Apple');
+  expect(updatesService.__test.exactPlatformForSearch('play station')).toBe('PS5');
+  expect(updatesService.__test.exactPlatformForSearch('nintendo')).toBe('Switch');
+  expect(updatesService.__test.exactPlatformForSearch('game ready driver')).toBe('NVIDIA');
+  expect(updatesService.__test.exactPlatformForSearch('switch 2')).toBeNull();
   expect(updatesService.__test.parseSearchIntent('Ge Force RTX 5090')).toEqual(expect.objectContaining({
     platform: 'NVIDIA', semanticQuery: 'rtx 5090', sourceKind: null,
   }));
@@ -410,7 +417,9 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon R9 390')).toBe('AMD');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon Vega 64')).toBe('AMD');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Intel UHD 630')).toBe('Intel');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('UHD 630')).toBe('Intel');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Intel Iris Xe')).toBe('Intel');
+  expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Iris Xe')).toBe('Intel');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Intel Arc B380')).toBe('Intel');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Arc A310')).toBe('Intel');
   expect(updatesService.__test.hardwareCompatibilitySearchPlatform('Radeon RX 580', 'Intel')).toBeNull();

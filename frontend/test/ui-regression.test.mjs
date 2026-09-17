@@ -241,6 +241,8 @@ test('platform and release-lane search intent excludes incidental mentions', () 
   assert.match(mainSource, /\\bwindows\\s\*11\\b/);
   assert.match(mainSource, /\\bplaystation\\s\*5\\b/);
   assert.match(mainSource, /\\bmac\\s\+book\\b/);
+  assert.match(mainSource, /\\bipad\\s\*os\\b/);
+  assert.match(mainSource, /\\bplay\\s\+station\\b/);
   assert.match(mainSource, /function correctSearchQuery\(raw\)/);
   assert.match(mainSource, /function searchCorrection\(raw\)/);
   assert.match(mainSource, /Interpreted as “\$\{correctedSearch\}”/);
@@ -255,6 +257,8 @@ test('platform and release-lane search intent excludes incidental mentions', () 
   assert.match(mainSource, /Release lane · \$\{intent\.sourceLabel\}/);
   assert.match(mainSource, /\['battle net', 'BattleNet'\]/);
   assert.match(mainSource, /\['playstation', 'PS5'\]/);
+  assert.match(mainSource, /\['nintendo', 'Switch'\]/);
+  assert.match(mainSource, /\['game ready driver', 'NVIDIA'\]/);
   assert.match(mainSource, /\['macbook', 'macOS'\]/);
   assert.match(mainSource, /\['radeon', 'AMD'\]/);
   assert.match(mainSource, /\['geforce', 'NVIDIA'\]/);
