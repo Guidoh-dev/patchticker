@@ -184,6 +184,25 @@ test('verified evidence metadata is promoted for API clients without inference',
   });
 });
 
+test('legacy rows expose a canonical source kind from their official evidence', () => {
+  const baseRow = {
+    id: 'legacy-source-kind', platform: 'Apple', name: 'Apple 26.6.2', version: '26.6.2',
+    source_kind: null, released_at: '2026-09-01', score: '7.4', impact_score: '4.0',
+    changelog: ['Security updates are documented.'], known_issues: [], risk_factors: [],
+    evidence: [{
+      source: 'Apple Security Releases', url: 'https://support.apple.com/en-us/100100',
+      releaseType: 'official-security-index',
+    }],
+  };
+
+  expect(updatesService.__test.rowToUpdate(baseRow).sourceKind).toBe('official-security-advisory');
+  expect(updatesService.__test.rowToUpdate({
+    ...baseRow,
+    id: 'legacy-artifact', platform: 'PS5',
+    evidence: [{ url: 'https://playstation.com/system-software', releaseType: 'official-artifact' }],
+  }).sourceKind).toBe('official-artifact');
+});
+
 test('legacy vendor-feed text is safely normalized when rows are hydrated', () => {
   const update = updatesService.__test.rowToUpdate({
     id: 'legacy-text', platform: 'Steam', name: 'Release', version: '1.0.0',

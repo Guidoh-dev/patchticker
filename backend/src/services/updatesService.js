@@ -1363,6 +1363,7 @@ function getStaticUpdates() {
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
 const db = require('../config/db');
+const { sourceKindFromEvidence } = require('../utils/sourceEvidence');
 
 function analysisMethodForEvidence(evidence = []) {
   const releaseTypes = new Set(
@@ -1464,7 +1465,7 @@ function rowToUpdate(row) {
     version:              row.display_version || row.version,
     internalVersion:      row.version,
     productId:            row.product_id || null,
-    sourceKind:           row.source_kind || null,
+    sourceKind:           row.source_kind || sourceKindFromEvidence(evidence),
     sourceRef:            row.source_ref || null,
     releaseSizeBytes,
     sizeBytes:            releaseSizeBytes,

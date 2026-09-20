@@ -36,6 +36,7 @@ const cheerio = require('cheerio');
 const { URL } = require('node:url');
 const logger  = require('../utils/logger');
 const { PLATFORM_KEYS } = require('../config/platformRegistry');
+const { sourceKindFromEvidence } = require('../utils/sourceEvidence');
 
 const TIMEOUT = 20000; // 20 seconds per request; AMD/Intel release pages can be slow
 
@@ -3084,25 +3085,6 @@ const DETECTORS = {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-const SOURCE_KIND_PRIORITY = Object.freeze([
-  'official-security-release',
-  'official-security-advisory',
-  'official-release-notes',
-  'official-game-update',
-  'official-release',
-  'official-artifact',
-  'official-version',
-]);
-
-function sourceKindFromEvidence(evidence) {
-  const kinds = new Set(
-    (Array.isArray(evidence) ? evidence : [])
-      .map(item => String(item?.releaseType || item?.sourceKind || '').trim().toLowerCase())
-      .filter(Boolean)
-  );
-  return SOURCE_KIND_PRIORITY.find(kind => kinds.has(kind)) || null;
 }
 
 function validateDetectedUpdate(platform, detected) {

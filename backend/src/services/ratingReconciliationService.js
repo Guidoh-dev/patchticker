@@ -8,6 +8,7 @@ const {
   requireValidScore,
   statusForScore,
 } = require('../utils/updateScore');
+const { sourceKindFromEvidence } = require('../utils/sourceEvidence');
 
 const DEFAULT_LIVE_DAYS = 240;
 
@@ -39,7 +40,7 @@ function scoringInput(row) {
     platform: row.platform,
     name: row.name,
     version: row.version,
-    sourceKind: row.source_kind,
+    sourceKind: row.source_kind || sourceKindFromEvidence(evidence),
     changelog: list(row.changelog),
     knownIssues: list(row.known_issues),
     knownIssuesAuthoritative: evidence.some(item => item?.knownIssuesAuthoritative === true),
@@ -59,10 +60,14 @@ function reconcileRow(row) {
   const oldImpactScore = row.impact_score === null ? null : Number(row.impact_score);
   return {
     id: row.id,
+    sourceKind: input.sourceKind,
     score,
     status,
     impactScore,
-    changed: oldScore !== score || row.status !== status || oldImpactScore !== impactScore,
+    changed: oldScore !== score
+      || row.status !== status
+      || oldImpactScore !== impactScore
+      || row.source_kind !== input.sourceKind,
   };
 }
 
@@ -90,9 +95,10 @@ async function run({ liveDays = DEFAULT_LIVE_DAYS, dryRun = false } = {}) {
       for (const row of changed) {
         await client.query(
           `UPDATE software_updates
-              SET score = $2, status = $3, impact_score = $4, updated_at = now()
+              SET score = $2, status = $3, impact_score = $4,
+                  source_kind = COALESCE(source_kind, $5), updated_at = now()
             WHERE id = $1`,
-          [row.id, row.score, row.status, row.impactScore],
+          [row.id, row.score, row.status, row.impactScore, row.sourceKind],
         );
       }
       await client.query('COMMIT');

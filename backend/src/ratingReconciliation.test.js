@@ -66,4 +66,39 @@ describe('rating reconciliation', () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     expect(mockRelease).toHaveBeenCalledTimes(1);
   });
+
+  test('persists a missing source kind inferred from first-party evidence', async () => {
+    const row = {
+      id: 'legacy-gog-release',
+      platform: 'GOG',
+      name: 'GOG GALAXY 2.1.9.27',
+      version: '2.1.9.27',
+      source_kind: null,
+      status: 'caution',
+      changelog: ['The official manifest identifies this public launcher build.'],
+      known_issues: [],
+      risk_factors: [],
+      evidence: [{
+        source: 'GOG', url: 'https://remote-config.gog.com/components/webinstaller',
+        releaseType: 'official-version',
+      }],
+      security_criticality: { level: 'none', cves: [] },
+    };
+    const expected = service.__test.reconcileRow({ ...row, score: 0, impact_score: 0 });
+    mockQuery
+      .mockResolvedValueOnce({ rows: [{
+        ...row,
+        score: expected.score,
+        impact_score: expected.impactScore,
+        status: expected.status,
+      }] })
+      .mockResolvedValue({ rowCount: 1 });
+
+    const result = await service.run();
+    expect(result).toMatchObject({ status: 'updated', scanned: 1, changed: 1, updated: 1 });
+    const updateCall = mockQuery.mock.calls.find(([sql]) => /UPDATE software_updates/.test(sql));
+    expect(updateCall[0]).toContain('source_kind = COALESCE(source_kind, $5)');
+    expect(updateCall[1][4]).toBe('official-version');
+    expect(mockQuery).toHaveBeenCalledWith('COMMIT');
+  });
 });
