@@ -431,6 +431,8 @@ describe('scraper accuracy guards', () => {
       },
     });
     expect(parsed.knownIssues[0]).toMatch(/2026-09-15.*newer Chromium security fixes.*preparing/i);
+    expect(parsed.knownIssuesSnapshotComplete).toBe(true);
+    expect(parsed.knownIssuesAuthoritative).toBe(false);
     expect(parsed.verdict).toMatch(/install.*if you are behind.*automatic updates.*pending/i);
     expect(parsed.changelog.join(' ')).toMatch(/Policy Updates.*Deprecating the unload.*Tracking prevention/i);
     expect(parsed.changelog.join(' ')).not.toMatch(/Extended release fixes/i);
@@ -438,6 +440,100 @@ describe('scraper accuracy guards', () => {
 
     expect(__test.parseEdgeStableRelease(stableHtml, securityHtml, {
       stableUrl: 'https://evil.example/edge',
+      securityUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+    })).toBeNull();
+  });
+
+  test('Edge parser marks an empty pending-notice snapshot as replaceable without claiming no issues exist', () => {
+    const stableHtml = `
+      <div class="content">
+        <h2>Version 153.0.4234.32: September 10, 2026 (Stable) - Main Release</h2>
+        <h3>Release Summary</h3>
+        <table><tbody><tr><td>Feature Updates</td><td>Tracking prevention changes.</td></tr></tbody></table>
+        <h3>Feature updates</h3><ul><li>Tracking prevention is now consistent in InPrivate windows.</li></ul>
+      </div>`;
+    const securityHtml = `
+      <div class="content">
+        <h2>September 10, 2026</h2>
+        <p>Microsoft released the latest <strong>Microsoft Edge for Stable (Version 153.0.4234.32)</strong> which incorporates the latest Security Updates of the Chromium project.</p>
+      </div>`;
+
+    const parsed = __test.parseEdgeStableRelease(stableHtml, securityHtml, {
+      stableUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnote-stable-channel',
+      securityUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+    });
+
+    expect(parsed.knownIssues).toEqual([]);
+    expect(parsed.knownIssuesSnapshotComplete).toBe(true);
+    expect(parsed.knownIssuesAuthoritative).toBe(false);
+    expect(parsed.securityCriticality.pendingVendorFix).toBe(false);
+  });
+
+  test('Edge parser accepts a newer exact desktop Stable security release without borrowing older feature notes', () => {
+    const stableHtml = `
+      <div class="content">
+        <h2>Version 153.0.4234.32: September 10, 2026 (Stable) - Main Release</h2>
+        <h3>Feature updates</h3><ul><li>Older WebView2 feature text.</li></ul>
+      </div>`;
+    const securityHtml = `
+      <div class="content">
+        <h2>September 18, 2026</h2>
+        <p>Microsoft released the latest Microsoft Edge for Stable (Version 153.0.4234.48) which incorporates the latest Security Updates of the Chromium project.</p>
+        <p>Note: CVE's will be added as soon as available</p>
+        <h2>September 17, 2026</h2>
+        <p>Microsoft released the latest Microsoft Edge for Stable (Version 153.0.4234.46) which incorporates the latest Security Updates of the Chromium project.</p>
+        <h2>September 14, 2026</h2>
+        <p>Microsoft released Microsoft Edge for Android and iOS (Version 153.0.4234.32).</p>
+        <h2>September 10, 2026</h2>
+        <p>Microsoft released the latest Microsoft Edge for Stable (Version 153.0.4234.32) which incorporates the latest Security Updates of the Chromium project.</p>
+      </div>`;
+
+    const parsed = __test.parseEdgeStableRelease(stableHtml, securityHtml, {
+      stableUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnote-stable-channel',
+      securityUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+    });
+
+    expect(parsed).toMatchObject({
+      platform: 'Edge',
+      name: 'Microsoft Edge Stable 153.0.4234.48',
+      version: '153.0.4234.48',
+      releasedAt: '2026-09-18',
+      knownIssues: [],
+      knownIssuesSnapshotComplete: true,
+      knownIssuesAuthoritative: false,
+      securityCriticality: {
+        level: 'medium',
+        cves: [],
+        pendingVendorFix: false,
+      },
+    });
+    expect(parsed.changelog).toHaveLength(1);
+    expect(parsed.changelog[0]).toMatch(/153\.0\.4234\.48.*security updates/i);
+    expect(parsed.changelog.join(' ')).not.toMatch(/Older WebView2/i);
+    expect(parsed.riskFactors[0].text).toMatch(/CVE list.*added/i);
+    expect(parsed.reasoning).toMatch(/feature-notes page has not yet published a matching entry/i);
+    expect(parsed.evidence).toEqual([
+      expect.objectContaining({
+        releaseType: 'official-security-release',
+        generalReleaseNotesPending: true,
+      }),
+    ]);
+  });
+
+  test('Edge parser never regresses to an older security-ledger build when general Stable is newer', () => {
+    const stableHtml = `
+      <div class="content">
+        <h2>Version 153.0.4234.50: September 20, 2026 (Stable) - Main Release</h2>
+        <h3>Feature updates</h3><ul><li>Newer WebView2 feature text.</li></ul>
+      </div>`;
+    const securityHtml = `
+      <div class="content">
+        <h2>September 18, 2026</h2>
+        <p>Microsoft released the latest Microsoft Edge for Stable (Version 153.0.4234.48) which incorporates the latest Security Updates of the Chromium project.</p>
+      </div>`;
+
+    expect(__test.parseEdgeStableRelease(stableHtml, securityHtml, {
+      stableUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnote-stable-channel',
       securityUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
     })).toBeNull();
   });

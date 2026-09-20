@@ -2631,6 +2631,7 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
   const security$ = cheerio.load(String(securityHtml || ''));
   let matchingSecuritySection = null;
   let matchingSecurityText = '';
+  const stableSecurityReleases = [];
   const pendingNotices = [];
   security$('.content h2').each((_, element) => {
     const heading = security$(element);
@@ -2640,6 +2641,17 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
     }
     const nodes = heading.nextUntil('h2');
     const sectionText = cleanText(nodes.text(), 6000);
+    const desktopStableMatch = sectionText.match(/Microsoft Edge (?:for )?Stable(?: Channel)? \(Version (\d+\.\d+\.\d+\.\d+)\)/i);
+    if (desktopStableMatch
+      && !/(?:Android|iOS)[^.]*(?:Version\s+)?\d+\.\d+\.\d+\.\d+/i.test(sectionText)
+      && !/Extended Stable/i.test(sectionText)) {
+      stableSecurityReleases.push({
+        date: noticeDate,
+        version: desktopStableMatch[1],
+        nodes,
+        text: sectionText,
+      });
+    }
     const escapedVersion = version.replace(/\./g, '\\.');
     const exactStable = new RegExp(`Microsoft Edge (?:for )?Stable(?: Channel)? \\(Version ${escapedVersion}\\)`, 'i').test(sectionText)
       && !new RegExp(`(?:Android|iOS)[^.]*(?:Version ${escapedVersion})`, 'i').test(sectionText);
@@ -2653,6 +2665,74 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
       pendingNotices.push({ date: noticeDate, text: sectionText });
     }
   });
+
+  // Microsoft's security ledger can publish an urgent Stable build before
+  // the broader feature-notes page catches up.  In that bounded case, prefer
+  // the newer exact desktop Stable identity from the security ledger and do
+  // not borrow feature notes from the older build.
+  const latestSecurityRelease = stableSecurityReleases
+    .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || compareVersionParts(b.version, a.version))[0] || null;
+  if (latestSecurityRelease
+    && Date.parse(latestSecurityRelease.date) >= Date.parse(releasedAt)
+    && compareVersionParts(latestSecurityRelease.version, version) > 0) {
+    const securityCves = unique(latestSecurityRelease.nodes.find('a').map((_, link) => {
+      const match = cleanText(security$(link).text(), 80).match(/CVE-\d{4}-\d+/i);
+      return match?.[0]?.toUpperCase() || '';
+    }).get(), 32);
+    const securityActivelyExploited = /exploit(?:ed)? in the wild/i.test(latestSecurityRelease.text);
+    const securityCveListPending = /CVE'?s will be added as soon as available/i.test(latestSecurityRelease.text);
+    const securityLevel = securityActivelyExploited ? 'high' : 'medium';
+    const securityVersion = latestSecurityRelease.version;
+    const securityDate = latestSecurityRelease.date;
+    const pendingCveText = securityCveListPending
+      ? 'Microsoft says the CVE list for this Stable release will be added when available.'
+      : '';
+
+    return {
+      platform: 'Edge',
+      name: `Microsoft Edge Stable ${securityVersion}`,
+      version: securityVersion,
+      releasedAt: securityDate,
+      affects: 'Microsoft Edge Stable / Windows / macOS / Linux / browser security / enterprise policy / WebView2 compatibility',
+      changelog: [
+        `Microsoft Edge ${securityVersion} was released to the Stable channel on ${securityDate} with Chromium security updates.`,
+      ],
+      knownIssues: [],
+      knownIssuesSnapshotComplete: true,
+      knownIssuesAuthoritative: false,
+      riskFactors: pendingCveText ? [{ level: 'low', text: pendingCveText }] : [],
+      securityCriticality: {
+        level: securityLevel,
+        label: securityCves.length
+          ? `${securityCves.length} documented Edge security fix${securityCves.length === 1 ? '' : 'es'}`
+          : 'Chromium security updates included; CVE list pending',
+        cves: securityCves,
+        totalCves: securityCves.length,
+        activelyExploited: securityActivelyExploited,
+        pendingVendorFix: false,
+      },
+      verdict: securityActivelyExploited
+        ? 'Install promptly and restart Edge; Microsoft identifies an in-the-wild exploit fixed by this Stable release.'
+        : `Install Edge ${securityVersion} promptly and restart the browser to apply Microsoft’s documented Chromium security updates.`,
+      reasoning: `Microsoft’s security release ledger identifies Edge Stable ${securityVersion} dated ${securityDate}. The broader Stable feature-notes page has not yet published a matching entry, so PatchTicker limits this record to the security facts Microsoft currently documents and does not reuse changes from an older build.`,
+      evidence: sourceEvidence(
+        'Microsoft Edge Security Release Notes',
+        securityUrl,
+        `Edge Stable ${securityVersion}, released ${securityDate}, incorporates Chromium security updates.${securityCveListPending ? ' Microsoft says CVE details are pending.' : ''}`,
+        {
+          dateBasis: 'released',
+          releaseType: 'official-security-release',
+          publishedAt: securityDate,
+          releaseChannel: 'stable',
+          securityFixCount: securityCves.length,
+          cveListPending: securityCveListPending,
+          pendingVendorFix: false,
+          generalReleaseNotesPending: true,
+        }
+      ),
+      sourceUrl: securityUrl,
+    };
+  }
   if (!matchingSecuritySection) {
     return null;
   }
@@ -2682,6 +2762,13 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
       ...featureUpdates.map(note => `Feature update: ${note}`),
     ], 360).slice(0, 12),
     knownIssues: pendingText ? [pendingText] : [],
+    // This list is a complete snapshot of the specific newer Chromium-fix
+    // notices parsed above.  It is safe to replace a previously stored notice
+    // when Microsoft removes it, but that does not mean Microsoft guarantees
+    // there are no other Edge issues.  Keep this separate from
+    // knownIssuesAuthoritative so scoring does not receive a false clean-list
+    // confidence bonus.
+    knownIssuesSnapshotComplete: true,
     knownIssuesAuthoritative: false,
     riskFactors: [
       ...(pendingText ? [{ level: 'medium', text: pendingText }] : []),

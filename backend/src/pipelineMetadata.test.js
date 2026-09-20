@@ -155,6 +155,37 @@ describe('pipeline source metadata preservation', () => {
     expect(params[14]).toBe(true);
   });
 
+  test('source-owned issue snapshots can clear stale notices without earning authoritative confidence', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+
+    const detected = {
+      name: 'Microsoft Edge Stable 153.0.4234.32',
+      version: '153.0.4234.32',
+      releasedAt: '2026-09-10',
+      changelog: ['Feature update: Tracking prevention changes.'],
+      knownIssues: [],
+      knownIssuesSnapshotComplete: true,
+      knownIssuesAuthoritative: false,
+      evidence: [{
+        source: 'Microsoft Edge Security Release Notes',
+        url: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+        releaseType: 'official-security-release',
+      }],
+      securityCriticality: { level: 'medium', cves: [], pendingVendorFix: false },
+    };
+
+    const context = __test.platformContext('Edge', detected);
+    expect(context.knownIssuesSnapshotComplete).toBe(true);
+    expect(context.knownIssuesAuthoritative).toBe(false);
+    expect(context.evidence[0]).not.toHaveProperty('knownIssuesAuthoritative');
+
+    await __test.updateExistingMetadata('Edge', detected.version, detected);
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain("known_issues = CASE WHEN $9::jsonb <> '[]'::jsonb OR $15::boolean");
+    expect(params[8]).toBe('[]');
+    expect(params[14]).toBe(true);
+  });
+
   test('generated summaries cannot overwrite ratings or structured source facts', async () => {
     db.query.mockResolvedValue({ rows: [] });
 
