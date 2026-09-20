@@ -1440,6 +1440,24 @@ const SEARCH_STATUS_INTENTS = new Map([
   ['avoid', 'avoid'],
 ]);
 const LEADING_SEARCH_MODIFIERS = new Set(['latest', 'current', 'recent', 'new', 'newest']);
+const SEARCH_QUESTION_PREFIX_TERMS = new Set([
+  'can', 'could', 'should', 'would', 'will', 'do', 'does', 'did', 'is', 'are', 'was', 'were', 'be',
+  'what', 'which', 'how', 'show', 'find', 'give', 'tell', 'please', 'whether',
+  'i', 'me', 'my', 'it', 'the', 'a', 'an', 'this', 'that', 'to',
+  'safe', 'safely', 'recommended', 'okay', 'ok', 'good',
+  'use', 'using', 'install', 'installing', 'download', 'downloading',
+  'get', 'getting', 'update', 'updating',
+]);
+const SEARCH_QUESTION_START_TERMS = new Set([
+  'can', 'could', 'should', 'would', 'will', 'do', 'does', 'did', 'is', 'are', 'was', 'were',
+  'what', 'which', 'how', 'show', 'find', 'give', 'tell', 'please', 'whether',
+  'use', 'install', 'download', 'get', 'update',
+]);
+const SEARCH_QUESTION_SUFFIX_TERMS = new Set([
+  'safe', 'safely', 'recommended', 'okay', 'ok', 'good', 'worth', 'it', 'to',
+  'use', 'using', 'install', 'installing', 'download', 'downloading',
+]);
+const LATEST_ONLY_SEARCH_TERMS = new Set(['latest', 'current', 'newest']);
 const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam desktop client', 'steam client'], platform: 'Steam', sourceKind: 'steam-client-news', label: 'Steam client' },
   { aliases: ['steam deck', 'steamdeck', 'steam os', 'steamos'], platform: 'Steam', sourceKind: 'steamos-news', label: 'SteamOS / Steam Deck' },
@@ -1691,6 +1709,20 @@ function stripLeadingSearchModifiers(value) {
   return tokens.join(' ');
 }
 
+function stripSearchQuestionFraming(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  if (tokens.length && SEARCH_QUESTION_START_TERMS.has(tokens[0])) {
+    while (tokens.length && SEARCH_QUESTION_PREFIX_TERMS.has(tokens[0])) tokens.shift();
+  }
+  while (tokens.length && SEARCH_QUESTION_SUFFIX_TERMS.has(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(' ');
+}
+
+function hasLatestOnlySearchIntent(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  return tokens.some(token => LATEST_ONLY_SEARCH_TERMS.has(token));
+}
+
 function normaliseProductSearch(value) {
   const tokens = String(value || '').toLowerCase().normalize('NFKD').match(/[a-z0-9]+/g) || [];
   return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ').trim();
@@ -1735,13 +1767,16 @@ function searchIntentForQuery(raw) {
   if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
 
   const status = searchStatusIntent(query);
+  const latestOnly = hasLatestOnlySearchIntent(query);
   const queryWithoutStatus = stripSearchStatusTerms(query);
-  const withStatus = intent => ({ ...intent, status });
+  const framedQuery = stripSearchQuestionFraming(queryWithoutStatus);
+  const withStatus = intent => ({ ...intent, status, latestOnly });
 
   const intentQueries = [...new Set([
     queryWithoutStatus,
-    stripLeadingSearchModifiers(queryWithoutStatus),
-    stripSearchIntentStopwords(queryWithoutStatus),
+    framedQuery,
+    stripLeadingSearchModifiers(framedQuery),
+    stripSearchIntentStopwords(framedQuery),
   ].filter(Boolean))];
   for (const intentQuery of intentQueries) {
     for (const intent of SOURCE_SEARCH_INTENTS) {
@@ -1798,7 +1833,7 @@ function searchIntentForQuery(raw) {
     platform: null,
     sourceKind: null,
     sourceLabel: null,
-    semanticQuery: stripSearchIntentStopwords(queryWithoutStatus),
+    semanticQuery: stripSearchIntentStopwords(framedQuery),
   });
 }
 
@@ -3384,6 +3419,7 @@ async function renderDashboard({ focusId = null } = {}) {
             || groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
         });
       }
+      if (intent.latestOnly) filtered = latestUniqueUpdates(filtered, releaseLaneKey);
     }
 
     const sorters = {
@@ -3460,6 +3496,7 @@ async function renderDashboard({ focusId = null } = {}) {
     const intentStatusLabel = intent.status && !_filterState.status
       ? `${intent.status[0].toUpperCase()}${intent.status.slice(1)} · `
       : '';
+    const recencyLabel = intent.latestOnly ? 'Latest · ' : '';
     const statusText = intent.productId
       ? `Exact game · ${intent.sourceLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
       : intent.sourceKind
@@ -3471,7 +3508,7 @@ async function renderDashboard({ focusId = null } = {}) {
       : _searchMode === 'server'
       ? `Database search · ${resultCount} ${resultCount === 1 ? 'match' : 'matches'}`
       : `${resultCount} cached ${resultCount === 1 ? 'match' : 'matches'}`;
-    const qualifiedStatusText = `${intentStatusLabel}${statusText}`;
+    const qualifiedStatusText = `${recencyLabel}${intentStatusLabel}${statusText}`;
     el.textContent = correctedSearch ? `Interpreted as “${correctedSearch}” · ${qualifiedStatusText}` : qualifiedStatusText;
     el.className = 'dash-search-status is-ready';
     syncQuickbarFeedbackVisibility();

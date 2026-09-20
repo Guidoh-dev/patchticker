@@ -466,7 +466,7 @@ test('search intent keeps platform modifiers and Steam lanes precise', () => {
 
 test('natural latest and current queries route to one explicit release lane', () => {
   expect(updatesService.__test.parseSearchIntent('latest Windows update')).toMatchObject({
-    platform: 'Windows', semanticQuery: '',
+    platform: 'Windows', semanticQuery: '', latestOnly: true,
   });
   expect(updatesService.__test.parseSearchIntent('current Windows 11 patch')).toMatchObject({
     platform: 'Windows', semanticQuery: '11',
@@ -484,7 +484,7 @@ test('natural latest and current queries route to one explicit release lane', ()
     categoryLabel: 'Web browsers', semanticQuery: '',
   });
   expect(updatesService.__test.parseSearchIntent('latest gpu driver')).toMatchObject({
-    categoryLabel: 'PC hardware & drivers', semanticQuery: '', status: null,
+    categoryLabel: 'PC hardware & drivers', semanticQuery: '', status: null, latestOnly: true,
   });
   expect(updatesService.__test.parseSearchIntent('stable console update')).toMatchObject({
     categoryLabel: 'Console firmware', semanticQuery: '', status: 'stable',
@@ -492,6 +492,51 @@ test('natural latest and current queries route to one explicit release lane', ()
   expect(updatesService.__test.parseSearchIntent('crash on NVIDIA')).toMatchObject({
     platform: null, semanticQuery: 'crash on nvidia', status: null,
   });
+});
+
+test('conversational decision questions preserve the product and issue intent', () => {
+  expect(updatesService.__test.parseSearchIntent('is the latest PS5 update safe')).toMatchObject({
+    platform: 'PS5', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('is it safe to install the latest PS5 update?')).toMatchObject({
+    platform: 'PS5', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('should I install the latest NVIDIA driver')).toMatchObject({
+    platform: 'NVIDIA', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('would it be safe to install the newest AMD driver')).toMatchObject({
+    platform: 'AMD', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('is the new NVIDIA driver worth installing')).toMatchObject({
+    platform: 'NVIDIA', semanticQuery: '', status: null, latestOnly: false,
+  });
+  expect(updatesService.__test.parseSearchIntent('does NVIDIA driver crash in Fortnite')).toMatchObject({
+    platform: 'NVIDIA', semanticQuery: 'crash in fortnite', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('show me stable console updates')).toMatchObject({
+    categoryLabel: 'Console firmware', semanticQuery: '', status: 'stable',
+  });
+  expect(updatesService.__test.parseSearchIntent('crash on NVIDIA')).toMatchObject({
+    platform: null, semanticQuery: 'crash on nvidia', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('safe mode Windows update')).toMatchObject({
+    platform: null, semanticQuery: 'safe mode windows', status: null,
+  });
+});
+
+test('latest-only searches keep one current release per product lane', () => {
+  const rows = [
+    { id: 'nvidia-new', platform: 'NVIDIA', version: '2', releasedAt: '2026-09-10' },
+    { id: 'nvidia-old', platform: 'NVIDIA', version: '1', releasedAt: '2026-08-10' },
+    { id: 'amd-new', platform: 'AMD', version: '2', releasedAt: '2026-09-09' },
+    { id: 'amd-old', platform: 'AMD', version: '1', releasedAt: '2026-08-09' },
+    { id: 'steam-a-new', platform: 'Steam', sourceKind: 'steam-game-news', productId: '10', releasedAt: '2026-09-08' },
+    { id: 'steam-a-old', platform: 'Steam', sourceKind: 'steam-game-news', productId: '10', releasedAt: '2026-08-08' },
+    { id: 'steam-b-new', platform: 'Steam', sourceKind: 'steam-game-news', productId: '20', releasedAt: '2026-09-07' },
+  ];
+  expect(updatesService.__test.latestSearchLaneUpdates(rows).map(row => row.id)).toEqual([
+    'nvidia-new', 'amd-new', 'steam-a-new', 'steam-b-new',
+  ]);
 });
 
 test('natural status and category searches become strict SQL filters', async () => {

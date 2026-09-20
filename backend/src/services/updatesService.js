@@ -130,6 +130,29 @@ const SEARCH_STATUS_INTENTS = new Map([
   ['avoid', 'avoid'],
 ]);
 const LEADING_SEARCH_MODIFIERS = new Set(['latest', 'current', 'recent', 'new', 'newest']);
+// People search the decision desk as if they were asking another person. Strip
+// only conversational framing at the edges of a query so the useful product,
+// version, and issue terms remain strict. Do not make these global stopwords:
+// words such as "safe" can still be meaningful in the middle of a release
+// title or issue description.
+const SEARCH_QUESTION_PREFIX_TERMS = new Set([
+  'can', 'could', 'should', 'would', 'will', 'do', 'does', 'did', 'is', 'are', 'was', 'were', 'be',
+  'what', 'which', 'how', 'show', 'find', 'give', 'tell', 'please', 'whether',
+  'i', 'me', 'my', 'it', 'the', 'a', 'an', 'this', 'that', 'to',
+  'safe', 'safely', 'recommended', 'okay', 'ok', 'good',
+  'use', 'using', 'install', 'installing', 'download', 'downloading',
+  'get', 'getting', 'update', 'updating',
+]);
+const SEARCH_QUESTION_START_TERMS = new Set([
+  'can', 'could', 'should', 'would', 'will', 'do', 'does', 'did', 'is', 'are', 'was', 'were',
+  'what', 'which', 'how', 'show', 'find', 'give', 'tell', 'please', 'whether',
+  'use', 'install', 'download', 'get', 'update',
+]);
+const SEARCH_QUESTION_SUFFIX_TERMS = new Set([
+  'safe', 'safely', 'recommended', 'okay', 'ok', 'good', 'worth', 'it', 'to',
+  'use', 'using', 'install', 'installing', 'download', 'downloading',
+]);
+const LATEST_ONLY_SEARCH_TERMS = new Set(['latest', 'current', 'newest']);
 
 const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam desktop client', 'steam client'], platform: 'Steam', sourceKind: 'steam-client-news', label: 'Steam client' },
@@ -226,6 +249,44 @@ function stripLeadingSearchModifiers(value) {
   return tokens.join(' ');
 }
 
+function stripSearchQuestionFraming(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  if (tokens.length && SEARCH_QUESTION_START_TERMS.has(tokens[0])) {
+    while (tokens.length && SEARCH_QUESTION_PREFIX_TERMS.has(tokens[0])) tokens.shift();
+  }
+  while (tokens.length && SEARCH_QUESTION_SUFFIX_TERMS.has(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(' ');
+}
+
+function hasLatestOnlySearchIntent(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  return tokens.some(token => LATEST_ONLY_SEARCH_TERMS.has(token));
+}
+
+function searchReleaseLaneKey(update) {
+  const platform = String(update?.platform || '').toLowerCase();
+  if (platform !== 'steam') return platform || String(update?.id || 'unknown');
+  const sourceKind = String(update?.sourceKind || update?.source_kind || '').toLowerCase();
+  if (sourceKind === 'steam-game-news') {
+    return `steam:game:${String(update?.productId || update?.product_id || update?.name || update?.id || 'unknown').toLowerCase()}`;
+  }
+  if (sourceKind === 'steam-client-news') return 'steam:client';
+  if (sourceKind === 'steamos-news' || /steam(?:os| deck)/i.test(`${update?.name || ''} ${update?.affects || ''}`)) return 'steam:steamos';
+  return `steam:${sourceKind || 'other'}`;
+}
+
+function latestSearchLaneUpdates(updates) {
+  const seen = new Set();
+  return [...(updates || [])]
+    .sort((left, right) => Date.parse(right.releasedAt || 0) - Date.parse(left.releasedAt || 0))
+    .filter(update => {
+      const key = searchReleaseLaneKey(update);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
 function normaliseProductSearch(value) {
   const tokens = String(value || '').toLowerCase().normalize('NFKD').match(/[a-z0-9]+/g) || [];
   return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ').trim();
@@ -280,8 +341,10 @@ function parseSearchIntent(rawSearch) {
   if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
 
   const status = searchStatusIntent(query);
+  const latestOnly = hasLatestOnlySearchIntent(query);
   const queryWithoutStatus = stripSearchStatusTerms(query);
-  const withStatus = intent => ({ ...intent, status });
+  const framedQuery = stripSearchQuestionFraming(queryWithoutStatus);
+  const withStatus = intent => ({ ...intent, status, latestOnly });
 
   // Preserve the exact words, then remove only leading recency modifiers
   // before the broad stopword pass. The middle form retains category nouns
@@ -289,8 +352,9 @@ function parseSearchIntent(rawSearch) {
   // lanes without turning "crash on NVIDIA" into navigation intent.
   const intentQueries = [...new Set([
     queryWithoutStatus,
-    stripLeadingSearchModifiers(queryWithoutStatus),
-    stripIntentStopwords(queryWithoutStatus),
+    framedQuery,
+    stripLeadingSearchModifiers(framedQuery),
+    stripIntentStopwords(framedQuery),
   ].filter(Boolean))];
   for (const intentQuery of intentQueries) {
     for (const intent of SOURCE_SEARCH_INTENTS) {
@@ -349,7 +413,7 @@ function parseSearchIntent(rawSearch) {
     platform: null,
     sourceKind: null,
     sourceLabel: null,
-    semanticQuery: stripIntentStopwords(queryWithoutStatus),
+    semanticQuery: stripIntentStopwords(framedQuery),
   });
 }
 
@@ -1599,6 +1663,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
           .filter(isUpdateDisplayable)
           .map(update => ({ ...update, compatibilitySearchFallback: true }));
       }
+      if (searchIntent.latestOnly) updates = latestSearchLaneUpdates(updates);
       const sorters = {
         date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
         date_asc:   (a, b) => new Date(a.releasedAt) - new Date(b.releasedAt),
@@ -1662,6 +1727,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         .sort((left, right) => Date.parse(right.releasedAt) - Date.parse(left.releasedAt))[0];
       if (current) updates = [{ ...current, compatibilitySearchFallback: true }];
     }
+    if (searchIntent.latestOnly) updates = latestSearchLaneUpdates(updates);
   }
   const sorters = {
     date_desc:  (a, b) => new Date(b.releasedAt) - new Date(a.releasedAt),
@@ -1857,6 +1923,10 @@ module.exports = {
     buildSearchTermGroups,
     isReleaseIdentityQuery,
     exactPlatformForSearch,
+    stripSearchQuestionFraming,
+    hasLatestOnlySearchIntent,
+    searchReleaseLaneKey,
+    latestSearchLaneUpdates,
     parseSearchIntent,
     hardwareCompatibilitySearchPlatform,
     exactSteamGameForSearch,
