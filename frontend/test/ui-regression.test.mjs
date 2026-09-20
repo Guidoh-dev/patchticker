@@ -311,7 +311,12 @@ test('natural latest and current searches normalize intent before lane routing',
   assert.match(mainSource, /function stripLeadingSearchModifiers\(value\)/);
   assert.match(mainSource, /function stripSearchQuestionFraming\(value\)/);
   assert.match(mainSource, /const framedQuery = stripSearchQuestionFraming\(queryWithoutStatus\)/);
-  assert.match(mainSource, /queryWithoutStatus,[\s\S]*?framedQuery,[\s\S]*?stripLeadingSearchModifiers\(framedQuery\),[\s\S]*?stripSearchIntentStopwords\(framedQuery\)/);
+  assert.match(mainSource, /framedQuery,[\s\S]*?stripLeadingSearchModifiers\(framedQuery\),[\s\S]*?stripSearchIntentStopwords\(framedQuery\),[\s\S]*?queryWithoutStatus/);
+  assert.match(mainSource, /\[\/\\bfirfox\\b\/g, 'firefox'\]/);
+  assert.match(mainSource, /\[\/\\bchrom\\b\/g, 'chrome'\]/);
+  assert.match(mainSource, /\[\/\\bplaystaion\\b\/g, 'playstation'\]/);
+  assert.match(mainSource, /\['wait', 'caution'\]/);
+  assert.match(mainSource, /\['unsafe', 'avoid'\]/);
   assert.match(mainSource, /SEARCH_QUESTION_SUFFIX_TERMS[\s\S]*?'safe'/);
   assert.match(mainSource, /const LATEST_ONLY_SEARCH_TERMS = new Set\(\['latest', 'current', 'newest', 'new'\]\)/);
   assert.match(mainSource, /\\bwhat\['’\]s\\b/);

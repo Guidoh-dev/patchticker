@@ -1388,8 +1388,10 @@ const SEARCH_QUERY_CORRECTIONS = [
   [/\bge\s+force\b/g, 'geforce'],
   [/\bfire\s+fox\b/g, 'firefox'],
   [/\bfirefos\b/g, 'firefox'],
+  [/\bfirfox\b/g, 'firefox'],
   [/\bmozila\b/g, 'firefox'],
   [/\bchome\b/g, 'chrome'],
+  [/\bchrom\b/g, 'chrome'],
   [/\bsteem\b/g, 'steam'],
   [/\bintell\b/g, 'intel'],
   [/\bmac\s+book\b/g, 'macbook'],
@@ -1399,8 +1401,11 @@ const SEARCH_QUERY_CORRECTIONS = [
   [/\bplay\s+station\s+5\b/g, 'playstation 5'],
   [/\bplay\s+station\b/g, 'playstation'],
   [/\bplaystation\s*5\b/g, 'playstation 5'],
+  [/\bplaystaion\b/g, 'playstation'],
   [/\bx\s+box\b/g, 'xbox'],
   [/\bnintedo\s+switch\b/g, 'nintendo switch'],
+  [/\bhigh[ -]+risk\b/g, 'avoid'],
+  [/\b(?:do not|dont)\s+install\b/g, 'avoid'],
 ];
 
 function correctSearchQuery(raw) {
@@ -1439,7 +1444,11 @@ const SEARCH_INTENT_STOPWORDS = new Set([
 const SEARCH_STATUS_INTENTS = new Map([
   ['stable', 'stable'],
   ['caution', 'caution'],
+  ['wait', 'caution'],
+  ['warning', 'caution'],
   ['avoid', 'avoid'],
+  ['unsafe', 'avoid'],
+  ['risky', 'avoid'],
 ]);
 const LEADING_SEARCH_MODIFIERS = new Set(['latest', 'current', 'recent', 'new', 'newest']);
 const SEARCH_QUESTION_PREFIX_TERMS = new Set([
@@ -1779,10 +1788,10 @@ function searchIntentForQuery(raw) {
   const withStatus = intent => ({ ...intent, status, latestOnly });
 
   const intentQueries = [...new Set([
-    queryWithoutStatus,
     framedQuery,
     stripLeadingSearchModifiers(framedQuery),
     stripSearchIntentStopwords(framedQuery),
+    queryWithoutStatus,
   ].filter(Boolean))];
   for (const intentQuery of intentQueries) {
     for (const intent of SOURCE_SEARCH_INTENTS) {

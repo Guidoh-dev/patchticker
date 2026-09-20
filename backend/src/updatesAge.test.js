@@ -548,6 +548,39 @@ test('conversational decision questions preserve the product and issue intent', 
   });
 });
 
+test('common product typos and decision language resolve without weakening exact searches', () => {
+  expect(updatesService.__test.parseSearchIntent('edge update safe')).toMatchObject({
+    platform: 'Edge', semanticQuery: '', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('firfox security')).toMatchObject({
+    platform: 'Firefox', semanticQuery: 'security', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('chrom update')).toMatchObject({
+    platform: 'Chrome', semanticQuery: '', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('playstaion firmware')).toMatchObject({
+    platform: 'PS5', semanticQuery: '', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('high risk patches')).toMatchObject({
+    platform: null, semanticQuery: '', status: 'avoid',
+  });
+  expect(updatesService.__test.parseSearchIntent('nvidia driver wait')).toMatchObject({
+    platform: 'NVIDIA', semanticQuery: '', status: 'caution',
+  });
+  expect(updatesService.__test.parseSearchIntent('do not install intel driver')).toMatchObject({
+    platform: 'Intel', semanticQuery: '', status: 'avoid',
+  });
+
+  // These phrases carry real technical meaning, so they must stay strict rather
+  // than becoming generic vendor navigation or a misleading status filter.
+  expect(updatesService.__test.parseSearchIntent('safe mode Windows update')).toMatchObject({
+    platform: null, semanticQuery: 'safe mode windows', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('crash on NVIDIA')).toMatchObject({
+    platform: null, semanticQuery: 'crash on nvidia', status: null,
+  });
+});
+
 test('latest-only searches keep one current release per product lane', () => {
   const rows = [
     { id: 'nvidia-new', platform: 'NVIDIA', version: '2', releasedAt: '2026-09-10' },
