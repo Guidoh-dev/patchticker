@@ -556,6 +556,7 @@ test('dashboard uses independent desktop scrollers and native mobile page scroll
   assert.match(mainSource, /document\.body\.classList\.add\('dashboard-shell-active'\)/);
   assert.match(cssSource, /@media \(min-width: 769px\)[\s\S]*?body\.dashboard-shell-active\s*\{[^}]*height:\s*100vh;[^}]*overflow:\s*hidden/s);
   assert.match(cssSource, /body\.dashboard-shell-active \.dash-main,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(cssSource, /body\.dashboard-shell-active \.dash-main,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*scrollbar-gutter:\s*stable/s);
   assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*?body\.dashboard-shell-active \.dash-main,[\s\S]*?overflow-y:\s*visible/s);
   assert.doesNotMatch(mainSource, /class="dash-sidebar"/);
 });

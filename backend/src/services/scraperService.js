@@ -2378,7 +2378,21 @@ function parseChromeStableFeed(xml) {
     });
   });
 
-  return releases.sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt))[0] || null;
+  const sorted = releases.sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt));
+  const latest = sorted[0] || null;
+  if (!latest) return null;
+  const historyCutoff = Date.parse(latest.releasedAt) - (45 * 24 * 60 * 60 * 1000);
+  return {
+    ...latest,
+    // Keep a bounded slice of Google's own desktop Stable history so rapid
+    // security rollouts cannot disappear between successful pipeline scans.
+    // The pipeline persists these records silently and never emits alerts for
+    // historical backfill.
+    recentReleases: sorted
+      .slice(1)
+      .filter(release => Date.parse(release.releasedAt) >= historyCutoff)
+      .slice(0, 7),
+  };
 }
 
 /**

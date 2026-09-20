@@ -8779,6 +8779,13 @@ html[data-theme="light"] .dash-side-copy { color: var(--text-2); }
     max-height: 100%;
   }
 
+  body.dashboard-shell-active .dash-main,
+  body.dashboard-shell-active .dash-aside {
+    /* Reserve the native scrollbar lane before verified data hydrates. This
+       keeps both dashboard columns still when their content becomes scrollable. */
+    scrollbar-gutter: stable;
+  }
+
   body.dashboard-shell-active .dash-main {
     position: relative;
     isolation: isolate;

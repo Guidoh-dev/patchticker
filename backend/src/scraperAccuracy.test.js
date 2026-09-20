@@ -300,6 +300,17 @@ describe('scraper accuracy guards', () => {
             <p>Medium CVE-2026-91723: Race condition in WebAppInstalls. Reported by Researcher</p>
           ]]></content>
         </entry>
+        <entry>
+          <published>2026-09-12T12:00:00-07:00</published>
+          <category term="Desktop Update"/><category term="Stable updates"/>
+          <title>Stable Channel Update for Desktop</title>
+          <link rel="alternate" href="http://chromereleases.googleblog.com/2026/09/stable-channel-update-previous.html"/>
+          <content type="html"><![CDATA[
+            <p>The Stable channel has been updated to 153.0.8010.43/.44 for Windows and Mac and 153.0.8010.43 for Linux.</p>
+            <p>This update includes 1 security fix.</p>
+            <p>High CVE-2026-91000: Use after free in V8. Reported by Researcher</p>
+          ]]></content>
+        </entry>
       </feed>
     `);
 
@@ -318,6 +329,20 @@ describe('scraper accuracy guards', () => {
     expect(parsed.reasoning).toMatch(/3 security fixes.*1 critical.*1 high.*1 medium/i);
     expect(parsed.riskFactors[0].text).toMatch(/rolling.*days and weeks/i);
     expect(parsed.name).not.toContain('154.0');
+    expect(parsed.recentReleases).toEqual([
+      expect.objectContaining({
+        platform: 'Chrome',
+        name: 'Google Chrome Stable 153.0.8010.43/.44',
+        version: '153.0.8010.44',
+        releasedAt: '2026-09-12',
+        sourceUrl: 'https://chromereleases.googleblog.com/2026/09/stable-channel-update-previous.html',
+        securityCriticality: expect.objectContaining({
+          level: 'high',
+          totalCves: 1,
+          cves: ['CVE-2026-91000'],
+        }),
+      }),
+    ]);
   });
 
   test('Firefox parser requires matching Release notes and advisory while preserving CVE severity', () => {
