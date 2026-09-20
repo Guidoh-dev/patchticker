@@ -701,6 +701,11 @@ test('category searches select explicit ecosystem lanes instead of incidental pr
   expect(updatesService.__test.parseSearchIntent('graphics drivers crash')).toEqual(expect.objectContaining({
     categoryLabel: 'PC hardware & drivers', semanticQuery: 'crash',
   }));
+  expect(updatesService.__test.parseSearchIntent('driver crashes')).toEqual(expect.objectContaining({
+    categoryLabel: 'PC hardware & drivers',
+    semanticQuery: 'crashes',
+    lanes: [{ platform: 'NVIDIA' }, { platform: 'AMD' }, { platform: 'Intel' }],
+  }));
   expect(updatesService.__test.parseSearchIntent('console firmware')).toEqual(expect.objectContaining({
     categoryLabel: 'Console firmware', semanticQuery: '',
   }));

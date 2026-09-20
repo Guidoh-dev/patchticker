@@ -205,7 +205,7 @@ const CATEGORY_SEARCH_INTENTS = [
     lanes: [{ platform: 'Chrome' }, { platform: 'Firefox' }, { platform: 'Edge' }],
   },
   {
-    aliases: ['pc hardware and drivers', 'pc hardware', 'graphics drivers', 'graphics driver', 'gpu drivers', 'gpu driver', 'video drivers', 'video driver'],
+    aliases: ['pc hardware and drivers', 'pc hardware', 'graphics drivers', 'graphics driver', 'gpu drivers', 'gpu driver', 'video drivers', 'video driver', 'drivers', 'driver'],
     label: 'PC hardware & drivers',
     lanes: [{ platform: 'NVIDIA' }, { platform: 'AMD' }, { platform: 'Intel' }],
   },
