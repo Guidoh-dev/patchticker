@@ -403,6 +403,82 @@ function deriveInitialScore(platform, detected, context) {
   });
 }
 
+function buildInitialUpdate(platform, detected) {
+  const id = makeUpdateId(platform, detected.version);
+  const context = platformContext(platform, detected);
+  const score = deriveInitialScore(platform, detected, context);
+  return {
+    id,
+    platform,
+    name: detected.name,
+    version: detected.version,
+    displayVersion: detected.displayVersion || null,
+    sourceKind: detected.sourceKind || null,
+    sourceRef: detected.sourceRef || null,
+    productId: detected.productId || null,
+    releasedAt: detected.releasedAt,
+    status: deriveInitialStatus(score),
+    score,
+    impactScore: deriveDeterministicImpactScore({
+      changelog: context.changelog,
+      riskFactors: context.riskFactors,
+      securityCriticality: context.securityCriticality,
+    }),
+    bugCount: 0,
+    affects: context.affects,
+    verdict: context.verdict,
+    reasoning: context.reasoning,
+    changelog: context.changelog,
+    knownIssues: context.knownIssues,
+    riskFactors: context.riskFactors,
+    evidence: context.evidence,
+    securityCriticality: context.securityCriticality,
+    subreddits: PLATFORM_SUBREDDITS[platform] || [],
+  };
+}
+
+async function backfillRecentReleases(platform, detected) {
+  const recent = Array.isArray(detected?.recentReleases) ? detected.recentReleases : [];
+  const uniqueRecent = [...new Map(recent
+    .filter(release => release && release.version && release.version !== detected.version)
+    .filter(release => !release.platform || release.platform === platform)
+    .map(release => [String(release.version), release])).values()]
+    .slice(0, 8);
+  const result = {
+    scanned: uniqueRecent.length,
+    inserted: 0,
+    known: 0,
+    duplicates: 0,
+    rejected: 0,
+  };
+
+  for (const release of uniqueRecent) {
+    const known = await getKnownReleaseByVersion(platform, release.version, release);
+    if (known) {
+      result.known++;
+      continue;
+    }
+    try {
+      const inserted = await insertUpdate(buildInitialUpdate(platform, release));
+      if (inserted) result.inserted++;
+      else result.duplicates++;
+    } catch (error) {
+      if (error?.code !== 'UPDATE_VALIDATION_REJECTED') throw error;
+      result.rejected++;
+      logger.warn('[pipeline] Historical release rejected during source backfill', {
+        platform,
+        version: release.version,
+        reasons: error.errors,
+      });
+    }
+  }
+
+  if (result.scanned) {
+    logger.info('[pipeline] Official release history backfill checked', { platform, ...result });
+  }
+  return result;
+}
+
 // ── Platform subreddit map ────────────────────────────────────────────────────
 
 const PLATFORM_SUBREDDITS = {
@@ -455,6 +531,21 @@ async function processPlatform(detectorKey) {
   }
 
   const latestKnown = await getLatestKnownRelease(platform, detected);
+  // Some first-party ledgers publish several releases between successful
+  // scans. Persist those bounded historical records silently so the timeline
+  // stays complete, but never treat them as current releases or send alerts.
+  let backfill = { scanned: 0, inserted: 0, known: 0, duplicates: 0, rejected: 0 };
+  try {
+    backfill = await backfillRecentReleases(platform, detected);
+  } catch (error) {
+    // Historical completeness is best-effort. A transient read/write failure
+    // must never prevent the current release from being refreshed or emitted.
+    logger.warn('[pipeline] Official release history backfill failed without blocking current release', {
+      ...logCtx,
+      error: error.message,
+    });
+    backfill = { ...backfill, failed: true };
+  }
   const knownVersion = latestKnown?.version || null;
   if (knownVersion === detected.version) {
     try {
@@ -464,7 +555,7 @@ async function processPlatform(detectorKey) {
       return { platform, status: 'validation_rejected', version: detected.version, reasons: error.errors, latencyMs: detection.latencyMs, attempts: detection.attempts };
     }
     logger.info('[pipeline] Version unchanged — metadata refreshed', { ...logCtx, knownVersion });
-    return { platform, status: 'unchanged', version: detected.version, latencyMs: detection.latencyMs, attempts: detection.attempts };
+    return { platform, status: 'unchanged', version: detected.version, latencyMs: detection.latencyMs, attempts: detection.attempts, backfill };
   }
 
   // Vendor APIs and CDNs can briefly return a cached older artifact. Refresh
@@ -490,6 +581,7 @@ async function processPlatform(detectorKey) {
       currentVersion: knownVersion,
       latencyMs: detection.latencyMs,
       attempts: detection.attempts,
+      backfill,
     };
   }
 
@@ -507,6 +599,7 @@ async function processPlatform(detectorKey) {
       currentVersion: knownVersion,
       latencyMs: detection.latencyMs,
       attempts: detection.attempts,
+      backfill,
     };
   }
 
@@ -515,38 +608,8 @@ async function processPlatform(detectorKey) {
   // 3. Build initial update row with deterministic fallback scoring.
   // AI can refine this later, but the public feed should never default every
   // newly detected patch to 5/10 when an AI provider is unavailable.
-  const id = makeUpdateId(platform, detected.version);
-  const context = platformContext(platform, detected);
-  const initialScore = deriveInitialScore(platform, detected, context);
-  const initialImpactScore = deriveDeterministicImpactScore({
-    changelog: context.changelog,
-    riskFactors: context.riskFactors,
-    securityCriticality: context.securityCriticality,
-  });
-  const initialUpdate = {
-    id,
-    platform,
-    name:        detected.name,
-    version:     detected.version,
-    displayVersion: detected.displayVersion || null,
-    sourceKind:  detected.sourceKind || null,
-    sourceRef:   detected.sourceRef || null,
-    productId:   detected.productId || null,
-    releasedAt:  detected.releasedAt,
-    status:      deriveInitialStatus(initialScore),
-    score:       initialScore,
-    impactScore: initialImpactScore,
-    bugCount:    0,
-    affects:     context.affects,
-    verdict:     context.verdict,
-    reasoning:   context.reasoning,
-    changelog:   context.changelog,
-    knownIssues: context.knownIssues,
-    riskFactors: context.riskFactors,
-    evidence:    context.evidence,
-    securityCriticality: context.securityCriticality,
-    subreddits:  PLATFORM_SUBREDDITS[platform] || [],
-  };
+  const initialUpdate = buildInitialUpdate(platform, detected);
+  const id = initialUpdate.id;
 
   // 4. Insert into DB (ON CONFLICT DO NOTHING = idempotent)
   let inserted;
@@ -562,6 +625,7 @@ async function processPlatform(detectorKey) {
       reasons: error.errors,
       latencyMs: detection.latencyMs,
       attempts: detection.attempts,
+      backfill,
     };
   }
   if (!inserted) {
@@ -573,6 +637,7 @@ async function processPlatform(detectorKey) {
       id,
       latencyMs: detection.latencyMs,
       attempts: detection.attempts,
+      backfill,
     };
   }
   logger.info('[pipeline] Inserted new update', logCtx);
@@ -628,6 +693,7 @@ async function processPlatform(detectorKey) {
     aiRan:   aiApplied,
     latencyMs: detection.latencyMs,
     attempts: detection.attempts,
+    backfill,
   };
 }
 
@@ -707,6 +773,8 @@ module.exports = {
     updateWithAiResults,
     deriveInitialScore,
     deriveInitialStatus,
+    buildInitialUpdate,
+    backfillRecentReleases,
     isCanonicalPipelineRelease,
     isSourceVersionRegression,
     sourceLaneScope,

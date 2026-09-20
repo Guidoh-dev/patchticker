@@ -518,6 +518,24 @@ describe('scraper accuracy guards', () => {
         generalReleaseNotesPending: true,
       }),
     ]);
+    expect(parsed.recentReleases.map(release => release.version)).toEqual([
+      '153.0.4234.46',
+      '153.0.4234.32',
+    ]);
+    expect(parsed.recentReleases).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        platform: 'Edge',
+        name: 'Microsoft Edge Stable 153.0.4234.46',
+        releasedAt: '2026-09-17',
+        sourceKind: 'official-security-release',
+        sourceUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+        evidence: [expect.objectContaining({
+          releaseType: 'official-security-release',
+          publishedAt: '2026-09-17',
+        })],
+      }),
+    ]));
+    expect(parsed.recentReleases.some(release => /Android|iOS/i.test(release.name))).toBe(false);
   });
 
   test('Edge parser never regresses to an older security-ledger build when general Stable is newer', () => {

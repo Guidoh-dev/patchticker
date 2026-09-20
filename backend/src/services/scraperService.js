@@ -2572,6 +2572,67 @@ function trustedMicrosoftLearnUrl(value, expectedPath) {
   }
 }
 
+function edgeSecurityReleaseRecord(release, security$, securityUrl, options = {}) {
+  if (!release?.version || !release?.date || !release?.nodes) return null;
+  const cves = unique(release.nodes.find('a').map((_, link) => {
+    const match = cleanText(security$(link).text(), 80).match(/CVE-\d{4}-\d+/i);
+    return match?.[0]?.toUpperCase() || '';
+  }).get(), 32);
+  const activelyExploited = /exploit(?:ed)? in the wild/i.test(release.text || '');
+  const cveListPending = /CVE'?s will be added as soon as available/i.test(release.text || '');
+  const generalReleaseNotesPending = options.generalReleaseNotesPending === true;
+  const securityLevel = activelyExploited ? 'high' : 'medium';
+  const pendingCveText = cveListPending
+    ? 'Microsoft says the CVE list for this Stable release will be added when available.'
+    : '';
+
+  return {
+    platform: 'Edge',
+    name: `Microsoft Edge Stable ${release.version}`,
+    version: release.version,
+    releasedAt: release.date,
+    sourceKind: 'official-security-release',
+    affects: 'Microsoft Edge Stable / Windows / macOS / Linux / browser security / enterprise policy / WebView2 compatibility',
+    changelog: [
+      `Microsoft Edge ${release.version} was released to the Stable channel on ${release.date} with Chromium security updates.`,
+    ],
+    knownIssues: [],
+    knownIssuesSnapshotComplete: true,
+    knownIssuesAuthoritative: false,
+    riskFactors: pendingCveText ? [{ level: 'low', text: pendingCveText }] : [],
+    securityCriticality: {
+      level: securityLevel,
+      label: cves.length
+        ? `${cves.length} documented Edge security fix${cves.length === 1 ? '' : 'es'}`
+        : 'Chromium security updates included; CVE list pending',
+      cves,
+      totalCves: cves.length,
+      activelyExploited,
+      pendingVendorFix: false,
+    },
+    verdict: activelyExploited
+      ? 'Install promptly and restart Edge; Microsoft identifies an in-the-wild exploit fixed by this Stable release.'
+      : `Install Edge ${release.version} promptly and restart the browser to apply Microsoft’s documented Chromium security updates.`,
+    reasoning: `Microsoft’s security release ledger identifies Edge Stable ${release.version} dated ${release.date}.${generalReleaseNotesPending ? ' The broader Stable feature-notes page has not yet published a matching entry, so PatchTicker limits this record to the security facts Microsoft documents and does not reuse changes from another build.' : ' PatchTicker limits this historical record to the exact security facts Microsoft documents for this build.'}`,
+    evidence: sourceEvidence(
+      'Microsoft Edge Security Release Notes',
+      securityUrl,
+      `Edge Stable ${release.version}, released ${release.date}, incorporates Chromium security updates.${cveListPending ? ' Microsoft says CVE details are pending.' : ''}`,
+      {
+        dateBasis: 'released',
+        releaseType: 'official-security-release',
+        publishedAt: release.date,
+        releaseChannel: 'stable',
+        securityFixCount: cves.length,
+        cveListPending,
+        pendingVendorFix: false,
+        generalReleaseNotesPending,
+      }
+    ),
+    sourceUrl: securityUrl,
+  };
+}
+
 function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
   const stableUrl = String(urls.stableUrl || 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnote-stable-channel');
   const securityUrl = String(urls.securityUrl || 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security');
@@ -2672,65 +2733,24 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
   // not borrow feature notes from the older build.
   const latestSecurityRelease = stableSecurityReleases
     .sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || compareVersionParts(b.version, a.version))[0] || null;
+  const historyReferenceDate = latestSecurityRelease?.date || releasedAt;
+  const historyCutoff = Date.parse(historyReferenceDate) - (45 * 24 * 60 * 60 * 1000);
+  const recentSecurityReleases = stableSecurityReleases
+    .filter(release => Date.parse(release.date) >= historyCutoff)
+    .slice(0, 8)
+    .map(release => edgeSecurityReleaseRecord(release, security$, securityUrl, {
+      generalReleaseNotesPending: release.version !== version,
+    }))
+    .filter(Boolean);
   if (latestSecurityRelease
     && Date.parse(latestSecurityRelease.date) >= Date.parse(releasedAt)
     && compareVersionParts(latestSecurityRelease.version, version) > 0) {
-    const securityCves = unique(latestSecurityRelease.nodes.find('a').map((_, link) => {
-      const match = cleanText(security$(link).text(), 80).match(/CVE-\d{4}-\d+/i);
-      return match?.[0]?.toUpperCase() || '';
-    }).get(), 32);
-    const securityActivelyExploited = /exploit(?:ed)? in the wild/i.test(latestSecurityRelease.text);
-    const securityCveListPending = /CVE'?s will be added as soon as available/i.test(latestSecurityRelease.text);
-    const securityLevel = securityActivelyExploited ? 'high' : 'medium';
-    const securityVersion = latestSecurityRelease.version;
-    const securityDate = latestSecurityRelease.date;
-    const pendingCveText = securityCveListPending
-      ? 'Microsoft says the CVE list for this Stable release will be added when available.'
-      : '';
-
+    const latestRecord = edgeSecurityReleaseRecord(latestSecurityRelease, security$, securityUrl, {
+      generalReleaseNotesPending: true,
+    });
     return {
-      platform: 'Edge',
-      name: `Microsoft Edge Stable ${securityVersion}`,
-      version: securityVersion,
-      releasedAt: securityDate,
-      affects: 'Microsoft Edge Stable / Windows / macOS / Linux / browser security / enterprise policy / WebView2 compatibility',
-      changelog: [
-        `Microsoft Edge ${securityVersion} was released to the Stable channel on ${securityDate} with Chromium security updates.`,
-      ],
-      knownIssues: [],
-      knownIssuesSnapshotComplete: true,
-      knownIssuesAuthoritative: false,
-      riskFactors: pendingCveText ? [{ level: 'low', text: pendingCveText }] : [],
-      securityCriticality: {
-        level: securityLevel,
-        label: securityCves.length
-          ? `${securityCves.length} documented Edge security fix${securityCves.length === 1 ? '' : 'es'}`
-          : 'Chromium security updates included; CVE list pending',
-        cves: securityCves,
-        totalCves: securityCves.length,
-        activelyExploited: securityActivelyExploited,
-        pendingVendorFix: false,
-      },
-      verdict: securityActivelyExploited
-        ? 'Install promptly and restart Edge; Microsoft identifies an in-the-wild exploit fixed by this Stable release.'
-        : `Install Edge ${securityVersion} promptly and restart the browser to apply Microsoft’s documented Chromium security updates.`,
-      reasoning: `Microsoft’s security release ledger identifies Edge Stable ${securityVersion} dated ${securityDate}. The broader Stable feature-notes page has not yet published a matching entry, so PatchTicker limits this record to the security facts Microsoft currently documents and does not reuse changes from an older build.`,
-      evidence: sourceEvidence(
-        'Microsoft Edge Security Release Notes',
-        securityUrl,
-        `Edge Stable ${securityVersion}, released ${securityDate}, incorporates Chromium security updates.${securityCveListPending ? ' Microsoft says CVE details are pending.' : ''}`,
-        {
-          dateBasis: 'released',
-          releaseType: 'official-security-release',
-          publishedAt: securityDate,
-          releaseChannel: 'stable',
-          securityFixCount: securityCves.length,
-          cveListPending: securityCveListPending,
-          pendingVendorFix: false,
-          generalReleaseNotesPending: true,
-        }
-      ),
-      sourceUrl: securityUrl,
+      ...latestRecord,
+      recentReleases: recentSecurityReleases.filter(release => release.version !== latestRecord.version),
     };
   }
   if (!matchingSecuritySection) {
@@ -2799,6 +2819,7 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
       ...sourceEvidence('Microsoft Edge Security Release Notes', securityUrl, `Edge Stable ${version} incorporates Chromium security updates.${pendingText ? ` Microsoft posted a newer pending-fix notice on ${pendingNotice.date}.` : ''}`, { dateBasis: 'released', releaseType: 'official-security-release', publishedAt: releasedAt, releaseChannel: 'stable', securityFixCount: cves.length, cveListPending, pendingVendorFix: Boolean(pendingText), pendingNoticeAt: pendingNotice?.date || null }),
     ],
     sourceUrl: stableUrl,
+    recentReleases: recentSecurityReleases.filter(release => release.version !== version),
   };
 }
 

@@ -337,6 +337,112 @@ describe('pipeline source metadata preservation', () => {
     expect(liveFeedService.publishRelease).toHaveBeenCalledWith(expect.objectContaining({ platform: 'Steam' }));
   });
 
+  test('official recent history backfills missing releases without live events or subscriber alerts', async () => {
+    const detected = {
+      platform: 'Edge',
+      name: 'Microsoft Edge Stable 153.0.4234.48',
+      version: '153.0.4234.48',
+      releasedAt: '2026-09-18',
+      recentReleases: [
+        {
+          platform: 'Edge',
+          name: 'Microsoft Edge Stable 153.0.4234.46',
+          version: '153.0.4234.46',
+          sourceKind: 'official-security-release',
+          releasedAt: '2026-09-17',
+          changelog: ['Microsoft Edge 153.0.4234.46 includes Chromium security updates.'],
+          knownIssues: [],
+          riskFactors: [],
+          verdict: 'Install promptly and restart Edge.',
+          reasoning: 'Microsoft documents this exact Stable build in its security release ledger.',
+          evidence: [{
+            source: 'Microsoft Edge Security Release Notes',
+            url: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+            dateBasis: 'released',
+            publishedAt: '2026-09-17',
+            releaseType: 'official-security-release',
+          }],
+          sourceUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+        },
+        {
+          platform: 'Edge',
+          name: 'Microsoft Edge Stable 153.0.4234.32',
+          version: '153.0.4234.32',
+          sourceKind: 'official-security-release',
+          releasedAt: '2026-09-10',
+          changelog: ['Known historical Edge release.'],
+          verdict: 'Install through the Stable channel.',
+          reasoning: 'Already stored in the update timeline.',
+          evidence: [{
+            source: 'Microsoft Edge Security Release Notes',
+            url: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+            dateBasis: 'released',
+            publishedAt: '2026-09-10',
+            releaseType: 'official-security-release',
+          }],
+          sourceUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
+        },
+      ],
+    };
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 'edge-153-0-4234-46' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 'edge-153-0-4234-32' }] });
+
+    const result = await __test.backfillRecentReleases('Edge', detected);
+
+    expect(result).toEqual({ scanned: 2, inserted: 1, known: 1, duplicates: 0, rejected: 0 });
+    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(db.query.mock.calls[1][0]).toContain('INSERT INTO software_updates');
+    expect(db.query.mock.calls[1][1]).toEqual(expect.arrayContaining([
+      'edge-153-0-4234-46',
+      'Edge',
+      'Microsoft Edge Stable 153.0.4234.46',
+      '153.0.4234.46',
+    ]));
+    expect(liveFeedService.publishRelease).not.toHaveBeenCalled();
+    expect(watchlistService.notifySubscribers).not.toHaveBeenCalled();
+  });
+
+  test('a transient history backfill failure cannot block current-version refresh', async () => {
+    scraperService.detectPlatformDetailed.mockResolvedValue({
+      ok: true,
+      attempts: 1,
+      latencyMs: 25,
+      result: {
+        platform: 'Edge',
+        name: 'Microsoft Edge Stable 153.0.4234.48',
+        version: '153.0.4234.48',
+        releasedAt: '2026-09-18',
+        changelog: ['Current Edge security release.'],
+        evidence: [{ source: 'Microsoft', url: 'https://learn.microsoft.com/edge' }],
+        recentReleases: [{
+          platform: 'Edge',
+          name: 'Microsoft Edge Stable 153.0.4234.46',
+          version: '153.0.4234.46',
+          releasedAt: '2026-09-17',
+          changelog: ['Historical security release.'],
+          evidence: [{ source: 'Microsoft', url: 'https://learn.microsoft.com/edge-history' }],
+        }],
+      },
+    });
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 'edge-153-0-4234-48', version: '153.0.4234.48', released_at: '2026-09-18' }] })
+      .mockRejectedValueOnce(new Error('transient history read failure'))
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await processPlatform('Edge');
+
+    expect(result).toMatchObject({
+      status: 'unchanged',
+      version: '153.0.4234.48',
+      backfill: { failed: true },
+    });
+    expect(db.query.mock.calls[2][0]).toContain('UPDATE software_updates SET');
+    expect(liveFeedService.publishRelease).not.toHaveBeenCalled();
+    expect(watchlistService.notifySubscribers).not.toHaveBeenCalled();
+  });
+
   test('a cached historical version refreshes metadata without sending a new-update alert', async () => {
     scraperService.detectPlatformDetailed.mockResolvedValue({
       ok: true,
