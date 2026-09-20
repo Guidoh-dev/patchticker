@@ -72,9 +72,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: |
-            backend/package.json
-            frontend/package.json
+          cache-dependency-path: package-lock.json
 
       - name: Install backend dependencies
         working-directory: backend
@@ -127,7 +125,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: backend/package.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         working-directory: backend
@@ -158,7 +156,7 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
-          cache-dependency-path: backend/package.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         working-directory: backend
@@ -225,10 +223,9 @@ jobs:
         uses: google/osv-scanner-action/osv-scanner-action@6e4298ebc4db23e847df9b2e2de2939d6f066c67 # v2.5.1
         with:
           scan-args: |-
-            --lockfile=backend/package-lock.json
-            --lockfile=frontend/package-lock.json
+            --lockfile=package-lock.json
             --format=sarif
-            --output=osv-results.sarif
+            --output-file=osv-results.sarif
         continue-on-error: true
 
       # Upload SARIF to GitHub Security tab — visible in the repository's
@@ -248,6 +245,7 @@ jobs:
         with:
           name: osv-scan-results-${{ github.sha }}
           path: osv-results.sarif
+          if-no-files-found: error
           retention-days: 90
 
   # ── 5. CodeQL SAST ────────────────────────────────────────────────────────
