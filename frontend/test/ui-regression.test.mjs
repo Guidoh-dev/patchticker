@@ -676,6 +676,8 @@ test('source-depth labels distinguish full notes from version-only verification'
   assert.match(mainSource, /Package verified · notes limited/);
   assert.match(mainSource, /Official security advisory/);
   assert.match(mainSource, /Official release notes/);
+  assert.match(mainSource, /Official release page/);
+  assert.match(mainSource, /a separate complete changelog was not available/);
   assert.match(mainSource, /class="source-depth-signal source-depth-signal--\$\{H\(methodMeta\.tone\)\}"/);
   assert.match(mainSource, /detailSectionHeading\('03 · Release contents', detailMethodMeta\.heading/);
   assert.match(mainSource, /\$\{H\(detailMethodMeta\.note\)\}/);

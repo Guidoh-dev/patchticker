@@ -2472,6 +2472,10 @@ function analysisMethodMeta(update) {
       label: 'Official release notes', tone: 'full', heading: 'What changed',
       note: 'The items below were extracted from the vendor or publisher’s official release notes.',
     },
+    'official-release': {
+      label: 'Official release page', tone: 'source', heading: 'Published release details',
+      note: 'The items below are limited to details published on the vendor’s official release page; a separate complete changelog was not available.',
+    },
     'official-version': {
       label: 'Build verified · notes limited', tone: 'limited', heading: 'What the source confirms',
       note: 'The official manifest confirms this build and source date, but the vendor does not publish a complete per-build changelog.',

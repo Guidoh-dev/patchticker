@@ -1365,22 +1365,35 @@ function getStaticUpdates() {
 const db = require('../config/db');
 const { sourceKindFromEvidence } = require('../utils/sourceEvidence');
 
-function analysisMethodForEvidence(evidence = []) {
-  const releaseTypes = new Set(
-    (Array.isArray(evidence) ? evidence : [])
-      .map(item => String(item?.releaseType || '').toLowerCase())
-      .filter(Boolean)
-  );
-  if (releaseTypes.has('official-security-advisory') || releaseTypes.has('official-security-release')) {
+function analysisMethodForEvidence(evidence = [], sourceKind = null) {
+  const releaseTypes = new Set([
+    String(sourceKind || '').toLowerCase(),
+    String(sourceKindFromEvidence(evidence) || '').toLowerCase(),
+    ...(Array.isArray(evidence) ? evidence : [])
+      .flatMap(item => [item?.releaseType, item?.sourceKind])
+      .map(item => String(item || '').toLowerCase()),
+  ].filter(Boolean));
+  if ([...releaseTypes].some(kind => [
+    'official-security-advisory',
+    'official-security-release',
+    'official-security-index',
+  ].includes(kind))) {
     return 'official-security-advisory';
   }
-  if (releaseTypes.has('official-release-notes') || releaseTypes.has('official-game-update')) {
+  if ([...releaseTypes].some(kind => [
+    'official-release-notes',
+    'official-game-update',
+    'steam-game-news',
+    'steam-client-news',
+    'steam-deck-news',
+    'steamos-news',
+  ].includes(kind))) {
     return 'official-release-notes';
   }
+  if (releaseTypes.has('official-release')) return 'official-release';
   if (releaseTypes.has('official-artifact')) return 'official-artifact';
   if (releaseTypes.has('official-version')) return 'official-version';
-  if (releaseTypes.has('official-release')) return 'official-release-notes';
-  if (releaseTypes.size) return 'official-source';
+  if (releaseTypes.has('official-source') || releaseTypes.size) return 'official-source';
   return 'source-and-issue-signals';
 }
 
@@ -1458,6 +1471,7 @@ function rowToUpdate(row) {
     ? true
     : evidence.some(item => item?.whql === false) ? false : null;
   const score = scoreOrNull(row.score, { updateId: row.id, field: 'score' });
+  const sourceKind = row.source_kind || sourceKindFromEvidence(evidence);
   return {
     id:                   row.id,
     platform:             row.platform,
@@ -1465,7 +1479,7 @@ function rowToUpdate(row) {
     version:              row.display_version || row.version,
     internalVersion:      row.version,
     productId:            row.product_id || null,
-    sourceKind:           row.source_kind || sourceKindFromEvidence(evidence),
+    sourceKind,
     sourceRef:            row.source_ref || null,
     releaseSizeBytes,
     sizeBytes:            releaseSizeBytes,
@@ -1499,7 +1513,7 @@ function rowToUpdate(row) {
     aiGenerated:          row.ai_generated || false,
     aiModel:              row.ai_model || null,
     aiGeneratedAt:        row.ai_generated_at || null,
-    analysisMethod:       analysisMethodForEvidence(evidence),
+    analysisMethod:       analysisMethodForEvidence(evidence, sourceKind),
     createdAt:            row.created_at,
     firstSeenAt:          row.created_at,
     updatedAt:            row.updated_at,

@@ -103,7 +103,7 @@ test('successful database reads never mix static samples into the live feed', as
   expect(updates).toHaveLength(1);
   expect(updates[0]).toMatchObject({
     id: 'vendor-real-1-2-3',
-    analysisMethod: 'official-release-notes',
+    analysisMethod: 'official-release',
     firstSeenAt: '2026-08-10T12:00:00Z',
     updatedAt: '2026-08-11T11:00:00Z',
     knownIssuesAuthoritative: true,
@@ -117,8 +117,12 @@ test('source scope distinguishes full notes, security advisories, and version-on
   expect(classify([{ releaseType: 'official-release-notes' }])).toBe('official-release-notes');
   expect(classify([{ releaseType: 'official-game-update' }])).toBe('official-release-notes');
   expect(classify([{ releaseType: 'official-security-advisory' }])).toBe('official-security-advisory');
+  expect(classify([{ releaseType: 'official-security-index' }])).toBe('official-security-advisory');
+  expect(classify([{ releaseType: 'official-release' }])).toBe('official-release');
+  expect(classify([{ releaseType: 'official-version' }, { releaseType: 'official-release' }])).toBe('official-release');
   expect(classify([{ releaseType: 'official-version' }, { releaseType: 'official-download' }])).toBe('official-version');
   expect(classify([{ releaseType: 'official-artifact' }])).toBe('official-artifact');
+  expect(classify([{ url: 'https://vendor.example/release' }], 'official-source')).toBe('official-source');
   expect(classify([])).toBe('source-and-issue-signals');
 });
 
@@ -196,11 +200,12 @@ test('legacy rows expose a canonical source kind from their official evidence', 
   };
 
   expect(updatesService.__test.rowToUpdate(baseRow).sourceKind).toBe('official-security-advisory');
+  expect(updatesService.__test.rowToUpdate(baseRow).analysisMethod).toBe('official-security-advisory');
   expect(updatesService.__test.rowToUpdate({
     ...baseRow,
     id: 'legacy-artifact', platform: 'PS5',
     evidence: [{ url: 'https://playstation.com/system-software', releaseType: 'official-artifact' }],
-  }).sourceKind).toBe('official-artifact');
+  })).toMatchObject({ sourceKind: 'official-artifact', analysisMethod: 'official-artifact' });
 });
 
 test('legacy vendor-feed text is safely normalized when rows are hydrated', () => {
