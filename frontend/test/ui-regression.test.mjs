@@ -312,7 +312,8 @@ test('natural latest and current searches normalize intent before lane routing',
   assert.match(mainSource, /const framedQuery = stripSearchQuestionFraming\(queryWithoutStatus\)/);
   assert.match(mainSource, /queryWithoutStatus,[\s\S]*?framedQuery,[\s\S]*?stripLeadingSearchModifiers\(framedQuery\),[\s\S]*?stripSearchIntentStopwords\(framedQuery\)/);
   assert.match(mainSource, /SEARCH_QUESTION_SUFFIX_TERMS[\s\S]*?'safe'/);
-  assert.match(mainSource, /const LATEST_ONLY_SEARCH_TERMS = new Set\(\['latest', 'current', 'newest'\]\)/);
+  assert.match(mainSource, /const LATEST_ONLY_SEARCH_TERMS = new Set\(\['latest', 'current', 'newest', 'new'\]\)/);
+  assert.match(mainSource, /\\bwhat\['’\]s\\b/);
   assert.match(mainSource, /const latestOnly = hasLatestOnlySearchIntent\(query\)/);
   assert.match(mainSource, /if \(intent\.latestOnly\) filtered = latestUniqueUpdates\(filtered, releaseLaneKey\)/);
   assert.match(mainSource, /const recencyLabel = intent\.latestOnly \? 'Latest · ' : ''/);

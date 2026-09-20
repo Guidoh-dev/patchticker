@@ -508,7 +508,7 @@ test('conversational decision questions preserve the product and issue intent', 
     platform: 'AMD', semanticQuery: '', status: null, latestOnly: true,
   });
   expect(updatesService.__test.parseSearchIntent('is the new NVIDIA driver worth installing')).toMatchObject({
-    platform: 'NVIDIA', semanticQuery: '', status: null, latestOnly: false,
+    platform: 'NVIDIA', semanticQuery: '', status: null, latestOnly: true,
   });
   expect(updatesService.__test.parseSearchIntent('does NVIDIA driver crash in Fortnite')).toMatchObject({
     platform: 'NVIDIA', semanticQuery: 'crash in fortnite', status: null,
@@ -521,6 +521,21 @@ test('conversational decision questions preserve the product and issue intent', 
   });
   expect(updatesService.__test.parseSearchIntent('safe mode Windows update')).toMatchObject({
     platform: null, semanticQuery: 'safe mode windows', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('what changed in the latest Edge update')).toMatchObject({
+    platform: 'Edge', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent("what's new in Chrome")).toMatchObject({
+    platform: 'Chrome', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('what issues are in the latest Intel driver')).toMatchObject({
+    platform: 'Intel', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('what did the newest PS5 update add')).toMatchObject({
+    platform: 'PS5', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('is there a current Steam Deck update')).toMatchObject({
+    platform: 'Steam', sourceKind: 'steamos-news', semanticQuery: '', latestOnly: true,
   });
 });
 

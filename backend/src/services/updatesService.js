@@ -42,6 +42,7 @@ const SEARCH_ALIAS_GROUPS = [
 // not fuzzy matching: release versions, model numbers, and issue terms must
 // still match the verified record exactly enough to avoid invented results.
 const SEARCH_QUERY_CORRECTIONS = [
+  [/\bwhat['’]s\b/g, 'what is'],
   [/\bnvida\b/g, 'nvidia'],
   [/\bnivdia\b/g, 'nvidia'],
   [/\bnividia\b/g, 'nvidia'],
@@ -140,6 +141,9 @@ const SEARCH_QUESTION_PREFIX_TERMS = new Set([
   'what', 'which', 'how', 'show', 'find', 'give', 'tell', 'please', 'whether',
   'i', 'me', 'my', 'it', 'the', 'a', 'an', 'this', 'that', 'to',
   'safe', 'safely', 'recommended', 'okay', 'ok', 'good',
+  'there', 'in', 'about', 'with', 'from', 'for', 'on',
+  'change', 'changed', 'changes', 'new', 'issue', 'issues', 'problem', 'problems',
+  'bug', 'bugs', 'feature', 'features', 'difference', 'different', 'details', 'information', 'info',
   'use', 'using', 'install', 'installing', 'download', 'downloading',
   'get', 'getting', 'update', 'updating',
 ]);
@@ -151,8 +155,9 @@ const SEARCH_QUESTION_START_TERMS = new Set([
 const SEARCH_QUESTION_SUFFIX_TERMS = new Set([
   'safe', 'safely', 'recommended', 'okay', 'ok', 'good', 'worth', 'it', 'to',
   'use', 'using', 'install', 'installing', 'download', 'downloading',
+  'add', 'added', 'include', 'included', 'change', 'changed',
 ]);
-const LATEST_ONLY_SEARCH_TERMS = new Set(['latest', 'current', 'newest']);
+const LATEST_ONLY_SEARCH_TERMS = new Set(['latest', 'current', 'newest', 'new']);
 
 const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam desktop client', 'steam client'], platform: 'Steam', sourceKind: 'steam-client-news', label: 'Steam client' },
