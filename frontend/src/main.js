@@ -3809,9 +3809,13 @@ async function renderDashboard({ focusId = null } = {}) {
   function renderVerifiedFeedFallback(message = 'No community notes yet. Start with recently verified releases.') {
     const messagesEl = document.getElementById('feed-messages');
     if (!messagesEl || messagesEl.querySelector('.feed-msg')) return;
-    const recent = [..._allUpdates]
-      .sort((a, b) => new Date(b.releasedAt || 0) - new Date(a.releasedAt || 0))
-      .slice(0, 3);
+    // The release wire is a quick situational scan, not another chronological
+    // copy of the main feed. Keep one current item per platform so a burst of
+    // browser or Steam releases cannot consume the whole rail.
+    const recent = latestUniqueUpdates(
+      [..._allUpdates].sort((a, b) => Date.parse(preferredReleaseAt(b)) - Date.parse(preferredReleaseAt(a))),
+      update => update?.platform || 'unknown',
+    ).slice(0, 3);
     messagesEl.innerHTML = `
       <div class="feed-verified-list">
         <p class="feed-verified-intro">${H(message)}</p>

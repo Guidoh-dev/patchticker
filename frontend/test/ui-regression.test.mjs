@@ -529,6 +529,7 @@ test('an empty community feed becomes a verified-release activity rail', () => {
   assert.match(mainSource, /No community notes yet\. Start with recently verified releases\./);
   assert.match(mainSource, /Community notes are reconnecting\. These releases were recently verified\./);
   assert.match(mainSource, /function renderVerifiedFeedFallback/);
+  assert.match(mainSource, /const recent = latestUniqueUpdates\([\s\S]*?update => update\?\.platform \|\| 'unknown',[\s\S]*?\)\.slice\(0, 3\)/);
   assert.match(mainSource, /feed-verified-item/);
   assert.match(cssSource, /\.dash-aside \.feed-messages:has\(> \.feed-empty:only-child\)\s*\{[^}]*min-height:\s*104px/s);
   assert.match(cssSource, /\.feed-verified-item\s*\{[^}]*min-height:\s*54px/s);
