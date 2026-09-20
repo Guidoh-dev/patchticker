@@ -38,6 +38,22 @@ const SEARCH_ALIAS_GROUPS = [
   ['switch', 'nintendo switch', 'switch oled', 'switch lite'],
 ];
 
+// Release notes often use a different grammatical form than the person
+// searching them (for example, "application crash" vs. "driver crashes").
+// Expand only a small set of concrete failure terms. Product names, models,
+// versions, and general prose remain exact so relevance cannot drift into
+// fuzzy or invented matches.
+const SEARCH_ISSUE_INFLECTION_GROUPS = [
+  ['crash', 'crashes', 'crashed', 'crashing'],
+  ['stutter', 'stutters', 'stuttered', 'stuttering'],
+  ['freeze', 'freezes', 'froze', 'frozen', 'freezing'],
+  ['flicker', 'flickers', 'flickered', 'flickering'],
+];
+
+function expandSearchToken(token) {
+  return SEARCH_ISSUE_INFLECTION_GROUPS.find(group => group.includes(token)) || [token];
+}
+
 // Correct only common, unambiguous vendor-name mistakes. This is deliberately
 // not fuzzy matching: release versions, model numbers, and issue terms must
 // still match the verified record exactly enough to avoid invented results.
@@ -505,7 +521,8 @@ function buildSearchTermGroups(rawSearch) {
 
   const tokens = (query.match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [])
     .filter(token => token.length > 1 || /^\d+$/.test(token));
-  if (tokens.length > 1) return [...new Set(tokens)].map(token => [token]);
+  if (tokens.length > 1) return [...new Set(tokens)].map(expandSearchToken);
+  if (tokens.length === 1) return [expandSearchToken(tokens[0])];
   return [expandSearchTerms(query)];
 }
 
@@ -1954,6 +1971,7 @@ module.exports = {
     analysisMethodForEvidence,
     correctSearchQuery,
     expandSearchTerms,
+    expandSearchToken,
     buildSearchTermGroups,
     isReleaseIdentityQuery,
     exactPlatformForSearch,

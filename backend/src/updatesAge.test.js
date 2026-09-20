@@ -377,6 +377,19 @@ test('multi-part searches require every term while aliases remain alternatives',
     ['pro'],
   ]);
   expect(updatesService.__test.buildSearchTermGroups('m4')).toEqual([['m4']]);
+  expect(updatesService.__test.buildSearchTermGroups('arc driver crashes')).toEqual([
+    ['arc'],
+    ['driver'],
+    ['crash', 'crashes', 'crashed', 'crashing'],
+  ]);
+  expect(updatesService.__test.buildSearchTermGroups('driver stuttering')).toEqual([
+    ['driver'],
+    ['stutter', 'stutters', 'stuttered', 'stuttering'],
+  ]);
+  expect(updatesService.__test.buildSearchTermGroups('nvidia 616.92')).toEqual([
+    ['nvidia'],
+    ['616.92'],
+  ]);
 
   mockIsAvailable.mockReturnValue(true);
   mockQuery.mockResolvedValue({ rows: [] });
@@ -391,6 +404,21 @@ test('multi-part searches require every term while aliases remain alternatives',
     ['8974'],
     ['8974'],
   ]);
+});
+
+test('issue searches accept grammatical variants without fuzzy product matching', () => {
+  expect(updatesService.__test.expandSearchToken('crashes')).toEqual([
+    'crash', 'crashes', 'crashed', 'crashing',
+  ]);
+  expect(updatesService.__test.expandSearchToken('freezing')).toEqual([
+    'freeze', 'freezes', 'froze', 'frozen', 'freezing',
+  ]);
+  expect(updatesService.__test.expandSearchToken('616.92')).toEqual(['616.92']);
+  expect(updatesService.__test.expandSearchToken('b580')).toEqual(['b580']);
+  expect(updatesService.__test.searchDocumentContains(
+    'Some games may experience an application crash during launch.',
+    'crash'
+  )).toBe(true);
 });
 
 test('version-only searches cannot match incidental evidence dates or CVE identifiers', async () => {
