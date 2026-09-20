@@ -305,10 +305,15 @@ test('natural category searches map to explicit platform and release lanes', () 
 });
 
 test('natural latest and current searches normalize intent before lane routing', () => {
-  assert.match(mainSource, /const intentQueries = \[\.\.\.new Set\(\[query, stripSearchIntentStopwords\(query\)\]\.filter\(Boolean\)\)\];/);
+  assert.match(mainSource, /const SEARCH_STATUS_INTENTS = new Map/);
+  assert.match(mainSource, /function searchStatusIntent\(value\)/);
+  assert.match(mainSource, /function stripLeadingSearchModifiers\(value\)/);
+  assert.match(mainSource, /queryWithoutStatus,[\s\S]*?stripLeadingSearchModifiers\(queryWithoutStatus\),[\s\S]*?stripSearchIntentStopwords\(queryWithoutStatus\)/);
   assert.match(mainSource, /for \(const intentQuery of intentQueries\)/);
   assert.match(mainSource, /exactPlatformForSearch\(intentQuery\)/);
   assert.match(mainSource, /steamGameSearchIntent\(intentQuery\)/);
+  assert.match(mainSource, /if \(intent\.status && !status\) filtered = filtered\.filter\(u => u\.status === intent\.status\)/);
+  assert.match(mainSource, /const intentStatusLabel = intent\.status && !_filterState\.status/);
 });
 
 test('multi-part searches use strict all-term matching without phrase-order failures', () => {

@@ -483,9 +483,30 @@ test('natural latest and current queries route to one explicit release lane', ()
   expect(updatesService.__test.parseSearchIntent('latest browser updates')).toMatchObject({
     categoryLabel: 'Web browsers', semanticQuery: '',
   });
-  expect(updatesService.__test.parseSearchIntent('crash on NVIDIA')).toMatchObject({
-    platform: null, semanticQuery: 'crash on nvidia',
+  expect(updatesService.__test.parseSearchIntent('latest gpu driver')).toMatchObject({
+    categoryLabel: 'PC hardware & drivers', semanticQuery: '', status: null,
   });
+  expect(updatesService.__test.parseSearchIntent('stable console update')).toMatchObject({
+    categoryLabel: 'Console firmware', semanticQuery: '', status: 'stable',
+  });
+  expect(updatesService.__test.parseSearchIntent('crash on NVIDIA')).toMatchObject({
+    platform: null, semanticQuery: 'crash on nvidia', status: null,
+  });
+});
+
+test('natural status and category searches become strict SQL filters', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+
+  await updatesService.getUpdates({ search: 'stable console update', sort: 'relevance' });
+
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toMatch(/AND status = \$1/);
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$2\)/);
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$3\)/);
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$4\)/);
+  expect(sql).not.toContain('search_group_0');
+  expect(params).toEqual(['stable', 'Switch', 'Xbox', 'PS5']);
 });
 
 test('category searches select explicit ecosystem lanes instead of incidental prose mentions', async () => {

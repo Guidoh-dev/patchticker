@@ -120,6 +120,17 @@ const SEARCH_INTENT_STOPWORDS = new Set([
   'software', 'system',
 ]);
 
+// Status words inside natural-language search are first-class filters rather
+// than prose. Keeping them separate prevents a query such as "stable console
+// update" from searching release-note text for the word "stable" while still
+// respecting an explicit status chip when the user has selected one.
+const SEARCH_STATUS_INTENTS = new Map([
+  ['stable', 'stable'],
+  ['caution', 'caution'],
+  ['avoid', 'avoid'],
+]);
+const LEADING_SEARCH_MODIFIERS = new Set(['latest', 'current', 'recent', 'new', 'newest']);
+
 const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam desktop client', 'steam client'], platform: 'Steam', sourceKind: 'steam-client-news', label: 'Steam client' },
   { aliases: ['steam deck', 'steamdeck', 'steam os', 'steamos'], platform: 'Steam', sourceKind: 'steamos-news', label: 'SteamOS / Steam Deck' },
@@ -198,6 +209,23 @@ function stripIntentStopwords(value, platform = null) {
   return filtered.join(' ');
 }
 
+function searchStatusIntent(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  const matches = [...new Set(tokens.map(token => SEARCH_STATUS_INTENTS.get(token)).filter(Boolean))];
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function stripSearchStatusTerms(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  return tokens.filter(token => !SEARCH_STATUS_INTENTS.has(token)).join(' ');
+}
+
+function stripLeadingSearchModifiers(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  while (tokens.length && LEADING_SEARCH_MODIFIERS.has(tokens[0])) tokens.shift();
+  return tokens.join(' ');
+}
+
 function normaliseProductSearch(value) {
   const tokens = String(value || '').toLowerCase().normalize('NFKD').match(/[a-z0-9]+/g) || [];
   return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ').trim();
@@ -251,10 +279,19 @@ function parseSearchIntent(rawSearch) {
   const query = correctSearchQuery(rawSearch);
   if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
 
-  // First preserve the exact query, then try a navigation-only form with
-  // generic request words removed. This lets "latest Windows update" resolve
-  // to the Windows lane without turning "crash on NVIDIA" into navigation.
-  const intentQueries = [...new Set([query, stripIntentStopwords(query)].filter(Boolean))];
+  const status = searchStatusIntent(query);
+  const queryWithoutStatus = stripSearchStatusTerms(query);
+  const withStatus = intent => ({ ...intent, status });
+
+  // Preserve the exact words, then remove only leading recency modifiers
+  // before the broad stopword pass. The middle form retains category nouns
+  // such as "driver", allowing "latest GPU driver" to resolve to the hardware
+  // lanes without turning "crash on NVIDIA" into navigation intent.
+  const intentQueries = [...new Set([
+    queryWithoutStatus,
+    stripLeadingSearchModifiers(queryWithoutStatus),
+    stripIntentStopwords(queryWithoutStatus),
+  ].filter(Boolean))];
   for (const intentQuery of intentQueries) {
     for (const intent of SOURCE_SEARCH_INTENTS) {
       const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
@@ -262,31 +299,31 @@ function parseSearchIntent(rawSearch) {
       if (!alias) continue;
       const remainder = intentQuery.slice(alias.length).trim();
       const gameIntent = intent.sourceKind === 'steam-game-news' ? steamGameIntent(remainder) : null;
-      return gameIntent || {
+      return withStatus(gameIntent || {
         platform: intent.platform,
         sourceKind: intent.sourceKind,
         sourceLabel: intent.label,
         semanticQuery: stripIntentStopwords(remainder, intent.platform),
-      };
+      });
     }
 
     for (const intent of CATEGORY_SEARCH_INTENTS) {
       const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
         .find(candidate => intentQuery === candidate || intentQuery.startsWith(`${candidate} `));
       if (!alias) continue;
-      return {
+      return withStatus({
         platform: null,
         sourceKind: null,
         sourceLabel: null,
         categoryLabel: intent.label,
         lanes: intent.lanes,
         semanticQuery: stripIntentStopwords(intentQuery.slice(alias.length).trim()),
-      };
+      });
     }
 
     const exactPlatform = exactPlatformForSearch(intentQuery);
     if (exactPlatform) {
-      return { platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' };
+      return withStatus({ platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' });
     }
 
     const platformAlias = [...EXACT_PLATFORM_SEARCHES.entries()]
@@ -296,24 +333,24 @@ function parseSearchIntent(rawSearch) {
       const [alias, platform] = platformAlias;
       const remainder = intentQuery.slice(alias.length).trim();
       const gameIntent = platform === 'Steam' ? steamGameIntent(remainder) : null;
-      return gameIntent || {
+      return withStatus(gameIntent || {
         platform,
         sourceKind: null,
         sourceLabel: null,
         semanticQuery: stripIntentStopwords(remainder, platform),
-      };
+      });
     }
 
     const gameIntent = steamGameIntent(intentQuery);
-    if (gameIntent) return gameIntent;
+    if (gameIntent) return withStatus(gameIntent);
   }
 
-  return {
+  return withStatus({
     platform: null,
     sourceKind: null,
     sourceLabel: null,
-    semanticQuery: stripIntentStopwords(query),
-  };
+    semanticQuery: stripIntentStopwords(queryWithoutStatus),
+  });
 }
 
 const HARDWARE_SEARCH_PATTERNS = [
@@ -1465,6 +1502,10 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         query += ` AND status = $${params.length}`;
       }
       const searchIntent = resolveSearchPlan(parseSearchIntent(search), platform);
+      if (searchIntent.status && !status) {
+        params.push(searchIntent.status);
+        query += ` AND status = $${params.length}`;
+      }
       const searchPlatform = searchIntent.platform;
       if (searchPlatform && (!platform || platform.toLowerCase() !== searchPlatform.toLowerCase())) {
         params.push(searchPlatform);
@@ -1580,6 +1621,9 @@ async function getUpdates({ platform, status, sort, search } = {}) {
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
     const searchIntent = resolveSearchPlan(parseSearchIntent(search), platform);
+    if (searchIntent.status && !status) {
+      updates = updates.filter(u => u.status === searchIntent.status);
+    }
     if (searchIntent.platform) {
       updates = updates.filter(u => u.platform.toLowerCase() === searchIntent.platform.toLowerCase());
     }

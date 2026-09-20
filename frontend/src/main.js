@@ -1433,6 +1433,12 @@ const SEARCH_INTENT_STOPWORDS = new Set([
   'note', 'notes', 'version', 'versions', 'firmware', 'driver', 'drivers',
   'software', 'system',
 ]);
+const SEARCH_STATUS_INTENTS = new Map([
+  ['stable', 'stable'],
+  ['caution', 'caution'],
+  ['avoid', 'avoid'],
+]);
+const LEADING_SEARCH_MODIFIERS = new Set(['latest', 'current', 'recent', 'new', 'newest']);
 const SOURCE_SEARCH_INTENTS = [
   { aliases: ['steam desktop client', 'steam client'], platform: 'Steam', sourceKind: 'steam-client-news', label: 'Steam client' },
   { aliases: ['steam deck', 'steamdeck', 'steam os', 'steamos'], platform: 'Steam', sourceKind: 'steamos-news', label: 'SteamOS / Steam Deck' },
@@ -1672,6 +1678,23 @@ function stripSearchIntentStopwords(value, platform = null) {
   return filtered.join(' ');
 }
 
+function searchStatusIntent(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  const matches = [...new Set(tokens.map(token => SEARCH_STATUS_INTENTS.get(token)).filter(Boolean))];
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function stripSearchStatusTerms(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  return tokens.filter(token => !SEARCH_STATUS_INTENTS.has(token)).join(' ');
+}
+
+function stripLeadingSearchModifiers(value) {
+  const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
+  while (tokens.length && LEADING_SEARCH_MODIFIERS.has(tokens[0])) tokens.shift();
+  return tokens.join(' ');
+}
+
 function normaliseProductSearch(value) {
   const tokens = String(value || '').toLowerCase().normalize('NFKD').match(/[a-z0-9]+/g) || [];
   return tokens.filter(token => !SEARCH_INTENT_STOPWORDS.has(token)).join(' ').trim();
@@ -1715,7 +1738,15 @@ function searchIntentForQuery(raw) {
   const query = correctSearchQuery(raw);
   if (!query) return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: '' };
 
-  const intentQueries = [...new Set([query, stripSearchIntentStopwords(query)].filter(Boolean))];
+  const status = searchStatusIntent(query);
+  const queryWithoutStatus = stripSearchStatusTerms(query);
+  const withStatus = intent => ({ ...intent, status });
+
+  const intentQueries = [...new Set([
+    queryWithoutStatus,
+    stripLeadingSearchModifiers(queryWithoutStatus),
+    stripSearchIntentStopwords(queryWithoutStatus),
+  ].filter(Boolean))];
   for (const intentQuery of intentQueries) {
     for (const intent of SOURCE_SEARCH_INTENTS) {
       const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
@@ -1723,30 +1754,30 @@ function searchIntentForQuery(raw) {
       if (!alias) continue;
       const remainder = intentQuery.slice(alias.length).trim();
       const gameIntent = intent.sourceKind === 'steam-game-news' ? steamGameSearchIntent(remainder) : null;
-      return gameIntent || {
+      return withStatus(gameIntent || {
         platform: intent.platform,
         sourceKind: intent.sourceKind,
         sourceLabel: intent.label,
         semanticQuery: stripSearchIntentStopwords(remainder, intent.platform),
-      };
+      });
     }
 
     for (const intent of CATEGORY_SEARCH_INTENTS) {
       const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
         .find(candidate => intentQuery === candidate || intentQuery.startsWith(`${candidate} `));
       if (!alias) continue;
-      return {
+      return withStatus({
         platform: null,
         sourceKind: null,
         sourceLabel: null,
         categoryLabel: intent.label,
         lanes: intent.lanes,
         semanticQuery: stripSearchIntentStopwords(intentQuery.slice(alias.length).trim()),
-      };
+      });
     }
 
     const exactPlatform = exactPlatformForSearch(intentQuery);
-    if (exactPlatform) return { platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' };
+    if (exactPlatform) return withStatus({ platform: exactPlatform, sourceKind: null, sourceLabel: null, semanticQuery: '' });
 
     const platformAlias = [...EXACT_PLATFORM_SEARCHES.entries()]
       .sort(([a], [b]) => b.length - a.length)
@@ -1755,19 +1786,24 @@ function searchIntentForQuery(raw) {
       const [alias, platform] = platformAlias;
       const remainder = intentQuery.slice(alias.length).trim();
       const gameIntent = platform === 'Steam' ? steamGameSearchIntent(remainder) : null;
-      return gameIntent || {
+      return withStatus(gameIntent || {
         platform,
         sourceKind: null,
         sourceLabel: null,
         semanticQuery: stripSearchIntentStopwords(remainder, platform),
-      };
+      });
     }
 
     const gameIntent = steamGameSearchIntent(intentQuery);
-    if (gameIntent) return gameIntent;
+    if (gameIntent) return withStatus(gameIntent);
   }
 
-  return { platform: null, sourceKind: null, sourceLabel: null, semanticQuery: stripSearchIntentStopwords(query) };
+  return withStatus({
+    platform: null,
+    sourceKind: null,
+    sourceLabel: null,
+    semanticQuery: stripSearchIntentStopwords(queryWithoutStatus),
+  });
 }
 
 function updateSearchRelevance(update, query) {
@@ -3333,6 +3369,7 @@ async function renderDashboard({ focusId = null } = {}) {
     if (status)   filtered = filtered.filter(u => u.status   === status);
     if (search) {
       const intent = resolveSearchIntentForPlatform(searchIntentForQuery(search), platform);
+      if (intent.status && !status) filtered = filtered.filter(u => u.status === intent.status);
       if (intent.platform) filtered = filtered.filter(u => u.platform === intent.platform);
       if (intent.sourceKind) filtered = filtered.filter(u => u.sourceKind === intent.sourceKind);
       if (intent.productId) filtered = filtered.filter(u => String(u.productId || '') === intent.productId);
@@ -3424,6 +3461,9 @@ async function renderDashboard({ focusId = null } = {}) {
       _filterState.platform
     );
     const correctedSearch = searchCorrection(_filterState.search);
+    const intentStatusLabel = intent.status && !_filterState.status
+      ? `${intent.status[0].toUpperCase()}${intent.status.slice(1)} · `
+      : '';
     const statusText = intent.productId
       ? `Exact game · ${intent.sourceLabel} · ${resultCount} ${resultCount === 1 ? 'release' : 'releases'}`
       : intent.sourceKind
@@ -3435,7 +3475,8 @@ async function renderDashboard({ focusId = null } = {}) {
       : _searchMode === 'server'
       ? `Database search · ${resultCount} ${resultCount === 1 ? 'match' : 'matches'}`
       : `${resultCount} cached ${resultCount === 1 ? 'match' : 'matches'}`;
-    el.textContent = correctedSearch ? `Interpreted as “${correctedSearch}” · ${statusText}` : statusText;
+    const qualifiedStatusText = `${intentStatusLabel}${statusText}`;
+    el.textContent = correctedSearch ? `Interpreted as “${correctedSearch}” · ${qualifiedStatusText}` : qualifiedStatusText;
     el.className = 'dash-search-status is-ready';
     syncQuickbarFeedbackVisibility();
   }
