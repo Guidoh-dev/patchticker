@@ -680,7 +680,7 @@ test('detail pages distinguish vendor release, first-seen, and recheck timing', 
 test('feed distinguishes the latest release from archived platform history', () => {
   assert.match(mainSource, /function annotateReleasePositions\(updates = \[\]\)/);
   assert.match(mainSource, /releasePosition: latestByLane/);
-  assert.match(mainSource, /function releaseLaneKey\(update\)/);
+  assert.match(mainSource, /import \{ releaseLaneKey \} from '\.\/releaseLanes\.js'/);
   assert.match(mainSource, /sourceKind === 'steam-client-news'/);
   assert.match(mainSource, /sourceKind === 'steam-game-news'/);
   assert.match(mainSource, /Earlier release/);

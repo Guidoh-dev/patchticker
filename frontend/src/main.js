@@ -27,6 +27,7 @@ import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCan
 import { SETUP_LENSES, filterUpdatesBySetup } from './filterLogic.js';
 import { compatibilityProfileFromUpdate, evaluateCompatibility } from './compatibility.js';
 import { preferredReleaseAt, selectUpdateBrief } from './updateBrief.js';
+import { releaseLaneKey } from './releaseLanes.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -1567,11 +1568,6 @@ function releaseLaneLabel(update) {
   if (update?.sourceKind === 'steam-client-news') return 'Steam client';
   if (update?.platform === 'Steam' && /steam(?:os| deck)/i.test(`${update?.name || ''} ${update?.affects || ''}`)) return 'SteamOS / Steam Deck';
   return platformLabel(update?.platform);
-}
-
-function releaseLaneKey(update) {
-  const product = update?.productId || update?.sourceKind || 'platform';
-  return `${update?.platform || 'unknown'}:${product}`;
 }
 
 function discoveryLaneKey(update) {
