@@ -169,6 +169,7 @@ const SEARCH_QUESTION_SUFFIX_TERMS = new Set([
   'safe', 'safely', 'recommended', 'okay', 'ok', 'good', 'worth', 'it', 'to',
   'use', 'using', 'install', 'installing', 'download', 'downloading',
   'add', 'added', 'include', 'included', 'change', 'changed',
+  'known', 'issue', 'issues', 'problem', 'problems', 'bug', 'bugs',
 ]);
 const LATEST_ONLY_SEARCH_TERMS = new Set(['latest', 'current', 'newest', 'new']);
 

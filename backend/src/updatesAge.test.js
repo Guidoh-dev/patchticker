@@ -572,6 +572,21 @@ test('conversational decision questions preserve the product and issue intent', 
   });
 });
 
+test('trailing issue framing keeps the product identity without requiring the word issue', () => {
+  expect(updatesService.__test.parseSearchIntent('macos golden gate issues')).toMatchObject({
+    platform: 'macOS',
+    semanticQuery: 'golden gate',
+  });
+  expect(updatesService.__test.parseSearchIntent('windows printer issue')).toMatchObject({
+    platform: 'Windows',
+    semanticQuery: 'printer',
+  });
+  expect(updatesService.__test.parseSearchIntent('nvidia crash problem')).toMatchObject({
+    platform: 'NVIDIA',
+    semanticQuery: 'crash',
+  });
+});
+
 test('common product typos and decision language resolve without weakening exact searches', () => {
   expect(updatesService.__test.parseSearchIntent('edge update safe')).toMatchObject({
     platform: 'Edge', semanticQuery: '', status: null,
