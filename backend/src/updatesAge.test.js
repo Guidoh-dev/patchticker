@@ -570,6 +570,21 @@ test('common product typos and decision language resolve without weakening exact
   expect(updatesService.__test.parseSearchIntent('do not install intel driver')).toMatchObject({
     platform: 'Intel', semanticQuery: '', status: 'avoid',
   });
+  expect(updatesService.__test.parseSearchIntent('latest mac update')).toMatchObject({
+    platform: 'macOS', semanticQuery: '', latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('problems with latest nvidia driver')).toMatchObject({
+    platform: 'NVIDIA', semanticQuery: '', latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('known issues windows update')).toMatchObject({
+    platform: 'Windows', semanticQuery: '', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('amdd driver')).toMatchObject({
+    platform: 'AMD', semanticQuery: '', status: null,
+  });
+  expect(updatesService.__test.parseSearchIntent('windws update')).toMatchObject({
+    platform: 'Windows', semanticQuery: '', status: null,
+  });
 
   // These phrases carry real technical meaning, so they must stay strict rather
   // than becoming generic vendor navigation or a misleading status filter.

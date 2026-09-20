@@ -1385,6 +1385,7 @@ const SEARCH_QUERY_CORRECTIONS = [
   [/\bnivdia\b/g, 'nvidia'],
   [/\bnividia\b/g, 'nvidia'],
   [/\bnvidea\b/g, 'nvidia'],
+  [/\bamdd\b/g, 'amd'],
   [/\bge\s+force\b/g, 'geforce'],
   [/\bfire\s+fox\b/g, 'firefox'],
   [/\bfirefos\b/g, 'firefox'],
@@ -1396,6 +1397,7 @@ const SEARCH_QUERY_CORRECTIONS = [
   [/\bintell\b/g, 'intel'],
   [/\bmac\s+book\b/g, 'macbook'],
   [/\bipad\s*os\b/g, 'ipados'],
+  [/\bwindws\b/g, 'windows'],
   [/\bwindow\s*11\b/g, 'windows 11'],
   [/\bwindows\s*11\b/g, 'windows 11'],
   [/\bplay\s+station\s+5\b/g, 'playstation 5'],
@@ -1424,7 +1426,7 @@ function searchCorrection(raw) {
 const EXACT_PLATFORM_SEARCHES = new Map([
   ['amd', 'AMD'], ['radeon', 'AMD'], ['nvidia', 'NVIDIA'], ['geforce', 'NVIDIA'], ['game ready driver', 'NVIDIA'], ['intel', 'Intel'],
   ['apple', 'Apple'], ['ios', 'Apple'], ['ipados', 'Apple'],
-  ['macos', 'macOS'], ['mac os', 'macOS'],
+  ['macos', 'macOS'], ['mac os', 'macOS'], ['mac', 'macOS'],
   ['chrome', 'Chrome'], ['google chrome', 'Chrome'],
   ['firefox', 'Firefox'], ['mozilla firefox', 'Firefox'],
   ['edge', 'Edge'], ['microsoft edge', 'Edge'],
@@ -1457,7 +1459,7 @@ const SEARCH_QUESTION_PREFIX_TERMS = new Set([
   'i', 'me', 'my', 'it', 'the', 'a', 'an', 'this', 'that', 'to',
   'safe', 'safely', 'recommended', 'okay', 'ok', 'good',
   'there', 'in', 'about', 'with', 'from', 'for', 'on',
-  'change', 'changed', 'changes', 'new', 'issue', 'issues', 'problem', 'problems',
+  'change', 'changed', 'changes', 'new', 'known', 'issue', 'issues', 'problem', 'problems',
   'bug', 'bugs', 'feature', 'features', 'difference', 'different', 'details', 'information', 'info',
   'use', 'using', 'install', 'installing', 'download', 'downloading',
   'get', 'getting', 'update', 'updating',
@@ -1465,7 +1467,7 @@ const SEARCH_QUESTION_PREFIX_TERMS = new Set([
 const SEARCH_QUESTION_START_TERMS = new Set([
   'can', 'could', 'should', 'would', 'will', 'do', 'does', 'did', 'is', 'are', 'was', 'were',
   'what', 'which', 'how', 'show', 'find', 'give', 'tell', 'please', 'whether',
-  'use', 'install', 'download', 'get', 'update',
+  'use', 'install', 'download', 'get', 'update', 'known', 'issue', 'issues', 'problem', 'problems',
 ]);
 const SEARCH_QUESTION_SUFFIX_TERMS = new Set([
   'safe', 'safely', 'recommended', 'okay', 'ok', 'good', 'worth', 'it', 'to',

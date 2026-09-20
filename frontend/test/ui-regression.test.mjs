@@ -315,6 +315,10 @@ test('natural latest and current searches normalize intent before lane routing',
   assert.match(mainSource, /\[\/\\bfirfox\\b\/g, 'firefox'\]/);
   assert.match(mainSource, /\[\/\\bchrom\\b\/g, 'chrome'\]/);
   assert.match(mainSource, /\[\/\\bplaystaion\\b\/g, 'playstation'\]/);
+  assert.match(mainSource, /\[\/\\bamdd\\b\/g, 'amd'\]/);
+  assert.match(mainSource, /\[\/\\bwindws\\b\/g, 'windows'\]/);
+  assert.match(mainSource, /\['mac', 'macOS'\]/);
+  assert.match(mainSource, /'known', 'issue', 'issues', 'problem', 'problems'/);
   assert.match(mainSource, /\['wait', 'caution'\]/);
   assert.match(mainSource, /\['unsafe', 'avoid'\]/);
   assert.match(mainSource, /SEARCH_QUESTION_SUFFIX_TERMS[\s\S]*?'safe'/);
