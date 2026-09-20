@@ -43,6 +43,7 @@ const SEARCH_ALIAS_GROUPS = [
 // still match the verified record exactly enough to avoid invented results.
 const SEARCH_QUERY_CORRECTIONS = [
   [/\bwhat['’]s\b/g, 'what is'],
+  [/\bwhats\b/g, 'what is'],
   [/\bnvida\b/g, 'nvidia'],
   [/\bnivdia\b/g, 'nvidia'],
   [/\bnividia\b/g, 'nvidia'],

@@ -1380,6 +1380,7 @@ const SEARCH_ALIASES = {
 // mistakes without fuzzy-matching versions, models, or issue descriptions.
 const SEARCH_QUERY_CORRECTIONS = [
   [/\bwhat['’]s\b/g, 'what is'],
+  [/\bwhats\b/g, 'what is'],
   [/\bnvida\b/g, 'nvidia'],
   [/\bnivdia\b/g, 'nvidia'],
   [/\bnividia\b/g, 'nvidia'],

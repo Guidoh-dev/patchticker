@@ -13,6 +13,7 @@ jest.mock('./config/secrets', () => ({
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
 const updatesService = require('./services/updatesService');
+const { sanitizeInput } = require('./utils/sanitize');
 const originalNodeEnv = process.env.NODE_ENV;
 
 beforeEach(() => {
@@ -526,6 +527,14 @@ test('conversational decision questions preserve the product and issue intent', 
     platform: 'Edge', semanticQuery: '', status: null, latestOnly: true,
   });
   expect(updatesService.__test.parseSearchIntent("what's new in Chrome")).toMatchObject({
+    platform: 'Chrome', semanticQuery: '', status: null, latestOnly: true,
+  });
+  expect(updatesService.__test.parseSearchIntent('whats new in Chrome')).toMatchObject({
+    platform: 'Chrome', semanticQuery: '', status: null, latestOnly: true,
+  });
+  const sanitizedQuery = sanitizeInput({ search: "what's new in Chrome" }).search;
+  expect(sanitizedQuery).toBe('whats new in Chrome');
+  expect(updatesService.__test.parseSearchIntent(sanitizedQuery)).toMatchObject({
     platform: 'Chrome', semanticQuery: '', status: null, latestOnly: true,
   });
   expect(updatesService.__test.parseSearchIntent('what issues are in the latest Intel driver')).toMatchObject({
