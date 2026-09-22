@@ -120,7 +120,7 @@ jobs:
       # Uses the built-in GITHUB_TOKEN — no additional secrets needed.
       - name: Create vulnerability issue
         if: steps.parse.outputs.has_vulnerabilities == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const summary = `${{ steps.parse.outputs.summary }}`;
