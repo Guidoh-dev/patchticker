@@ -83,6 +83,7 @@ const cronService    = require('./services/cronService');
 const watchlistRouter  = require('./routes/watchlist');
 const ratingsRouter    = require('./routes/ratings');
 const accountRouter    = require('./routes/account');
+const { createPublicPagesRouter } = require('./routes/publicPages');
 
 const app = express();
 
@@ -174,6 +175,9 @@ const frontendIndex = path.join(frontendDistDir, 'index.html');
 
 if (shouldServeFrontend && fs.existsSync(frontendIndex)) {
   app.use(...frontendSecurityHeaders);
+  // Crawlable, source-backed release pages and a live sitemap must precede the
+  // Vite SPA fallback and its old static sitemap.xml.
+  app.use(createPublicPagesRouter());
   app.use(express.static(frontendDistDir, {
     fallthrough: true,
     index: 'index.html',

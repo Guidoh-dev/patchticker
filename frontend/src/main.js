@@ -5115,7 +5115,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
   });
 
   document.getElementById('share-update-btn')?.addEventListener('click', async () => {
-    const shareUrl = `${window.location.origin}${window.location.pathname}#/updates/${encodeURIComponent(u.id)}`;
+    const shareUrl = `${window.location.origin}/releases/${encodeURIComponent(u.id)}`;
     const shareData = { title: `${u.name} — PatchTicker`, text: u.verdict || `PatchTicker notes for ${u.name}`, url: shareUrl };
     try {
       if (navigator.share) await navigator.share(shareData);
@@ -5901,6 +5901,7 @@ function renderFooter() {
         <nav class="site-footer-nav">
           <a href="#/" class="site-footer-link">Home</a>
           <a href="#/updates" class="site-footer-link">Updates</a>
+          <a href="/releases" class="site-footer-link">Release notes</a>
           <a href="#/pricing" class="site-footer-link">Pricing</a>
           <a href="#/about" class="site-footer-link">About</a>
           <a href="#/privacy" class="site-footer-link">Privacy Policy</a>
