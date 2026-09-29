@@ -58,6 +58,25 @@ describe('scraper accuracy guards', () => {
     });
   });
 
+  test('Windows history only reads the active OS version, not neighboring sidebar releases', () => {
+    const $ = cheerio.load(`
+      <div class="learnRenderLeftNavCategory"><a>Windows 11, version 26H1</a>
+        <a href="../../2026/09/kb5124006-windows-11-26h1-update">September 22, 2026—KB5124006 Preview</a>
+      </div>
+      <div class="learnRenderLeftNavCategory learnRenderLeftNavActiveCategory">
+        <a>Windows 11, version 25H2</a>
+        <a href="../../2026/09/kb5124010-windows-11-24h2-25h2-update">September 22, 2026—KB5124010 Preview</a>
+        <a href="../../2026/09/kb5129195-windows-11-24h2-25h2-security-update">September 14, 2026—KB5129195 Out-of-band</a>
+      </div>
+    `);
+    const url = 'https://support.microsoft.com/en-us/servicing/os/windows-11/2025/07/windows-11-version-25h2-update-history';
+    const releases = __test.parseWindowsHistoryCandidates($, url, '25H2');
+    expect(releases.map(release => release.kb)).toEqual(['KB5124010', 'KB5129195']);
+    expect(releases[0]).toMatchObject({ scope: '25H2', isPreview: true, releasedAt: '2026-09-22' });
+    expect(releases[0].sourceUrl).toMatch(/support\.microsoft\.com\/en-us\/servicing\/os\/windows-11\/2026\/09\/kb5124010/);
+    expect(__test.parseWindowsHistoryCandidates($, url, '26H1')).toEqual([]);
+  });
+
   test('Windows note cleanup removes historical preview titles and false known-issue language', () => {
     expect(__test.normalizeWindowsDetailNotes([
       'This update includes new features and quality improvements that were part of the following update:',

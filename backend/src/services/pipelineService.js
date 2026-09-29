@@ -48,6 +48,14 @@ function makeUpdateId(platform, version) {
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
 const SOURCE_REGRESSION_TOLERANCE_MS = 36 * 60 * 60 * 1000;
+const MAX_NEW_RELEASE_ALERT_AGE_MS = 72 * 60 * 60 * 1000;
+
+function isTimelyReleaseAlert(releasedAt, now = Date.now()) {
+  const releaseMs = Date.parse(releasedAt || '');
+  return Number.isFinite(releaseMs)
+    && releaseMs <= now + 24 * 60 * 60 * 1000
+    && now - releaseMs <= MAX_NEW_RELEASE_ALERT_AGE_MS;
+}
 const MONTH_PLACEHOLDER_PLATFORMS = new Set(['BattleNet', 'GOG', 'Xbox']);
 // Internal ingestion lanes can share a public platform without becoming a
 // second filter, watchlist key, or database platform. Steam Deck/SteamOS is
@@ -461,6 +469,9 @@ async function backfillRecentReleases(platform, detected) {
     const known = await getKnownReleaseByVersion(platform, release.version, release);
     if (known) {
       result.known++;
+      // Scope corrections to Microsoft's official history must repair older
+      // 26H1 rows too, not only insert newly discovered 24H2/25H2 releases.
+      if (platform === 'Windows') await updateExistingMetadata(platform, release.version, release);
       continue;
     }
     try {
@@ -673,11 +684,13 @@ async function processPlatform(detectorKey) {
   // Keep signed-in dashboard sessions current without exposing internal logs.
   // The public event contains only the same release identity already available
   // through the update API; source payloads and server diagnostics stay private.
-  liveFeedService.publishRelease(initialUpdate);
+  if (isTimelyReleaseAlert(initialUpdate.releasedAt)) {
+    liveFeedService.publishRelease(initialUpdate);
+  }
 
   // 6. Fire watchlist alerts to subscribed Pro users
   try {
-    await watchlistService.notifySubscribers(platform, {
+    if (isTimelyReleaseAlert(initialUpdate.releasedAt)) await watchlistService.notifySubscribers(platform, {
       id:      id,
       name:    initialUpdate.name,
       version: initialUpdate.version,
@@ -780,6 +793,7 @@ module.exports = {
     deriveInitialStatus,
     buildInitialUpdate,
     backfillRecentReleases,
+    isTimelyReleaseAlert,
     isCanonicalPipelineRelease,
     isSourceVersionRegression,
     sourceLaneScope,

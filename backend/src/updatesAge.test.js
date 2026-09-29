@@ -835,7 +835,7 @@ test('search relevance favors direct product matches over incidental patch-note 
   expect(updatesService.__test.searchRelevanceScore(incidentalSteamRelease, terms)).toBe(30);
 });
 
-test('security search favors documented fixes over newer optional previews, without changing date sorting', async () => {
+test('security search requires documented fixes before latest/date sorting', async () => {
   const shared = { platform: 'Windows', name: 'Windows 11 update', affects: 'Windows 11 security and stability', changelog: [] };
   const preview = { ...shared, version: 'KB5124006', securityCriticality: { level: 'none' } };
   const security = { ...shared, version: 'KB5129194', securityCriticality: { level: 'medium' } };
@@ -849,12 +849,17 @@ test('security search favors documented fixes over newer optional previews, with
   mockIsAvailable.mockReturnValue(true);
   mockQuery.mockResolvedValue({ rows: [] });
   await updatesService.getUpdates({ search: 'Windows 11 security update', sort: 'relevance' });
-  expect(mockQuery.mock.calls[0][0]).toContain('security_criticality');
-  expect(mockQuery.mock.calls[0][0]).toContain('THEN 180 ELSE 0 END');
+  expect(mockQuery.mock.calls[0][0]).toMatch(/AND \(\s*\(LOWER\(COALESCE\(security_criticality/);
+  expect(mockQuery.mock.calls[0][1]).toContainEqual(['11']);
 
   mockQuery.mockClear();
-  await updatesService.getUpdates({ search: 'Windows 11 security update', sort: 'date_desc' });
-  expect(mockQuery.mock.calls[0][0]).not.toContain('THEN 180 ELSE 0 END');
+  await updatesService.getUpdates({ search: 'latest Windows security update', sort: 'date_desc' });
+  expect(mockQuery.mock.calls[0][0]).toMatch(/AND \(\s*\(LOWER\(COALESCE\(security_criticality/);
+  expect(mockQuery.mock.calls[0][0]).toMatch(/ORDER BY released_at DESC/);
+  expect(updatesService.__test.documentedSecuritySignal({ securityCriticality: { level: 'none' } })).toBe(false);
+  expect(updatesService.__test.documentedSecuritySignal({ securityCriticality: { level: 'low', label: 'No Security Patches' } })).toBe(false);
+  expect(updatesService.__test.documentedSecuritySignal({ securityCriticality: { level: 'high', label: 'Documented fixes' } })).toBe(true);
+  expect(updatesService.__test.stripSecurityIntentTerms('11 security update')).toBe('11 update');
 });
 
 test('decision questions do not silently become status-only searches', async () => {

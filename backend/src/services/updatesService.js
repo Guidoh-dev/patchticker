@@ -637,10 +637,25 @@ function securitySearchIntent(query) {
     && !isReleaseIdentityQuery(query);
 }
 
+function stripSecurityIntentTerms(query) {
+  return String(query || '')
+    .replace(/\b(?:security|vulnerabilit(?:y|ies)|exploits?|exploited|zero[ -]?day)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const DOCUMENTED_SECURITY_SQL = `(
+  (LOWER(COALESCE(security_criticality->>'level', 'none')) IN ('low', 'medium', 'high', 'critical')
+    AND LOWER(COALESCE(security_criticality->>'label', '')) NOT LIKE 'no security%')
+  OR (security_criticality->>'totalCves') ~ '^[1-9][0-9]*$'
+  OR jsonb_path_exists(COALESCE(evidence, '[]'::jsonb), '$[*] ? (@.securityFixCount > 0)')
+)`;
+
 function documentedSecuritySignal(update) {
   const security = update?.securityCriticality || update?.security_criticality;
   const level = String(security?.level || '').toLowerCase();
-  return (level && !['none', 'unknown', 'unverified'].includes(level))
+  return (['low', 'medium', 'high', 'critical'].includes(level)
+    && !/^no security/i.test(String(security?.label || '')))
     || Number(security?.totalCves) > 0
     || jsonArray(update?.evidence).some(item => Number(item?.securityFixCount) > 0);
 }
@@ -1640,6 +1655,10 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         query += ` AND status = $${params.length}`;
       }
       const searchIntent = resolveSearchPlan(parseSearchIntent(search), platform);
+      const securityIntent = securitySearchIntent(searchIntent.semanticQuery);
+      const semanticQuery = securityIntent
+        ? stripSecurityIntentTerms(searchIntent.semanticQuery)
+        : searchIntent.semanticQuery;
       if (searchIntent.status && !status) {
         params.push(searchIntent.status);
         query += ` AND status = $${params.length}`;
@@ -1667,9 +1686,14 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         });
         query += ` AND (${laneClauses.join(' OR ')})`;
       }
-      const searchGroups = buildSearchTermGroups(searchIntent.semanticQuery);
+      // A security query is a request for documented fixes, not a text hit on
+      // generic prose such as "security and quality updates". Apply this
+      // before latest-only narrowing so an optional preview cannot displace
+      // the most recent actual security release.
+      if (securityIntent) query += ` AND ${DOCUMENTED_SECURITY_SQL}`;
+      const searchGroups = buildSearchTermGroups(semanticQuery);
       if (searchGroups.length) {
-        const searchDocument = isReleaseIdentityQuery(searchIntent.semanticQuery)
+        const searchDocument = isReleaseIdentityQuery(semanticQuery)
           ? `LOWER(CONCAT_WS(' ', name, version, COALESCE(display_version, '')))`
           : `LOWER(CONCAT_WS(' ',
               name, platform, version, COALESCE(display_version, ''),
@@ -1697,13 +1721,6 @@ async function getUpdates({ platform, status, sort, search } = {}) {
             SELECT 1 FROM unnest(${patternParam}::text[]) AS ranking_term(term)
             WHERE POSITION(${normalizedSqlTerm('ranking_term.term')} IN CONCAT(' ', TRIM(REGEXP_REPLACE(LOWER(COALESCE(${field}, '')), '[^a-z0-9]+', ' ', 'g')), ' ')) > 0
           )`;
-          const securityBonusSql = securitySearchIntent(searchIntent.semanticQuery)
-            ? ` + CASE WHEN (
-                LOWER(COALESCE(security_criticality->>'level', 'none')) NOT IN ('none', 'unknown', 'unverified')
-                OR (security_criticality->>'totalCves') ~ '^[1-9][0-9]*$'
-                OR jsonb_path_exists(COALESCE(evidence, '[]'::jsonb), '$[*] ? (@.securityFixCount > 0)')
-              ) THEN 180 ELSE 0 END`
-            : '';
           relevanceOrder = `(GREATEST(
             CASE WHEN ${fieldContainsTerm('name')} THEN 100 ELSE 0 END,
             CASE WHEN ${fieldContainsTerm('platform')} THEN 85 ELSE 0 END,
@@ -1716,7 +1733,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
             CASE WHEN ${fieldContainsTerm('known_issues::text')} THEN 30 ELSE 0 END,
             CASE WHEN ${fieldContainsTerm('risk_factors::text')} THEN 25 ELSE 0 END,
             CASE WHEN ${fieldContainsTerm('evidence::text')} THEN 20 ELSE 0 END
-          )${securityBonusSql}) DESC, `;
+          )) DESC, `;
         }
       }
 
@@ -1767,6 +1784,10 @@ async function getUpdates({ platform, status, sort, search } = {}) {
   if (status)   updates = updates.filter(u => u.status === status);
   if (search) {
     const searchIntent = resolveSearchPlan(parseSearchIntent(search), platform);
+    const securityIntent = securitySearchIntent(searchIntent.semanticQuery);
+    const semanticQuery = securityIntent
+      ? stripSecurityIntentTerms(searchIntent.semanticQuery)
+      : searchIntent.semanticQuery;
     if (searchIntent.status && !status) {
       updates = updates.filter(u => u.status === searchIntent.status);
     }
@@ -1784,10 +1805,11 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         update.platform === lane.platform && (!lane.sourceKind || update.sourceKind === lane.sourceKind)
       ));
     }
-    const groups = buildSearchTermGroups(searchIntent.semanticQuery);
+    if (securityIntent) updates = updates.filter(documentedSecuritySignal);
+    const groups = buildSearchTermGroups(semanticQuery);
     if (groups.length) {
       updates = updates.filter(u => {
-        const document = (isReleaseIdentityQuery(searchIntent.semanticQuery)
+        const document = (isReleaseIdentityQuery(semanticQuery)
           ? [u.name, u.version, u.internalVersion]
           : [
               u.name, u.platform, u.version, u.internalVersion, u.productId,
@@ -2018,6 +2040,7 @@ module.exports = {
     searchDocumentContains,
     searchRelevanceScore,
     securitySearchIntent,
+    stripSecurityIntentTerms,
     documentedSecuritySignal,
   },
 };

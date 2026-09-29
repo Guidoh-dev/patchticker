@@ -1649,90 +1649,89 @@ function parseRssItems(xml, limit = 5) {
  * reads the official update-history index and then opens the newest KB detail
  * page for release notes / known issues context.
  */
-async function detectWindows() {
-  const historyUrls = [
-    'https://support.microsoft.com/en-us/servicing/os/windows-11/2025/07/windows-11-version-25h2-update-history',
-    'https://support.microsoft.com/en-us/servicing/os/windows-11/2024/09/windows-11-version-24h2-update-history',
-  ];
+function parseWindowsHistoryCandidates($, historyUrl, scope) {
+  // Microsoft renders every Windows version in the same sidebar. Only the
+  // active category belongs to this history URL; a page-wide KB selector can
+  // silently replace mainstream 25H2 updates with 26H1-only releases.
+  const active = $('.learnRenderLeftNavActiveCategory');
+  const activeTitle = cleanText(active.find('a').first().text(), 80);
+  if (active.length !== 1 || !activeTitle.includes(scope)) return [];
+  const candidates = [];
+  active.find('a[href]').each((_, anchor) => {
+    const title = cleanText($(anchor).text(), 180);
+    if (!/KB\d{7}/i.test(title) || /\.NET Framework|Dynamic Update|Safe OS|Setup Dynamic/i.test(title)) return;
+    const kb = title.match(/KB\d{7}/i)?.[0]?.toUpperCase();
+    const releasedAt = toIsoDate(title.match(/[A-Z][a-z]+\s+\d{1,2},\s+20\d{2}/)?.[0]);
+    const sourceUrl = absoluteUrl($(anchor).attr('href'), historyUrl);
+    if (!kb || !releasedAt || !sourceUrl.startsWith('https://support.microsoft.com/')) return;
+    candidates.push({ title, kb, releasedAt, sourceUrl, scope, isPreview: /\bpreview\b/i.test(title) });
+  });
+  return [...new Map(candidates.map(candidate => [candidate.kb, candidate])).values()]
+    .sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt));
+}
 
+async function windowsReleaseFromCandidate(update) {
+  let changelog = [];
+  let knownIssues = [];
+  let knownIssuesAuthoritative = false;
   try {
-    const candidates = [];
-
-    for (const historyUrl of historyUrls) {
-      const html = await fetchHtml(historyUrl);
-      const $ = cheerio.load(html);
-
-      $('a[href*="/kb"], a[href*="KB"], a[href*="-kb"]').each((_, a) => {
-        const title = cleanText($(a).text(), 180);
-        if (!/KB\d{7}/i.test(title)) return;
-        if (/\.NET Framework|Dynamic Update|Safe OS|Setup Dynamic/i.test(title)) return;
-
-        const kb = title.match(/KB\d{7}/i)?.[0]?.toUpperCase();
-        const dateText = title.match(/[A-Z][a-z]+\s+\d{1,2},\s+20\d{2}/)?.[0];
-        candidates.push({
-          title,
-          kb,
-          releasedAt: toIsoDate(dateText),
-          sourceUrl: absoluteUrl($(a).attr('href'), historyUrl),
-          isPreview: /preview/i.test(title),
-        });
-      });
+    const detail = cheerio.load(await fetchHtml(update.sourceUrl));
+    changelog = sectionBullets(detail, ['Highlights', 'Improvements', 'This update'], 5);
+    knownIssues = parseWindowsKnownIssues(detail, 8);
+    knownIssuesAuthoritative = true;
+    if (!changelog.length) {
+      const firstBody = cleanText(detail('main p, article p').first().text(), 260);
+      if (firstBody) changelog = [firstBody];
     }
+  } catch (detailErr) {
+    logger.warn('[scraper] Windows detail page parse failed', { error: detailErr.message, url: update.sourceUrl });
+  }
+  ({ changelog, knownIssues } = normalizeWindowsDetailNotes(changelog, knownIssues));
+  const previewNote = update.isPreview
+    ? 'This is a Microsoft preview update; preview releases are generally optional and should be reviewed before broad installation.'
+    : 'This is an official Microsoft cumulative update; review the KB page for deployment notes and known issues.';
+  const securityCriticality = microsoftSecurityCriticality(update.title, update.sourceUrl);
+  return {
+    platform: 'Windows',
+    name: `Windows 11 ${update.scope} ${update.title}`.slice(0, 140),
+    version: update.kb,
+    releasedAt: update.releasedAt,
+    affects: update.scope === '26H1'
+      ? 'Windows 11 version 26H1 / select new-silicon devices only / cumulative OS servicing'
+      : 'Windows 11 versions 24H2 and 25H2 / cumulative OS servicing',
+    changelog: unique([previewNote, ...changelog]).slice(0, 6),
+    knownIssues,
+    knownIssuesAuthoritative,
+    securityCriticality,
+    evidence: sourceEvidence('Microsoft Support', update.sourceUrl, update.title, {
+      dateBasis: 'released',
+      publishedAt: update.releasedAt,
+      releaseType: securityCriticality.level !== 'none' ? 'official-security-release' : 'official-release',
+      knownIssuesAuthoritative,
+    }),
+    sourceUrl: update.sourceUrl,
+  };
+}
 
-    const uniqueByKb = new Map();
-    for (const c of candidates) {
-      if (!uniqueByKb.has(c.kb)) uniqueByKb.set(c.kb, c);
-    }
-
-    const sorted = [...uniqueByKb.values()].sort((a, b) => {
-      const dateDelta = new Date(b.releasedAt) - new Date(a.releasedAt);
-      if (dateDelta !== 0) return dateDelta;
-      return Number(a.isPreview) - Number(b.isPreview);
-    });
-
-    const update = sorted[0];
-    if (!update) return null;
-
-    let changelog = [];
-    let knownIssues = [];
-    try {
-      const detailHtml = await fetchHtml(update.sourceUrl);
-      const detail = cheerio.load(detailHtml);
-      changelog = sectionBullets(detail, ['Highlights', 'Improvements', 'This update'], 5);
-      knownIssues = parseWindowsKnownIssues(detail, 8);
-      if (!changelog.length) {
-        const firstBody = cleanText(detail('main p, article p').first().text(), 260);
-        if (firstBody) changelog = [firstBody];
-      }
-    } catch (detailErr) {
-      logger.warn('[scraper] Windows detail page parse failed', { error: detailErr.message, url: update.sourceUrl });
-    }
-
-    ({ changelog, knownIssues } = normalizeWindowsDetailNotes(changelog, knownIssues));
-
-    const previewNote = update.isPreview
-      ? 'This is a Microsoft preview update; preview releases are generally optional and should be reviewed before broad installation.'
-      : 'This is an official Microsoft cumulative update; review the KB page for deployment notes and known issues.';
-    const securityCriticality = microsoftSecurityCriticality(update.title, update.sourceUrl);
-    const isSecurityUpdate = securityCriticality.level !== 'none';
-
-    return {
-      platform:   'Windows',
-      name:       `Windows 11 ${update.title}`.slice(0, 140),
-      version:    update.kb,
-      releasedAt: update.releasedAt,
-      affects:    'Windows 11 supported releases / cumulative OS servicing / security and quality updates',
-      changelog:  unique([previewNote, ...changelog]).slice(0, 6),
-      knownIssues,
-      knownIssuesAuthoritative: true,
-      securityCriticality,
-      evidence:   sourceEvidence('Microsoft Support', update.sourceUrl, update.title, {
-        dateBasis: 'released',
-        publishedAt: update.releasedAt,
-        releaseType: isSecurityUpdate ? 'official-security-release' : 'official-release',
-      }),
-      sourceUrl:  update.sourceUrl,
-    };
+async function detectWindows() {
+  const histories = [
+    ['25H2', 'https://support.microsoft.com/en-us/servicing/os/windows-11/2025/07/windows-11-version-25h2-update-history'],
+    ['26H1', 'https://support.microsoft.com/en-us/servicing/os/windows-11/2026/02/windows-11-version-26h1-update-history'],
+  ];
+  try {
+    const candidatesByScope = await Promise.all(histories.map(async ([scope, url]) => {
+      const $ = cheerio.load(await fetchHtml(url));
+      return parseWindowsHistoryCandidates($, url, scope);
+    }));
+    // Both lists are mandatory: silently dropping one would recreate the
+    // platform-coverage gap while still reporting a healthy Windows scan.
+    if (candidatesByScope.some(candidates => candidates.length < 2)) return null;
+    const selected = [
+      ...candidatesByScope[0].slice(0, 3),
+      ...candidatesByScope[1].slice(0, 3),
+    ];
+    const releases = await Promise.all(selected.map(windowsReleaseFromCandidate));
+    return { ...releases[0], recentReleases: releases.slice(1) };
   } catch (err) {
     logger.warn('[scraper] Windows detection failed', { error: err.message });
     return null;
@@ -3280,5 +3279,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, parseWindowsHistoryCandidates, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
 };

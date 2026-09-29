@@ -303,6 +303,7 @@ describe('pipeline source metadata preservation', () => {
   });
 
   test('internal Steam Deck detection persists and notifies as public Steam', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-07-17T18:00:00Z'));
     scraperService.detectPlatformDetailed.mockResolvedValue({
       ok: true,
       attempts: 1,
@@ -335,6 +336,33 @@ describe('pipeline source metadata preservation', () => {
     expect(insertParams[5]).toBe('steamos-news');
     expect(watchlistService.notifySubscribers).toHaveBeenCalledWith('Steam', expect.any(Object));
     expect(liveFeedService.publishRelease).toHaveBeenCalledWith(expect.objectContaining({ platform: 'Steam' }));
+    jest.useRealTimers();
+  });
+
+  test('late-discovered releases are stored but do not trigger stale alerts', () => {
+    const now = Date.parse('2026-09-29T12:00:00Z');
+    expect(__test.isTimelyReleaseAlert('2026-09-28', now)).toBe(true);
+    expect(__test.isTimelyReleaseAlert('2026-09-22', now)).toBe(false);
+    expect(__test.isTimelyReleaseAlert('not-a-date', now)).toBe(false);
+  });
+
+  test('known Windows history receives corrected OS scope during backfill', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 'windows-kb5124006' }] }).mockResolvedValue({ rows: [] });
+    const result = await __test.backfillRecentReleases('Windows', {
+      version: 'KB5124010',
+      recentReleases: [{
+        platform: 'Windows', version: 'KB5124006',
+        name: 'Windows 11 26H1 September 22, 2026—KB5124006 Preview',
+        releasedAt: '2026-09-22',
+        affects: 'Windows 11 version 26H1 / select new-silicon devices only',
+        changelog: ['Optional preview update.'],
+        evidence: [{ source: 'Microsoft Support', url: 'https://support.microsoft.com/kb5124006' }],
+        sourceUrl: 'https://support.microsoft.com/kb5124006',
+      }],
+    });
+    expect(result.known).toBe(1);
+    expect(db.query.mock.calls[1][0]).toContain('UPDATE software_updates SET');
+    expect(db.query.mock.calls[1][1]).toContain('Windows 11 version 26H1 / select new-silicon devices only');
   });
 
   test('official recent history backfills missing releases without live events or subscriber alerts', async () => {
