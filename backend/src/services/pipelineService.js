@@ -235,7 +235,7 @@ function platformContext(platform, detected) {
     Firefox: {
       affects: 'Mozilla Firefox Release channel / Windows / macOS / Linux / browser security / extensions and web compatibility',
       verdict: 'Install promptly when Mozilla documents high-impact security fixes; restart Firefox to finish applying the release.',
-      reasoning: 'Firefox Release updates can close browser security vulnerabilities and change extensions, media, privacy controls, and web-platform behavior. PatchTicker requires Mozilla’s current-version service, matching Release notes, and matching security advisory to agree.',
+      reasoning: 'Firefox Release updates can change security, accessibility, privacy, and web-platform behavior. PatchTicker requires Mozilla’s current-version service and exact Release notes to agree; a matching security advisory is required when the release links one.',
     },
     Edge: {
       affects: 'Microsoft Edge Stable / Windows / macOS / Linux / browser security / enterprise policy / WebView2 compatibility',

@@ -2181,6 +2181,8 @@ function timeAgo(isoString, now = Date.now()) {
 }
 
 function updateDateLabel(update) {
+  if (Array.isArray(update?.evidence)
+    && update.evidence.some(item => item?.detailsUnavailable === true && item?.dateBasis === 'catalog-updated')) return 'Catalog updated';
   if (update?.dateBasis === 'source-updated') return 'Source updated';
   if (update?.dateBasis === 'published') return 'Published';
   return 'Released';
@@ -2463,6 +2465,12 @@ function updateReturnBrief(updates = []) {
 }
 
 function analysisMethodMeta(update) {
+  if ((Array.isArray(update?.evidence) ? update.evidence : []).some(item => item?.detailsUnavailable === true)) {
+    return {
+      label: 'Build verified · full notes unavailable', tone: 'limited', heading: 'What the source confirms',
+      note: 'The official download page confirms this build, but the detailed release notes could not be checked. Do not infer that there are no known issues.',
+    };
+  }
   const methods = {
     'official-security-advisory': {
       label: 'Official security advisory', tone: 'security', heading: 'Documented security changes',
@@ -2744,7 +2752,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
         ${steamAudience?.compactPlayers ? `<span>${H(steamAudience.label)}</span>` : ''}
       </div>
       <dl class="mini-update-facts" aria-label="Update facts">
-        <div><dt>Released</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
+        <div><dt>${H(updateDateLabel(u))}</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
         <div class="${packageSize.available ? '' : 'is-unavailable'}"><dt>Size</dt><dd>${H(packageSize.value)}</dd></div>
         <div><dt>${H(scoreLabel)}</dt><dd class="${scoreToneClass(ratingValue)}">${H(ratingDisplay)}${ratingValue === null ? '' : '/10'}<small>${H(ratingSource)}</small></dd></div>
       </dl>
@@ -4897,7 +4905,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
               <div>
                 <span>${H(updateDateLabel(u))}</span>
                 <strong>${H(formatReleaseDate(u.releasedAt))}</strong>
-                <small>Vendor-published date</small>
+                <small>${H(updateDateLabel(u) === 'Catalog updated' ? 'Vendor catalog metadata; release date unverified' : 'Vendor-published date')}</small>
               </div>
               <div>
                 <span>Package</span>

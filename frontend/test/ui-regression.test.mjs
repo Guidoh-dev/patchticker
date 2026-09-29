@@ -673,6 +673,10 @@ test('update evidence cards distinguish source dates from verification time', ()
 
 test('source-depth labels distinguish full notes from version-only verification', () => {
   assert.match(mainSource, /function analysisMethodMeta\(update\)/);
+  assert.match(mainSource, /detailsUnavailable === true/);
+  assert.match(mainSource, /item\?\.detailsUnavailable === true && item\?\.dateBasis === 'catalog-updated'/);
+  assert.match(mainSource, /Vendor catalog metadata; release date unverified/);
+  assert.match(mainSource, /Build verified · full notes unavailable/);
   assert.match(mainSource, /Build verified · notes limited/);
   assert.match(mainSource, /Package verified · notes limited/);
   assert.match(mainSource, /Official security advisory/);

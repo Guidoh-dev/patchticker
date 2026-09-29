@@ -553,6 +553,11 @@ function parseIntelReleaseNotes(pdfText) {
   };
 }
 
+function intelDriverDisplayName(catalogVersion, isWhql) {
+  const numericVersion = String(catalogVersion || '').match(/\b\d{2}\.\d+\.\d+\.\d+\b/)?.[0] || String(catalogVersion || '');
+  return `Intel Arc Graphics Driver ${numericVersion}${isWhql ? ' WHQL' : ' Non-WHQL'}`.slice(0, 120);
+}
+
 function reconcileIntelReleaseDates(catalogDate, releaseNotesDate) {
   const catalog = toIsoDate(catalogDate);
   const releaseNotes = toIsoDate(releaseNotesDate);
@@ -2424,6 +2429,49 @@ function firefoxAdvisoryUrl(releaseHtml, releaseUrl) {
   }
 }
 
+function parseFirefoxPointRelease(version, metadataDate, release$, actualDate, releaseUrl, versionsUrl) {
+  if (!/^\d+\.\d+\.\d+$/.test(version) || !actualDate) return null;
+  // Mozilla's LAST_RELEASE_DATE may lag the date printed on the exact notes
+  // (156.0.1: metadata Sep 25, notes Sep 22). Accept only a bounded later
+  // metadata date and use the page's published date for the release record.
+  const deltaDays = (Date.parse(metadataDate) - Date.parse(actualDate)) / 86_400_000;
+  if (!(deltaDays >= 0 && deltaDays <= 14)) return null;
+  const changes = [];
+  for (const [id, label, limit] of [['new', 'New', 3], ['fixed', 'Fixed', 5], ['changed', 'Changed', 3]]) {
+    release$('#' + id + ' li.release-note .release-note-content').slice(0, limit).each((_, element) => {
+      const note = cleanText(release$(element).text(), 320);
+      if (note && !/^Various security fixes\.?$/i.test(note)) changes.push(label + ': ' + note);
+    });
+  }
+  // No MFSA is linked from this point-release page. Never borrow CVEs from
+  // the earlier major release or turn missing advisory data into "no CVEs".
+  if (!changes.length) return null;
+  return {
+    platform: 'Firefox',
+    name: 'Mozilla Firefox ' + version,
+    version,
+    releasedAt: actualDate,
+    affects: 'Mozilla Firefox Release channel / Windows / macOS / Linux / accessibility / browser stability and web compatibility',
+    changelog: unique(['Firefox ' + version + ' was first offered to Release channel users on ' + actualDate + '.', ...changes], 360).slice(0, 12),
+    knownIssues: [],
+    knownIssuesAuthoritative: false,
+    riskFactors: [],
+    securityCriticality: null,
+    verdict: 'Review Mozilla’s fixes for your device, install through the normal Release channel, and restart Firefox.',
+    reasoning: 'Mozilla’s current-version endpoint confirms Firefox ' + version + '. The exact Release notes date the update ' + actualDate +
+      ' and document ' + changes.length + ' changes. No security advisory is linked from this point-release page, so PatchTicker does not attribute CVEs or claim there are no security fixes.',
+    evidence: [
+      ...sourceEvidence('Mozilla Firefox Version Service', versionsUrl, 'Current Firefox Release version ' + version +
+        '; metadata last-release date ' + metadataDate + '.', { dateBasis: 'checked', releaseType: 'official-version', releaseChannel: 'stable' }),
+      ...sourceEvidence('Firefox Release Notes', releaseUrl, 'Firefox ' + version + ' Release channel notes dated ' + actualDate +
+        '; ' + changes.length + ' bounded feature and fix notes parsed.', {
+        dateBasis: 'released', releaseType: 'official-release-notes', publishedAt: actualDate, releaseChannel: 'stable',
+      }),
+    ],
+    sourceUrl: releaseUrl,
+  };
+}
+
 function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, urls = {}) {
   const expectedVersion = cleanText(versionMetadata?.LATEST_FIREFOX_VERSION, 40);
   const expectedDate = toIsoDate(versionMetadata?.LAST_RELEASE_DATE);
@@ -2445,6 +2493,13 @@ function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, u
   const actualVersion = cleanText(release$('.c-release-version').first().text(), 40);
   const actualDate = toIsoDate(release$('.c-release-date').first().text());
   const releaseChannelText = cleanText(release$('.c-release-first-title').first().text(), 220);
+  if (actualVersion === expectedVersion
+    && new RegExp('Version\\s+' + expectedVersion.replace(/\./g, '\\.') + '.*Release channel', 'i').test(releaseChannelText)
+    && /^\d+\.\d+\.\d+$/.test(expectedVersion)
+    && !firefoxAdvisoryUrl(releaseHtml, releaseUrl)
+    && !urls.advisoryUrl) {
+    return parseFirefoxPointRelease(expectedVersion, expectedDate, release$, actualDate, releaseUrl, versionsUrl);
+  }
   if (actualVersion !== expectedVersion
     || actualDate !== expectedDate
     || !new RegExp(`Version\\s+${expectedVersion.replace(/\./g, '\\.')}.*Release channel`, 'i').test(releaseChannelText)) return null;
@@ -2477,6 +2532,9 @@ function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, u
   advisory$('section.cve').each((_, element) => {
     const section = advisory$(element);
     const heading = cleanText(section.find('h4').first().text().replace(/^#/, ''), 260);
+    // Mozilla's Firefox advisory can contain an Android-only CVE even when
+    // the advisory is titled "Firefox". This detector is desktop Release.
+    if (/Firefox for Android|\bFirefox for iOS\b/i.test(heading)) return;
     const match = heading.match(/\b(CVE-\d{4}-\d+)\s*:\s*(.+)$/i);
     const rawSeverity = cleanText(section.find('span.level').first().text(), 40).toLowerCase();
     const severity = severityMap[rawSeverity];
@@ -2535,7 +2593,7 @@ function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, u
     }],
     securityCriticality: {
       level: securityLevel,
-      label: `${vulnerabilities.length} Mozilla security advisories (${severitySummary})`,
+      label: `${vulnerabilities.length} Mozilla-documented CVEs (${severitySummary})`,
       cves: unique(vulnerabilities.map(item => item.cve), 32),
       totalCves: vulnerabilities.length,
       activelyExploited,
@@ -2567,8 +2625,7 @@ async function detectFirefox() {
     const releaseUrl = `https://www.firefox.com/en-US/firefox/${version}/releasenotes/`;
     const releaseHtml = await fetchHtml(releaseUrl);
     const advisoryUrl = firefoxAdvisoryUrl(releaseHtml, releaseUrl);
-    if (!advisoryUrl) return null;
-    const advisoryHtml = await fetchHtml(advisoryUrl);
+    const advisoryHtml = advisoryUrl ? await fetchHtml(advisoryUrl) : '';
     return parseFirefoxStableRelease(versions, releaseHtml, advisoryHtml, { versionsUrl, releaseUrl, advisoryUrl });
   } catch (err) {
     logger.warn('[scraper] Firefox detection failed', { error: err.message });
@@ -3007,7 +3064,15 @@ async function detectIntel() {
     const changelog = parsed.changelog.length
       ? parsed.changelog
       : unique([...pageHighlights.map(item => `Game support — ${item}`), cleanText(intro, 260)], 520);
-    const parsedVersion = parsed.version || version;
+    // Keep the catalog's release identity stable even when Intel's PDF is
+    // temporarily unavailable. Otherwise a later successful PDF fetch can
+    // create a duplicate row for the same driver with a different suffix.
+    const parsedVersion = version;
+    const numericVersion = String(version).match(/\b\d{2}\.\d+\.\d+\.\d+\b/)?.[0] || version;
+    if (parsed.version && parsed.version !== numericVersion) {
+      logger.warn('[scraper] Intel catalog/PDF version mismatch', { catalog: numericVersion, pdf: parsed.version });
+      return null;
+    }
     const isWhql = releasePdfText ? parsed.whql : !/Non-WHQL/i.test(body);
     const impactMeta = {
       gameSupportCount: parsed.gameSupportCount || pageHighlights.length,
@@ -3018,7 +3083,7 @@ async function detectIntel() {
     };
     return {
       platform: 'Intel',
-      name: `Intel Arc Graphics Driver ${parsedVersion}${isWhql ? ' WHQL' : ' Non-WHQL'}`.slice(0, 120),
+      name: intelDriverDisplayName(parsedVersion, isWhql),
       version: parsedVersion,
       releasedAt: sourceDates.releasedAt,
       affects: 'Vendor-listed Intel Arc A, B, and Pro GPUs / Core Ultra and Core Series 3 integrated graphics / Windows 10 22H2 and Windows 11 21H2–25H2',
@@ -3029,20 +3094,24 @@ async function detectIntel() {
         ...(!isWhql ? [{ level: 'medium', text: 'This is a Non-WHQL driver; it has not completed Microsoft’s WHQL certification path.' }] : []),
         { level: 'low', text: 'Intel warns that its generic package overwrites OEM-customized graphics drivers; laptops and prebuilt systems should check the manufacturer’s validated build first.' },
       ],
-      verdict: !isWhql
-        ? 'Install only if the Game On support or listed fixes apply; otherwise wait for a WHQL or OEM-qualified build.'
-        : 'Install if the listed game support or fixes apply; otherwise stay on your current stable OEM-qualified driver.',
+      verdict: !releasePdfText
+        ? 'The current Intel package is verified, but its detailed fixes and known issues could not be checked. Review Intel’s release notes and your OEM driver guidance before installing.'
+        : !isWhql
+          ? 'Install only if the Game On support or listed fixes apply; otherwise wait for a WHQL or OEM-qualified build.'
+          : 'Install if the listed game support or fixes apply; otherwise stay on your current stable OEM-qualified driver.',
       reasoning: releasePdfText
         ? `Intel’s official release notes document ${impactMeta.gameSupportCount} Game On title${impactMeta.gameSupportCount === 1 ? '' : 's'}, ${impactMeta.gameFixCount} distinct fixed issue${impactMeta.gameFixCount === 1 ? '' : 's'}, and ${impactMeta.knownIssueCount} distinct known issue${impactMeta.knownIssueCount === 1 ? '' : 's'} across supported Arc and Core Ultra families.`
-        : 'Intel’s download page confirms the current package and Game On support, but the detailed release-notes PDF could not be parsed during this check.',
+        : 'Intel’s download page confirms the current package identity, but the detailed release-notes PDF could not be parsed during this check. PatchTicker cannot verify the current build’s individual fixes or known issues.',
       evidence: [
         ...sourceEvidence('Intel Download Center', url, `${title} version ${parsedVersion}; official download metadata and OEM overwrite guidance.${sourceDates.catalogDate ? ` Catalog metadata dated ${sourceDates.catalogDate}.` : ''}`, {
-          dateBasis: releasePdfText ? 'catalog-updated' : 'released',
+          dateBasis: 'catalog-updated',
           publishedAt: sourceDates.catalogDate || undefined,
           releaseType: 'official-release',
+          detailsUnavailable: !releasePdfText,
+          compatibility: compatibility || undefined,
           ...impactMeta,
         }),
-        ...(officialReleaseNotesUrl ? sourceEvidence('Intel Release Notes', officialReleaseNotesUrl, `Official ${isWhql ? 'WHQL' : 'Non-WHQL'} release-notes PDF for driver ${parsedVersion}; ${impactMeta.gameFixCount} fixed and ${impactMeta.knownIssueCount} known issues documented.${sourceDates.releaseNotesDate ? ` Document dated ${sourceDates.releaseNotesDate}.` : ''}`, {
+        ...(releasePdfText && officialReleaseNotesUrl ? sourceEvidence('Intel Release Notes', officialReleaseNotesUrl, `Official ${isWhql ? 'WHQL' : 'Non-WHQL'} release-notes PDF for driver ${parsedVersion}; ${impactMeta.gameFixCount} fixed and ${impactMeta.knownIssueCount} known issues documented.${sourceDates.releaseNotesDate ? ` Document dated ${sourceDates.releaseNotesDate}.` : ''}`, {
           dateBasis: 'released',
           publishedAt: sourceDates.releaseNotesDate || undefined,
           releaseType: 'official-release-notes',
@@ -3199,5 +3268,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
 };
