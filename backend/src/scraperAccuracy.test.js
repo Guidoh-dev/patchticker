@@ -422,7 +422,7 @@ describe('scraper accuracy guards', () => {
       '<p class="c-release-date">September 22, 2026</p>',
       '<div class="c-release-first-title">Version 156.0.1, first offered to Release channel users on September 22, 2026</div>',
       '<div id="fixed"><li class="release-note"><div class="release-note-content">Fixed Firefox becoming unresponsive on some pages that use CSS anchor positioning.</div></li></div>',
-      '<div id="changed"><li class="release-note"><div class="release-note-content">Pressing Tab now moves focus to the address bar text field.</div></li></div>',
+      '<div id="changed"><li class="release-note"><div class="release-note-content">Pressing Tab now moves focus to the address bar text field.</div></li><li class="release-note"><div class="release-note-content">Reference link to 156.0 release notes.</div></li></div>',
     ].join('');
     const meta = { LATEST_FIREFOX_VERSION: '156.0.1', LAST_RELEASE_DATE: '2026-09-25' };
     const urls = { releaseUrl: 'https://www.firefox.com/en-US/firefox/156.0.1/releasenotes/' };
@@ -434,6 +434,8 @@ describe('scraper accuracy guards', () => {
       knownIssuesAuthoritative: false,
     });
     expect(parsed.changelog.join(' ')).toContain('CSS anchor positioning');
+    expect(parsed.changelog.join(' ')).toContain('Fixed: Firefox becoming unresponsive');
+    expect(parsed.changelog.join(' ')).not.toContain('Reference link to');
     expect(parsed.evidence).toHaveLength(2);
     expect(parsed.evidence[1].publishedAt).toBe('2026-09-22');
     expect(parsed.evidence.some(item => /mfsa|CVE-/i.test(JSON.stringify(item)))).toBe(false);

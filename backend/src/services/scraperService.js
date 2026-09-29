@@ -2440,7 +2440,9 @@ function parseFirefoxPointRelease(version, metadataDate, release$, actualDate, r
   for (const [id, label, limit] of [['new', 'New', 3], ['fixed', 'Fixed', 5], ['changed', 'Changed', 3]]) {
     release$('#' + id + ' li.release-note .release-note-content').slice(0, limit).each((_, element) => {
       const note = cleanText(release$(element).text(), 320);
-      if (note && !/^Various security fixes\.?$/i.test(note)) changes.push(label + ': ' + note);
+      if (!note || /^Various security fixes\.?$/i.test(note)
+        || /^Reference link to .+release notes\.?$/i.test(note)) return;
+      changes.push(label + ': ' + (label === 'Fixed' ? note.replace(/^Fixed\s+/i, '') : note));
     });
   }
   // No MFSA is linked from this point-release page. Never borrow CVEs from
