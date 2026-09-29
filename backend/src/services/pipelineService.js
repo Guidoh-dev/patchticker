@@ -25,6 +25,7 @@ const watchlistService = require('./watchlistService');
 const liveFeedService  = require('./liveFeedService');
 const { validateUpdateForPersistence } = require('./updateValidationService');
 const { PLATFORM_KEYS } = require('../config/platformRegistry');
+const { publicWindowsGuidance } = require('../utils/windowsReleaseGuidance');
 const {
   deriveDeterministicScore,
   deriveDeterministicImpactScore,
@@ -283,8 +284,12 @@ function platformContext(platform, detected) {
       reasoning: 'Intel graphics drivers often bundle game optimizations, device support, display fixes, and compatibility updates for Arc and Core Ultra graphics.',
     },
   }[platform] || {};
-  const verdict = detected.verdict || defaults.verdict || `New ${platform} update available: ${detected.name}`;
-  const reasoning = detected.reasoning || defaults.reasoning || `PatchTicker detected a new ${platform} release from the vendor source and is tracking user reports, known issues, and install confidence as more evidence arrives.`;
+  const guidance = publicWindowsGuidance(
+    platform,
+    detected.name,
+    detected.verdict || defaults.verdict || `New ${platform} update available: ${detected.name}`,
+    detected.reasoning || defaults.reasoning || `PatchTicker detected a new ${platform} release from the vendor source and is tracking user reports, known issues, and install confidence as more evidence arrives.`,
+  );
   const baseEvidence = detected.evidence?.length
     ? detected.evidence
     : (detected.sourceUrl ? [{ source: platform, url: detected.sourceUrl, text: `Current ${platform} update verified from official source` }] : []);
@@ -294,9 +299,9 @@ function platformContext(platform, detected) {
   }));
   return {
     affects: detected.affects || defaults.affects || `${platform} devices, software, and related services`,
-    verdict,
-    reasoning,
-    changelog: detected.changelog?.length ? detected.changelog : [reasoning],
+    verdict: guidance.verdict,
+    reasoning: guidance.reasoning,
+    changelog: detected.changelog?.length ? detected.changelog : [guidance.reasoning],
     knownIssues: detected.knownIssues || [],
     knownIssuesSnapshotComplete: detected.knownIssuesSnapshotComplete === true,
     knownIssuesAuthoritative: detected.knownIssuesAuthoritative === true,

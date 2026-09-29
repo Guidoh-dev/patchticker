@@ -9,6 +9,7 @@ const { validateScore, statusForScore } = require('../utils/updateScore');
 const { normaliseReleaseText, normaliseReleaseTextArray } = require('../utils/releaseText');
 const { getFreshnessSlaHours } = require('../config/platformRegistry');
 const { currentSteamGameRoster } = require('./steamGameEligibilityService');
+const { publicWindowsGuidance } = require('../utils/windowsReleaseGuidance');
 
 const MAX_UPDATE_AGE_DAYS = 240;
 const MAX_PUBLIC_FUTURE_SKEW_HOURS = 24;
@@ -1511,6 +1512,7 @@ function rowToUpdate(row) {
     : evidence.some(item => item?.whql === false) ? false : null;
   const score = scoreOrNull(row.score, { updateId: row.id, field: 'score' });
   const sourceKind = row.source_kind || sourceKindFromEvidence(evidence);
+  const guidance = publicWindowsGuidance(row.platform, row.name, row.verdict, row.reasoning);
   return {
     id:                   row.id,
     platform:             row.platform,
@@ -1533,8 +1535,8 @@ function rowToUpdate(row) {
     impactScore:          scoreOrNull(row.impact_score, { updateId: row.id, field: 'impact_score', allowNull: true }),
     bugCount:             row.bug_count || 0,
     affects:              row.affects || null,
-    verdict:              row.verdict || null,
-    reasoning:            row.reasoning || null,
+    verdict:              guidance.verdict || null,
+    reasoning:            guidance.reasoning || null,
     changelog,
     knownIssues,
     knownIssuesAuthoritative: evidence.some(item => item?.knownIssuesAuthoritative === true),

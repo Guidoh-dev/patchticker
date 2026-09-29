@@ -15,6 +15,12 @@ const steamCandidatesSource = await readFile(resolve(root, 'src/steamGameCandida
 const compatibilitySource = await readFile(resolve(root, 'src/compatibility.js'), 'utf8');
 const updateBriefSource = await readFile(resolve(root, 'src/updateBrief.js'), 'utf8');
 
+test('source-updated driver metadata is not presented as a confirmed release date', () => {
+  assert.match(mainSource, /\$\{H\(updateDateLabel\(latest\)\)\} \$\{H\(timeAgo\(preferredReleaseAt\(latest\)\)\)\}/);
+  assert.match(mainSource, /\$\{H\(updateDateLabel\(current\)\)\} \$\{H\(formatReleaseDate\(current\.releasedAt\)\)\}/);
+  assert.match(mainSource, /Vendor catalog metadata, not a confirmed release date/);
+});
+
 test('router resolves exact and dynamic update directories', () => {
   const updatesHandler = () => 'updates';
   const detailHandler = () => 'detail';

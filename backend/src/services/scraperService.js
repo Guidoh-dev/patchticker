@@ -555,7 +555,14 @@ function parseIntelReleaseNotes(pdfText) {
 
 function intelDriverDisplayName(catalogVersion, isWhql) {
   const numericVersion = String(catalogVersion || '').match(/\b\d{2}\.\d+\.\d+\.\d+\b/)?.[0] || String(catalogVersion || '');
-  return `Intel Arc Graphics Driver ${numericVersion}${isWhql ? ' WHQL' : ' Non-WHQL'}`.slice(0, 120);
+  const channel = isWhql === true ? ' WHQL' : isWhql === false ? ' Non-WHQL' : '';
+  return `Intel Arc Graphics Driver ${numericVersion}${channel}`.slice(0, 120);
+}
+
+function intelCatalogWhqlStatus(version) {
+  if (/\bNon-WHQL\b/i.test(String(version || ''))) return false;
+  if (/\bWHQL Certified\b/i.test(String(version || ''))) return true;
+  return null;
 }
 
 function reconcileIntelReleaseDates(catalogDate, releaseNotesDate) {
@@ -3075,7 +3082,10 @@ async function detectIntel() {
       logger.warn('[scraper] Intel catalog/PDF version mismatch', { catalog: numericVersion, pdf: parsed.version });
       return null;
     }
-    const isWhql = releasePdfText ? parsed.whql : !/Non-WHQL/i.test(body);
+    // The surrounding catalog page can mention both certification channels
+    // in generic help text. Without the exact PDF, trust only the explicit
+    // version label; otherwise leave certification unverified.
+    const isWhql = releasePdfText ? parsed.whql : intelCatalogWhqlStatus(version);
     const impactMeta = {
       gameSupportCount: parsed.gameSupportCount || pageHighlights.length,
       gameFixCount: parsed.gameFixCount,
@@ -3093,7 +3103,7 @@ async function detectIntel() {
       knownIssues: parsed.knownIssues,
       knownIssuesAuthoritative: Boolean(releasePdfText),
       riskFactors: [
-        ...(!isWhql ? [{ level: 'medium', text: 'This is a Non-WHQL driver; it has not completed Microsoft’s WHQL certification path.' }] : []),
+        ...(isWhql === false ? [{ level: 'medium', text: 'This is a Non-WHQL driver; it has not completed Microsoft’s WHQL certification path.' }] : []),
         { level: 'low', text: 'Intel warns that its generic package overwrites OEM-customized graphics drivers; laptops and prebuilt systems should check the manufacturer’s validated build first.' },
       ],
       verdict: !releasePdfText
@@ -3270,5 +3280,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, parseAmdCompatibility, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, nvidiaImpactMetadata, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
 };

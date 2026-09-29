@@ -1295,7 +1295,7 @@ async function hydrateLandingSignals() {
       const liveVotes = Number(latest.userRating?.totalVotes || 0);
       meta.innerHTML = liveVotes > 0
         ? `<span>${H(String(liveVotes))} verified vote${liveVotes === 1 ? '' : 's'}</span><span>Install ${H(String(latest.userRating.breakdown?.install ?? 0))}%</span><span>Wait ${H(String(latest.userRating.breakdown?.wait ?? 0))}%</span><span>Avoid ${H(String(latest.userRating.breakdown?.avoid ?? 0))}%</span>`
-        : `<span>${H(platformLabel(latest.platform))}</span><span>Released ${H(timeAgo(preferredReleaseAt(latest)))}</span><span>Source checked ${H(timeAgo(latest.lastCheckedAt))}</span>`;
+        : `<span>${H(platformLabel(latest.platform))}</span><span>${H(updateDateLabel(latest))} ${H(timeAgo(preferredReleaseAt(latest)))}</span><span>Source checked ${H(timeAgo(latest.lastCheckedAt))}</span>`;
     }
     if (link) {
       link.href = `#/updates/${encodeURIComponent(latest.id)}`;
@@ -2264,7 +2264,7 @@ function renderSourceTimeline(update) {
     {
       label: updateDateLabel(update),
       value: formatReleaseDate(update?.releasedAt),
-      detail: 'Vendor or publisher date',
+      detail: updateDateLabel(update) === 'Catalog updated' ? 'Vendor catalog metadata, not a confirmed release date' : 'Vendor or publisher date',
       datetime: update?.releasedAt,
     },
     {
@@ -5829,7 +5829,7 @@ async function renderPlatformPage(platformName) {
           <div class="platform-current-left">
             <div class="platform-current-version">${H(current.name)}</div>
             <div class="platform-current-meta">
-              v${H(current.version)} · Released ${new Date(current.releasedAt).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+              v${H(current.version)} · ${H(updateDateLabel(current))} ${H(formatReleaseDate(current.releasedAt))}
             </div>
             <div class="platform-current-verdict">${H(current.verdict || 'Review pending.')}</div>
           </div>
@@ -5866,7 +5866,7 @@ async function renderPlatformPage(platformName) {
           <table class="history-table">
             <thead><tr>
               <th class="history-th">Version</th>
-              <th class="history-th">Released</th>
+              <th class="history-th">Source date</th>
               <th class="history-th">Score</th>
               <th class="history-th">Status</th>
               <th class="history-th">Bugs</th>

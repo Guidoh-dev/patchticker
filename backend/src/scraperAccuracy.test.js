@@ -455,6 +455,11 @@ describe('scraper accuracy guards', () => {
       .toBe('Intel Arc Graphics Driver 32.0.101.9033 WHQL');
     expect(__test.intelDriverDisplayName('32.0.101.9034', false))
       .toBe('Intel Arc Graphics Driver 32.0.101.9034 Non-WHQL');
+    expect(__test.intelDriverDisplayName('32.0.101.9035', null))
+      .toBe('Intel Arc Graphics Driver 32.0.101.9035');
+    expect(__test.intelCatalogWhqlStatus('32.0.101.9033 WHQL Certified')).toBe(true);
+    expect(__test.intelCatalogWhqlStatus('32.0.101.9033 Non-WHQL')).toBe(false);
+    expect(__test.intelCatalogWhqlStatus('32.0.101.9033')).toBeNull();
   });
 
   test('Edge parser selects desktop Stable and keeps newer pending security work visible', () => {
