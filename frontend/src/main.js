@@ -2687,7 +2687,7 @@ function renderUpdateCard(u) {
             ${securitySignal ? `<span class="security-signal security-signal--${H(securitySignal.tone)}"><i aria-hidden="true">◆</i>${H(securitySignal.label)}</span>` : ''}
             ${driverImpact ? `<span class="driver-impact-signal platform--${H(pSuffix)}"><i aria-hidden="true">◈</i>${H(driverImpact.label)}</span>` : ''}
             ${steamAudience?.compactPlayers ? `<span class="steam-audience-signal" title="${H(steamAudience.detail)}"><i aria-hidden="true">◎</i>${H(steamAudience.label)}</span>` : ''}
-            ${u.matchReason ? `<span class="decision-match-reason">${u.compatibilitySearchFallback ? H(u.matchReason) : `Matched in ${H(u.matchReason)}`}</span>` : ''}
+            ${u.matchReason ? `<span class="decision-match-reason">${u.compatibilitySearchFallback || u.matchReason === 'Security fixes documented' ? H(u.matchReason) : `Matched in ${H(u.matchReason)}`}</span>` : ''}
             <span class="decision-card-checked">${H(freshness.detail)}</span>
             <span class="decision-card-source-count">${H(sourceLabel)}</span>
             <span class="source-depth-signal source-depth-signal--${H(methodMeta.tone)}">${H(methodMeta.label)}</span>

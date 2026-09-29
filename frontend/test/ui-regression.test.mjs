@@ -246,6 +246,7 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /function documentedSecuritySignal\(update\)/);
   assert.match(mainSource, /securitySearchIntent\(exactQuery\) && documentedSecuritySignal\(update\) \? 180 : 0/);
   assert.match(mainSource, /securitySearchIntent\(intent\.semanticQuery\) && documentedSecuritySignal\(update\)\) return 'Security fixes documented'/);
+  assert.match(mainSource, /u\.compatibilitySearchFallback \|\| u\.matchReason === 'Security fixes documented' \? H\(u\.matchReason\)/);
   assert.match(mainSource, /exactQuery && searchDocumentContains\(haystack, exactQuery\)[\s\S]*?weight \* 10/);
   assert.match(mainSource, /const crossFieldCoverage = groups\.reduce/);
   assert.match(mainSource, /function searchMatchReason\(update, query, explicitPlatform = ''\)/);
@@ -258,7 +259,7 @@ test('searches preserve precise terms, rank best matches, and explain each resul
   assert.match(mainSource, /return 'Official compatibility table'/);
   assert.match(mainSource, /if \(update\?\.compatibilitySearchFallback\)/);
   assert.match(mainSource, /return 'Compatibility check · not listed by vendor'/);
-  assert.match(mainSource, /u\.compatibilitySearchFallback \? H\(u\.matchReason\) : `Matched in/);
+  assert.match(mainSource, /u\.compatibilitySearchFallback \|\| u\.matchReason === 'Security fixes documented' \? H\(u\.matchReason\) : `Matched in/);
   assert.match(cssSource, /\.decision-match-reason\s*\{[^}]*color:\s*var\(--cyan\)/s);
 });
 
