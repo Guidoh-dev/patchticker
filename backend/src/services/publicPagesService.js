@@ -72,6 +72,8 @@ function renderPlatform(platform, updates) {
 function renderRelease(update) {
   const date = isoDate(update.releasedAt);
   const noindex = !isIndexable(update);
+  const limitedCatalog = (Array.isArray(update.evidence) ? update.evidence : [])
+    .some(item => item?.detailsUnavailable === true && item?.dateBasis === 'catalog-updated');
   const score = typeof update.score === 'number' && Number.isFinite(update.score) && update.score >= 0 && update.score <= 10 && !noindex
     ? update.score.toFixed(1) + '/10' : 'Not graded';
   const issues = (Array.isArray(update.knownIssues) ? update.knownIssues : []).filter(item => typeof item === 'string' && item.trim()).slice(0, 20);
@@ -85,13 +87,15 @@ function renderRelease(update) {
   const facts = '<dl class="discovery-facts">' +
     fact('Platform', '<a href="' + esc(platformPath(update.platform)) + '">' + esc(update.platform) + '</a>') +
     fact('Version', esc(update.version || 'Not stated')) +
-    fact('Released', date ? '<time datetime="' + date + '">' + date + '</time>' : 'Date unverified') +
+    fact(limitedCatalog ? 'Catalog updated' : 'Released', date ? '<time datetime="' + date + '">' + date + '</time>' : 'Date unverified') +
     fact('PatchTicker assessment', score) + '</dl>';
-  const caveat = noindex ? 'Only the version or limited release information is verified. Full notes and a stability conclusion are unavailable.' :
-    'This is source-based guidance, not a hands-on compatibility test. Check the vendor notes and your exact hardware before installing.';
+  const caveat = limitedCatalog
+    ? 'The vendor catalog confirms the package, but the release date and full notes could not be verified. This is not a hands-on compatibility test.'
+    : noindex ? 'Only the version or limited release information is verified. Full notes and a stability conclusion are unavailable.'
+      : 'This is source-based guidance, not a hands-on compatibility test. Check the vendor notes and your exact hardware before installing.';
   return shell({
-    title: update.name + ' — release notes and install guidance',
-    description: String(update.verdict || update.name + ' release notes and install guidance.').slice(0, 240),
+    title: update.name + (limitedCatalog ? ' — verified package details' : noindex ? ' — verified version details' : ' — release notes and install guidance'),
+    description: String(update.verdict || update.name + (limitedCatalog ? ' verified package details.' : noindex ? ' verified version details.' : ' release notes and install guidance.')).slice(0, 240),
     path: releasePath(update), noindex, type: 'article',
     body: '<div class="discovery-hero"><p class="discovery-kicker"><a href="/releases">All releases</a> / <a href="' +
       esc(platformPath(update.platform)) + '">' + esc(update.platform) + '</a></p><h1>' + esc(update.name) + '</h1>' +

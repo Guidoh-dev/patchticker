@@ -835,6 +835,42 @@ test('search relevance favors direct product matches over incidental patch-note 
   expect(updatesService.__test.searchRelevanceScore(incidentalSteamRelease, terms)).toBe(30);
 });
 
+test('security search favors documented fixes over newer optional previews, without changing date sorting', async () => {
+  const shared = { platform: 'Windows', name: 'Windows 11 update', affects: 'Windows 11 security and stability', changelog: [] };
+  const preview = { ...shared, version: 'KB5124006', securityCriticality: { level: 'none' } };
+  const security = { ...shared, version: 'KB5129194', securityCriticality: { level: 'medium' } };
+  expect(updatesService.__test.securitySearchIntent('11 security update')).toBe(true);
+  expect(updatesService.__test.securitySearchIntent('CVE-2026-12345')).toBe(false);
+  expect(updatesService.__test.searchRelevanceScore(security, '11 security'))
+    .toBeGreaterThan(updatesService.__test.searchRelevanceScore(preview, '11 security'));
+  expect(updatesService.__test.searchRelevanceScore(security, '11 stability'))
+    .toBe(updatesService.__test.searchRelevanceScore(preview, '11 stability'));
+
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'Windows 11 security update', sort: 'relevance' });
+  expect(mockQuery.mock.calls[0][0]).toContain('security_criticality');
+  expect(mockQuery.mock.calls[0][0]).toContain('THEN 180 ELSE 0 END');
+
+  mockQuery.mockClear();
+  await updatesService.getUpdates({ search: 'Windows 11 security update', sort: 'date_desc' });
+  expect(mockQuery.mock.calls[0][0]).not.toContain('THEN 180 ELSE 0 END');
+});
+
+test('decision questions do not silently become status-only searches', async () => {
+  const question = updatesService.__test.parseSearchIntent('should I avoid Firefox 156.0.1?');
+  expect(question.platform).toBe('Firefox');
+  expect(question.status).toBeNull();
+  expect(question.semanticQuery).toBe('156.0.1');
+  expect(updatesService.__test.parseSearchIntent('is Firefox stable?').status).toBeNull();
+  expect(updatesService.__test.parseSearchIntent('avoid updates').status).toBe('avoid');
+
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'should I avoid Firefox 156.0.1?', sort: 'relevance' });
+  expect(mockQuery.mock.calls[0][0]).not.toMatch(/AND status = \$/);
+});
+
 test('exact multi-word product titles outrank the same phrase inside incidental notes', () => {
   const directGameRelease = {
     platform: 'Steam',

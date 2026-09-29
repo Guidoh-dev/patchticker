@@ -42,6 +42,20 @@ test('version-only detections are noindex, ungraded, and omitted from sitemap', 
   expect(sitemap).not.toContain('#/');
 });
 
+test('a catalog-only build never presents the catalog timestamp as a verified release date', () => {
+  const catalogOnly = {
+    ...update, id: 'intel-9033', platform: 'Intel', name: 'Intel Arc Graphics Driver 9033',
+    changelog: ['Current package listed.'],
+    evidence: [{ source: 'Intel Download Center', url: update.sourceUrl, dateBasis: 'catalog-updated', detailsUnavailable: true }],
+  };
+  const html = renderRelease(catalogOnly);
+  expect(html).toContain('Catalog updated');
+  expect(html).toContain('release date and full notes could not be verified');
+  expect(html).toContain('verified package details');
+  expect(html).not.toContain('release notes and install guidance | PatchTicker');
+  expect(html).toContain('content="noindex,follow"');
+});
+
 test('release routes, platform pages, and sitemap serve crawlable HTML', async () => {
   const app = express().use(createPublicPagesRouter({
     listUpdates: async () => [update, versionOnly],

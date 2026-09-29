@@ -1710,6 +1710,9 @@ function stripSearchIntentStopwords(value, platform = null) {
 }
 
 function searchStatusIntent(value) {
+  const question = String(value || '').trim().toLowerCase();
+  if (/^(?:should|could|would|can|do|does)\s+(?:i|we)\b/.test(question)
+    || /^(?:is|are)\s+.+\s+(?:stable|caution|unsafe|risky)\s*\??$/.test(question)) return null;
   const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
   const matches = [...new Set(tokens.map(token => SEARCH_STATUS_INTENTS.get(token)).filter(Boolean))];
   return matches.length === 1 ? matches[0] : null;
@@ -1854,6 +1857,20 @@ function searchIntentForQuery(raw) {
   });
 }
 
+function securitySearchIntent(query) {
+  return /\b(?:security|vulnerabilit(?:y|ies)|exploits?|exploited|zero[ -]?day)\b/i.test(String(query || ''))
+    && !isReleaseIdentityQuery(query);
+}
+
+function documentedSecuritySignal(update) {
+  const security = update?.securityCriticality;
+  const level = String(security?.level || '').toLowerCase();
+  return (level && !['none', 'unknown', 'unverified'].includes(level))
+    || Number(security?.totalCves) > 0
+    || (Array.isArray(update?.evidence) ? update.evidence : [])
+      .some(item => Number(item?.securityFixCount) > 0);
+}
+
 function updateSearchRelevance(update, query) {
   const intent = searchIntentForQuery(query);
   const exactQuery = intent.semanticQuery;
@@ -1895,7 +1912,8 @@ function updateSearchRelevance(update, query) {
     const hasEveryGroup = groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
     return Math.max(best, hasEveryGroup ? weight * 5 : 0);
   }, 0);
-  return intentScore + Math.max(crossFieldCoverage, sameFieldStrength);
+  const securityBonus = securitySearchIntent(exactQuery) && documentedSecuritySignal(update) ? 180 : 0;
+  return intentScore + Math.max(crossFieldCoverage, sameFieldStrength) + securityBonus;
 }
 
 function searchMatchReason(update, query, explicitPlatform = '') {
@@ -1923,6 +1941,7 @@ function searchMatchReason(update, query, explicitPlatform = '') {
   if (matchesAll(update?.name)) return 'Product name or alias';
   if (matchesAll(`${update?.version || ''} ${update?.internalVersion || ''} ${update?.productId || ''}`)) return 'Version or App ID';
   if (matchesAll(`${update?.platform || ''} ${releaseLaneLabel(update)}`)) return 'Platform match';
+  if (securitySearchIntent(intent.semanticQuery) && documentedSecuritySignal(update)) return 'Security fixes documented';
   if (matchesAll(compatibilitySearchText(update))) return 'Official compatibility table';
   if (matchesAll(update?.affects)) return 'Device or setup';
   if (matchesAll(JSON.stringify(update?.knownIssues || []))) return 'Known issue';

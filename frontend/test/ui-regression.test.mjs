@@ -238,9 +238,14 @@ test('typed dashboard searches query the full database with race protection', ()
 });
 
 test('searches preserve precise terms, rank best matches, and explain each result', () => {
+  assert.match(mainSource, /\(\?:should\|could\|would\|can\|do\|does\)\\s\+\(\?:i\|we\)/);
   assert.match(mainSource, /q === 'switch oled' \|\| q === 'switch lite'/);
   assert.match(mainSource, /const exactAlias = Object\.entries\(SEARCH_ALIASES\)\.find/);
   assert.match(mainSource, /function updateSearchRelevance\(update, query\)/);
+  assert.match(mainSource, /function securitySearchIntent\(query\)/);
+  assert.match(mainSource, /function documentedSecuritySignal\(update\)/);
+  assert.match(mainSource, /securitySearchIntent\(exactQuery\) && documentedSecuritySignal\(update\) \? 180 : 0/);
+  assert.match(mainSource, /securitySearchIntent\(intent\.semanticQuery\) && documentedSecuritySignal\(update\)\) return 'Security fixes documented'/);
   assert.match(mainSource, /exactQuery && searchDocumentContains\(haystack, exactQuery\)[\s\S]*?weight \* 10/);
   assert.match(mainSource, /const crossFieldCoverage = groups\.reduce/);
   assert.match(mainSource, /function searchMatchReason\(update, query, explicitPlatform = ''\)/);

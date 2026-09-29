@@ -268,6 +268,13 @@ function stripIntentStopwords(value, platform = null) {
 }
 
 function searchStatusIntent(value) {
+  // "Should I avoid X?" asks for X's assessment, not only updates already
+  // rated Avoid. Explicit browse phrases such as "avoid updates" still filter.
+  const question = String(value || '').trim().toLowerCase();
+  if (/^(?:should|could|would|can|do|does)\s+(?:i|we)\b/.test(question)
+    || /^(?:is|are)\s+.+\s+(?:stable|caution|unsafe|risky)\s*\??$/.test(question)) {
+    return null;
+  }
   const tokens = String(value || '').match(/[a-z0-9]+(?:[._-][a-z0-9]+)*/g) || [];
   const matches = [...new Set(tokens.map(token => SEARCH_STATUS_INTENTS.get(token)).filter(Boolean))];
   return matches.length === 1 ? matches[0] : null;
@@ -624,6 +631,19 @@ function searchDocumentContains(haystack, needle) {
   return Boolean(document && term && ` ${document} `.includes(` ${term} `));
 }
 
+function securitySearchIntent(query) {
+  return /\b(?:security|vulnerabilit(?:y|ies)|exploits?|exploited|zero[ -]?day)\b/i.test(String(query || ''))
+    && !isReleaseIdentityQuery(query);
+}
+
+function documentedSecuritySignal(update) {
+  const security = update?.securityCriticality || update?.security_criticality;
+  const level = String(security?.level || '').toLowerCase();
+  return (level && !['none', 'unknown', 'unverified'].includes(level))
+    || Number(security?.totalCves) > 0
+    || jsonArray(update?.evidence).some(item => Number(item?.securityFixCount) > 0);
+}
+
 function searchRelevanceScore(update, queryOrTerms = []) {
   const fields = [
     [update?.name, 100],
@@ -678,7 +698,8 @@ function searchRelevanceScore(update, queryOrTerms = []) {
     return Math.max(best, hasEveryGroup ? weight * 5 : 0);
   }, 0);
 
-  return Math.max(crossFieldCoverage, sameFieldStrength);
+  const securityBonus = securitySearchIntent(queryOrTerms) && documentedSecuritySignal(update) ? 180 : 0;
+  return Math.max(crossFieldCoverage, sameFieldStrength) + securityBonus;
 }
 
 function isUpdateWithinDisplayWindow(update, now = Date.now()) {
@@ -1674,7 +1695,14 @@ async function getUpdates({ platform, status, sort, search } = {}) {
             SELECT 1 FROM unnest(${patternParam}::text[]) AS ranking_term(term)
             WHERE POSITION(${normalizedSqlTerm('ranking_term.term')} IN CONCAT(' ', TRIM(REGEXP_REPLACE(LOWER(COALESCE(${field}, '')), '[^a-z0-9]+', ' ', 'g')), ' ')) > 0
           )`;
-          relevanceOrder = `GREATEST(
+          const securityBonusSql = securitySearchIntent(searchIntent.semanticQuery)
+            ? ` + CASE WHEN (
+                LOWER(COALESCE(security_criticality->>'level', 'none')) NOT IN ('none', 'unknown', 'unverified')
+                OR (security_criticality->>'totalCves') ~ '^[1-9][0-9]*$'
+                OR jsonb_path_exists(COALESCE(evidence, '[]'::jsonb), '$[*] ? (@.securityFixCount > 0)')
+              ) THEN 180 ELSE 0 END`
+            : '';
+          relevanceOrder = `(GREATEST(
             CASE WHEN ${fieldContainsTerm('name')} THEN 100 ELSE 0 END,
             CASE WHEN ${fieldContainsTerm('platform')} THEN 85 ELSE 0 END,
             CASE WHEN ${fieldContainsTerm("CONCAT_WS(' ', version, COALESCE(display_version, ''))")} THEN 80 ELSE 0 END,
@@ -1686,7 +1714,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
             CASE WHEN ${fieldContainsTerm('known_issues::text')} THEN 30 ELSE 0 END,
             CASE WHEN ${fieldContainsTerm('risk_factors::text')} THEN 25 ELSE 0 END,
             CASE WHEN ${fieldContainsTerm('evidence::text')} THEN 20 ELSE 0 END
-          ) DESC, `;
+          )${securityBonusSql}) DESC, `;
         }
       }
 
@@ -1987,5 +2015,7 @@ module.exports = {
     normaliseSearchDocument,
     searchDocumentContains,
     searchRelevanceScore,
+    securitySearchIntent,
+    documentedSecuritySignal,
   },
 };
