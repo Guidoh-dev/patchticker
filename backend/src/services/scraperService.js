@@ -1727,8 +1727,8 @@ async function detectWindows() {
     // platform-coverage gap while still reporting a healthy Windows scan.
     if (candidatesByScope.some(candidates => candidates.length < 2)) return null;
     const selected = [
-      ...candidatesByScope[0].slice(0, 3),
-      ...candidatesByScope[1].slice(0, 3),
+      ...candidatesByScope[0].slice(0, 6),
+      ...candidatesByScope[1].slice(0, 6),
     ];
     const releases = await Promise.all(selected.map(windowsReleaseFromCandidate));
     return { ...releases[0], recentReleases: releases.slice(1) };

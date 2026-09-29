@@ -456,7 +456,7 @@ async function backfillRecentReleases(platform, detected) {
     .filter(release => release && release.version && release.version !== detected.version)
     .filter(release => !release.platform || release.platform === platform)
     .map(release => [String(release.version), release])).values()]
-    .slice(0, 8);
+    .slice(0, platform === 'Windows' ? 11 : 8);
   const result = {
     scanned: uniqueRecent.length,
     inserted: 0,
