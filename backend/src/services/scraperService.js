@@ -1487,7 +1487,17 @@ function parseAmdReleaseNotes(html, sourceUrl, options = {}) {
     ...amdHeadingBullets($, /^Known Issues$/i, 12),
     ...amdNestedBullets($, /^Known Issues$/i, 12),
   ], 520).slice(0, 12);
-  const compatibility = parseAmdCompatibility($);
+  // AMD occasionally republishes a current release page with compatibility
+  // prose copied from an older driver. Never turn that older table into a
+  // positive hardware result for this release merely because it is on the
+  // current URL. Ignore references in known issues ("install 26.9.1") by
+  // requiring one of the compatibility-section assertion phrases.
+  const compatibilityText = cleanText($('main').text() || $('body').text(), 80_000);
+  const compatibilityVersions = [...compatibilityText.matchAll(
+    /AMD Software:\s*Adrenalin Edition\s+(\d+(?:\.\d+){2})\s+(?:is compatible with|is a notebook reference|is designed to support)\b/gi
+  )].map(match => match[1]);
+  const compatibilityVersionMismatch = version && compatibilityVersions.find(claim => claim !== version) || null;
+  const compatibility = compatibilityVersionMismatch ? null : parseAmdCompatibility($);
   const supportedGames = unique([...gameTitles, ...fsrTitles], 140);
   const changelog = unique([
     gameTitles.length ? `Game support — ${gameTitles.join('; ')}.` : '',
@@ -1510,6 +1520,7 @@ function parseAmdReleaseNotes(html, sourceUrl, options = {}) {
     whql: Boolean(options.whql),
     releaseChannel: options.releaseChannel || (/\bOptional\b/i.test(title) ? 'optional' : null),
     compatibility,
+    compatibilityVersionMismatch,
   };
 }
 
@@ -1871,10 +1882,10 @@ async function detectAmd() {
         verdict: parsed.knownIssueCount
           ? 'Install if the new game, product, or listed fixes apply to your Radeon setup; otherwise wait if your current driver is stable and review the game-specific known issues first.'
           : 'Install if the new game, product, or listed fixes apply to your Radeon setup; otherwise stay on your current stable OEM-qualified driver.',
-        reasoning: `AMD’s official ${releaseLabel ? `${releaseLabel} ` : ''}release documents ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} fixed issue${parsed.gameFixCount === 1 ? '' : 's'}, ${parsed.productSupportCount} newly supported product${parsed.productSupportCount === 1 ? '' : 's'}, and ${parsed.knownIssueCount} known issue${parsed.knownIssueCount === 1 ? '' : 's'}.`,
+        reasoning: `AMD’s official ${releaseLabel ? `${releaseLabel} ` : ''}release documents ${parsed.gameSupportCount} supported game${parsed.gameSupportCount === 1 ? '' : 's'}, ${parsed.gameFixCount} fixed issue${parsed.gameFixCount === 1 ? '' : 's'}, ${parsed.productSupportCount} newly supported product${parsed.productSupportCount === 1 ? '' : 's'}, and ${parsed.knownIssueCount} known issue${parsed.knownIssueCount === 1 ? '' : 's'}.${parsed.compatibilityVersionMismatch ? ` The compatibility section names driver ${parsed.compatibilityVersionMismatch} rather than ${parsed.version}; model checks are withheld until AMD corrects the source.` : ''}`,
         evidence: [
           ...(isDiscoveredRelease ? sourceEvidence('AMD Driver Downloads', driverPageUrl, `AMD’s Radeon RX driver page identifies Adrenalin Edition ${parsed.version} as the current ${releaseLabel ? `${releaseLabel} ` : ''}package.`, { dateBasis: 'checked', releaseType: 'official-download-index', ...impactMeta }) : []),
-          ...sourceEvidence('AMD Release Notes', url, `${parsed.title}; ${parsed.gameFixCount} fixed and ${parsed.knownIssueCount} known issues documented.`, { dateBasis: 'released', publishedAt: parsed.releasedAt, releaseType: 'official-release-notes', ...impactMeta, compatibility: parsed.compatibility || undefined }),
+          ...sourceEvidence('AMD Release Notes', url, `${parsed.title}; ${parsed.gameFixCount} fixed and ${parsed.knownIssueCount} known issues documented.${parsed.compatibilityVersionMismatch ? ` Compatibility section names ${parsed.compatibilityVersionMismatch}, so model checks are unverified.` : ''}`, { dateBasis: 'released', publishedAt: parsed.releasedAt, releaseType: 'official-release-notes', ...impactMeta, compatibility: parsed.compatibility || undefined }),
         ],
         sourceUrl: url,
       };

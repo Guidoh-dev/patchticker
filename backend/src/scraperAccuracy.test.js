@@ -1174,6 +1174,28 @@ describe('scraper accuracy guards', () => {
     ]));
   });
 
+  test('AMD withholds hardware matches when the compatibility prose names an older driver', () => {
+    const source = `
+      <h1>AMD Software: Adrenalin Edition 26.9.2 Optional Driver Release Notes</h1>
+      <p>Last Updated: September 29th, 2026.</p>
+      <h2>Known Issues</h2><ul><li>War Thunder users may need to install 26.9.1.</li></ul>
+      <h2>Radeon Product Compatibility</h2>
+      <p>AMD Software: Adrenalin Edition 26.8.1 is compatible with the following AMD Radeon products.</p>
+      <table><tr><td>AMD Radeon RX 7900 Series Graphics</td></tr></table>
+      <h2>Compatible Operating Systems</h2>
+      <p>AMD Software: Adrenalin Edition 26.9.2 is designed to support the following Microsoft Windows platforms.</p>
+      <ul><li>Windows 11 version 21H2 and later</li></ul>
+    `;
+    const url = 'https://www.amd.com/en/resources/support-articles/release-notes/RN-RAD-WIN-26-9-2.html';
+    const mismatch = __test.parseAmdReleaseNotes(source, url);
+    expect(mismatch.compatibilityVersionMismatch).toBe('26.8.1');
+    expect(mismatch.compatibility).toBeNull();
+
+    const corrected = __test.parseAmdReleaseNotes(source.replace('26.8.1 is compatible', '26.9.2 is compatible'), url);
+    expect(corrected.compatibilityVersionMismatch).toBeNull();
+    expect(corrected.compatibility).toMatchObject({ vendor: 'AMD', authoritative: true });
+  });
+
   test('Intel compatibility parser reads exact Arc models and supported Windows releases from the official PDF table', () => {
     const compatibility = __test.parseIntelCompatibility(`
       Operating System Support:
