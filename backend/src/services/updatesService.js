@@ -10,6 +10,7 @@ const { normaliseReleaseText, normaliseReleaseTextArray } = require('../utils/re
 const { getFreshnessSlaHours } = require('../config/platformRegistry');
 const { currentSteamGameRoster } = require('./steamGameEligibilityService');
 const { publicWindowsGuidance } = require('../utils/windowsReleaseGuidance');
+const { isExplicitlySmallReleaseTitle } = require('../utils/steamReleasePolicy');
 
 const MAX_UPDATE_AGE_DAYS = 240;
 const MAX_PUBLIC_FUTURE_SKEW_HOURS = 24;
@@ -727,6 +728,9 @@ function isUpdateWithinDisplayWindow(update, now = Date.now()) {
 
 function isUpdateDisplayable(update) {
   if (!isUpdateWithinDisplayWindow(update)) return false;
+  // Previously persisted minor game posts must not remain public after the
+  // ingestion classifier is corrected. Steam client and SteamOS are distinct.
+  if (update?.sourceKind === 'steam-game-news' && isExplicitlySmallReleaseTitle(update?.name)) return false;
   const evidence = jsonArray(update?.evidence);
   const steamMonthPlaceholder = update?.platform === 'Steam'
     && new RegExp(`^(?:${MONTH_NAMES})\\s+\\d{4}$`, 'i').test(String(update?.version || '').trim())
@@ -1969,7 +1973,7 @@ async function getUpdateHistory(platform, limit = 20) {
   if (!db.isAvailable()) return [];
   try {
     const rows = await db.query(
-      `SELECT id, platform, name, version, released_at, status, score, bug_count,
+      `SELECT id, platform, name, version, source_kind, released_at, status, score, bug_count,
               ai_generated, evidence, created_at, updated_at
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
@@ -1989,6 +1993,7 @@ async function getUpdateHistory(platform, limit = 20) {
         platform:    r.platform,
         name:        r.name,
         version:     r.version,
+        sourceKind:  r.source_kind,
         releasedAt:  r.released_at,
         status:      score === null ? null : statusForScore(score),
         score,

@@ -145,6 +145,14 @@ describe('material Steam game update pipeline', () => {
     });
     expect(genericTitle.small).toBe(true);
     expect(genericTitle.eligible).toBe(false);
+
+    const minorPatch = __test.classifyMaterialUpdate({
+      feedname: 'steam_community_announcements',
+      title: 'WARDOGS | Update 0.1.2 (Minor Patch)',
+      contents: list(Array.from({ length: 12 }, (_, i) => `Gameplay and weapon change ${i}`)) + ' '.repeat(3000),
+    });
+    expect(minorPatch.small).toBe(true);
+    expect(minorPatch.eligible).toBe(false);
   });
 
   test('rejects previews, PTBs, third-party news, and cosmetic-only announcements', () => {
@@ -324,6 +332,8 @@ describe('material Steam game update pipeline', () => {
   test('keeps resolved crash fixes out of the active known-issues list', () => {
     const issues = __test.knownIssuesFromNotes([
       'Fixed a bug that caused the game to crash during matchmaking.',
+      'A fix for the WD-L020 crash is included in this release.',
+      'WD-L020 Crash Error FixFixed an issue that caused a crash on startup.',
       'Reduced the crash rate on Nintendo Switch.',
       'The game may crash when loading a ranked match.',
       'Microsoft is not currently aware of any issues with this update.',

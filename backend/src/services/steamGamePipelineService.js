@@ -32,6 +32,7 @@ const {
   statusForScore,
 } = require('../utils/updateScore');
 const { normaliseReleaseText } = require('../utils/releaseText');
+const { isExplicitlySmallReleaseTitle } = require('../utils/steamReleasePolicy');
 const {
   STRICT_STEAM_GAME_POLICY,
   STEAM_GAME_ELIGIBILITY_AUDIT,
@@ -48,10 +49,9 @@ const MIN_EXPLICIT_PACKAGE_BYTES = 250 * 1024 * 1024;
 const DOTA_APP_ID = 570;
 const DOTA_DATAFEED_BASE = 'https://www.dota2.com/datafeed';
 
-const SMALL_RELEASE_RE = /\b(?:hot[ -]?fix|micro[ -]?patch|bug[ -]?fix(?:es)?(?: patch)?|minor update|small update|quick fix|update fixes|maintenance(?: update)?|server maintenance)\b/i;
 const PRERELEASE_RE = /\b(?:ptb|public test build|test server|beta|preview|experimental|playtest|developer update|dev diary|dev blog|roadmap|coming soon|what we(?:'|’)re working on|state of the game|community crunch|deep dive|research trip|wishlist now)\b/i;
 const DATED_ARRIVAL_RE = /\barrives?\s+(?:on\s+)?(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2})\b/i;
-const SMALL_OPENING_RE = /^(?:this\s+(?:release|update|patch)\s+(?:is\s+)?(?:a\s+)?|a\s+)?(?:hot[ -]?fix|micro[ -]?patch|minor update|small update|quick fix|maintenance update)\b/i;
+const SMALL_OPENING_RE = /^(?:this\s+(?:release|update|patch)\s+(?:is\s+)?(?:a\s+)?|a\s+)?(?:hot[ -]?fix|micro[ -]?patch|minor (?:update|patch)|small (?:update|patch)|quick fix|maintenance (?:update|patch))\b/i;
 const TITLE_RELEASE_RE = /\b(?:patch(?: notes?)?|gameplay patch|content update|major update|title update|update|release notes?|stable released|version \d)\b/i;
 const BODY_RELEASE_RE = /\b(?:patch notes?|update (?:is )?(?:now )?(?:live|available|out now)|has been released|stable (?:build )?released|version \d+(?:\.\d+)+ (?:is )?(?:now )?(?:live|available))\b/i;
 const MAJOR_RELEASE_RE = /\b(?:major (?:gameplay )?update|gameplay patch|content update|title update|new season|season \d|expansion|new chapter|chapter \d|overhaul|rework|launch update|update (?:is )?(?:live|available|out now))\b/i;
@@ -185,7 +185,7 @@ function classifyMaterialUpdate(post) {
   const fixOnlyTitle = /\b(?:bug[ -]?fix(?:es)?|update fixes|fixes and improvements|stability fixes?)\b/i.test(title) && !explicitMajor;
   // Reject explicit small-release labels without disqualifying a large update
   // merely because its full notes contain a later hotfix section.
-  const small = SMALL_RELEASE_RE.test(title) || SMALL_OPENING_RE.test(opening.trim()) || fixOnlyTitle;
+  const small = isExplicitlySmallReleaseTitle(title) || SMALL_OPENING_RE.test(opening.trim()) || fixOnlyTitle;
   // "Incoming" in a headline is pre-release marketing, while the same word
   // commonly appears inside live sci-fi patch notes (for example, an incoming
   // transmission). Scope that signal to the title to avoid rejecting releases.

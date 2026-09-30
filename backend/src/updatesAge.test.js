@@ -1125,6 +1125,19 @@ test('PS5 CMS revisions are excluded while official package fingerprints remain 
   })).toBe(true);
 });
 
+test('old minor Steam game rows are hidden without hiding Steam client or SteamOS updates', () => {
+  const base = { platform: 'Steam', releasedAt: new Date().toISOString(), version: '0.1.2', evidence: [] };
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base, sourceKind: 'steam-game-news', name: 'WARDOGS | Update 0.1.2 (Minor Patch)',
+  })).toBe(false);
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base, sourceKind: 'steam-game-news', name: 'WARDOGS | Major Gameplay Update 1.0',
+  })).toBe(true);
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...base, sourceKind: 'steamos-news', name: 'SteamOS Minor Patch',
+  })).toBe(true);
+});
+
 test('production outages never expose static demo updates as live data', async () => {
   process.env.NODE_ENV = 'production';
   mockIsAvailable.mockReturnValue(false);
