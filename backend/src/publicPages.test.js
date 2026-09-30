@@ -69,6 +69,13 @@ test('version-only source timestamps are not presented as confirmed release date
   expect(html).toContain('Not graded');
 });
 
+test('routine source rechecks do not claim every release page changed in the sitemap', () => {
+  const rechecked = { ...update, createdAt: '2026-09-20T12:00:00Z', updatedAt: '2026-09-30T22:00:00Z' };
+  const sitemap = renderSitemap([rechecked], PLATFORMS);
+  expect(sitemap).toContain('https://patchticker.app/releases/nvidia-599-10');
+  expect(sitemap).not.toContain('<lastmod>2026-09-30</lastmod>');
+});
+
 test('release routes, platform pages, and sitemap serve crawlable HTML', async () => {
   const app = express().use(createPublicPagesRouter({
     listUpdates: async () => [update, versionOnly],

@@ -123,7 +123,10 @@ function renderSitemap(updates, platforms) {
   const entries = [
     { path: '/' }, { path: '/releases' },
     ...platforms.filter(platform => active.has(platform.key)).map(platform => ({ path: platformPath(platform.key) })),
-    ...qualified.map(update => ({ path: releasePath(update), lastmod: isoDate(update.updatedAt || update.releasedAt) })),
+    // updatedAt changes on every source recheck, even when the release page
+    // itself has not materially changed. A false daily lastmod is worse than
+    // omitting this optional hint until content edits have their own timestamp.
+    ...qualified.map(update => ({ path: releasePath(update) })),
   ];
   return '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
     entries.map(({ path, lastmod }) => '  <url><loc>' + esc(SITE + path) + '</loc>' +
