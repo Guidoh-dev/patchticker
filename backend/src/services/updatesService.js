@@ -775,6 +775,11 @@ function normaliseReleaseUrl(value) {
 }
 
 function canonicalArticleSourceKey(update) {
+  // Intel may first expose a catalog-only build and later publish a WHQL PDF
+  // under a new row for the *same* download. Keep one public result, selected
+  // by evidence quality, rather than showing contradictory install guidance.
+  const intelKey = canonicalIntelPackageKey(update);
+  if (intelKey) { return intelKey; }
   const evidence = jsonArray(update?.evidence);
   const urls = [update?.sourceUrl, ...evidence.map(item => item?.url)].filter(Boolean);
   for (const value of urls) {
@@ -784,6 +789,16 @@ function canonicalArticleSourceKey(update) {
     }
   }
   return null;
+}
+
+function canonicalIntelPackageKey(update) {
+  if (update?.platform !== 'Intel') { return null; }
+  const version = String(update?.internalVersion || update?.version || '').match(/\b\d+(?:\.\d+){3}\b/)?.[0];
+  if (!version) { return null; }
+  const urls = [update?.sourceUrl, update?.sourceRef, ...jsonArray(update?.evidence).map(item => item?.url)];
+  const downloadPage = urls.map(normaliseReleaseUrl)
+    .find(url => /^www\.intel\.com\/content\/www\/us\/en\/download\/\d+\//.test(url || ''));
+  return downloadPage ? `intel-package|${downloadPage}|${version}` : null;
 }
 
 function releaseInformationQuality(update) {
@@ -1879,6 +1894,31 @@ async function getUpdateById(id) {
   }
 
   if (!update || !isUpdateDisplayable(update)) return null;
+
+  // Old Intel catalog rows can remain bookmarked after the corresponding
+  // WHQL release notes arrive. Resolve them to the current, better-evidenced
+  // record so direct links no longer repeat obsolete "notes unavailable" copy.
+  const intelPackageKey = dbReadSucceeded ? canonicalIntelPackageKey(update) : null;
+  if (intelPackageKey && db.isAvailable()) {
+    try {
+      const driverVersion = String(update.internalVersion || update.version).match(/\b\d+(?:\.\d+){3}\b/)?.[0];
+      const candidates = await db.query(
+        `SELECT * FROM software_updates
+         WHERE platform = 'Intel'
+           AND version LIKE $1
+           AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+           AND released_at <= NOW() + INTERVAL '${MAX_PUBLIC_FUTURE_SKEW_HOURS} hours'
+         ORDER BY released_at DESC, created_at DESC
+         LIMIT 10`,
+        [`${driverVersion}%`]
+      );
+      const peers = candidates.rows.map(rowToUpdate)
+        .filter(candidate => isUpdateDisplayable(candidate) && canonicalIntelPackageKey(candidate) === intelPackageKey);
+      update = dedupeArticleReleases(peers)[0] || update;
+    } catch (err) {
+      logger.warn('[updates] Intel canonical lookup failed', { id, error: err.message });
+    }
+  }
 
   let related = [];
   if (dbReadSucceeded && db.isAvailable()) {

@@ -50,6 +50,9 @@ function createPublicPagesRouter({ listUpdates = getUpdates, findUpdate = getUpd
     if (process.env.NODE_ENV === 'production' && !db.isAvailable()) return unavailable(res);
     const update = await findUpdate(req.params.id);
     if (!update) return res.status(404).type('text').send('Release not found');
+    if (update.id !== req.params.id) {
+      return res.redirect(301, `/releases/${encodeURIComponent(update.id)}`);
+    }
     html(res, renderRelease(update));
   }));
   return router;

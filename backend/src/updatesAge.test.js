@@ -66,6 +66,40 @@ test('database detail queries reject expired rows before hydration', async () =>
   );
 });
 
+test('an old Intel catalog permalink resolves to the same package with verified WHQL notes', async () => {
+  jest.setSystemTime(new Date('2026-09-30T12:00:00Z'));
+  const catalog = 'https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html';
+  const old = {
+    id: 'intel-32-0-101-9033', platform: 'Intel', name: 'Intel Arc Graphics Driver 32.0.101.9033',
+    version: '32.0.101.9033', source_kind: 'official-release', source_ref: null,
+    source_url: catalog, released_at: '2026-09-24', score: '3.7',
+    changelog: ['Current package listed.'], known_issues: [], risk_factors: [],
+    evidence: [{ url: catalog, releaseType: 'official-release', checkedAt: '2026-09-24T12:00:00Z' }],
+    created_at: '2026-09-24T12:00:00Z', updated_at: '2026-09-24T12:00:00Z',
+  };
+  const rich = {
+    ...old, id: 'intel-32-0-101-9033-whql-certified',
+    name: 'Intel Arc Graphics Driver 32.0.101.9033 WHQL',
+    version: '32.0.101.9033 WHQL Certified', source_kind: 'official-release-notes', source_ref: catalog,
+    source_url: 'https://downloadmirror.intel.com/929557/ReleaseNotes_101.9033_WHQL.pdf',
+    score: '3.8', changelog: ['Four Game On titles.', 'Known issues are listed in the PDF.'],
+    evidence: [...old.evidence, {
+      url: 'https://downloadmirror.intel.com/929557/ReleaseNotes_101.9033_WHQL.pdf',
+      releaseType: 'official-release-notes', checkedAt: '2026-09-29T12:00:00Z',
+    }],
+    updated_at: '2026-09-29T12:00:00Z',
+  };
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValueOnce({ rows: [old] })
+    .mockResolvedValueOnce({ rows: [old, rich] })
+    .mockResolvedValueOnce({ rows: [] });
+
+  const result = await updatesService.getUpdateById(old.id);
+  expect(result).toMatchObject({ id: rich.id, score: 3.8, name: rich.name });
+  expect(mockQuery.mock.calls[1][0]).toContain("platform = 'Intel'");
+  expect(mockQuery.mock.calls[1][1]).toEqual(['32.0.101.9033%']);
+});
+
 test('database update and history queries enforce the same 240-day window', async () => {
   mockIsAvailable.mockReturnValue(true);
   mockQuery.mockResolvedValue({ rows: [] });
@@ -1088,6 +1122,33 @@ test('rolling support pages do not collapse distinct console releases', () => {
 
   expect(updatesService.__test.canonicalArticleSourceKey(releases[0])).toBeNull();
   expect(updatesService.__test.dedupeArticleReleases(releases)).toEqual(releases);
+});
+
+test('Intel catalog and WHQL notes for one package resolve to the richer release', () => {
+  const catalog = 'https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html';
+  const base = {
+    platform: 'Intel', releasedAt: '2026-09-24',
+    evidence: [{ url: catalog, releaseType: 'official-release', checkedAt: '2026-09-24T12:00:00Z' }],
+  };
+  const thin = {
+    ...base, id: 'intel-32-0-101-9033', version: '32.0.101.9033', sourceUrl: catalog,
+    changelog: ['The current Intel package is verified.'], knownIssues: [],
+  };
+  const rich = {
+    ...base, id: 'intel-32-0-101-9033-whql-certified', version: '32.0.101.9033 WHQL Certified',
+    sourceUrl: 'https://downloadmirror.intel.com/929557/ReleaseNotes_101.9033_WHQL.pdf',
+    sourceRef: catalog,
+    evidence: [...base.evidence, {
+      url: 'https://downloadmirror.intel.com/929557/ReleaseNotes_101.9033_WHQL.pdf',
+      releaseType: 'official-release-notes', checkedAt: '2026-09-29T12:00:00Z',
+    }],
+    changelog: ['Intel documents four Game On titles.', 'The release notes list known issues.'],
+    knownIssues: ['A game may crash during gameplay.'],
+  };
+  const otherPackage = { ...thin, id: 'intel-other-download', sourceUrl: catalog.replace('/785597/', '/other/'), evidence: [], sourceRef: null };
+  expect(updatesService.__test.dedupeArticleReleases([thin, rich, otherPackage])).toEqual([rich, otherPackage]);
+  expect(updatesService.__test.dedupeArticleReleases([rich, thin])).toEqual([rich]);
+
 });
 
 test('Discord service incidents are excluded while official technical patch notes remain visible', () => {

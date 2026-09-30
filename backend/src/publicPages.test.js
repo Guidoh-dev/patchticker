@@ -77,6 +77,15 @@ test('release routes, platform pages, and sitemap serve crawlable HTML', async (
   await request(app).get('/platforms/Unknown').expect(404);
 });
 
+test('legacy release URLs redirect to the current canonical release', async () => {
+  const app = express().use(createPublicPagesRouter({
+    listUpdates: async () => [update],
+    findUpdate: async () => update,
+  }));
+  const response = await request(app).get('/releases/old-nvidia-link').expect(301);
+  expect(response.headers.location).toBe('/releases/nvidia-599-10');
+});
+
 test('empty feed is not presented to crawlers as a healthy index', async () => {
   const app = express().use(createPublicPagesRouter({ listUpdates: async () => [] }));
   const response = await request(app).get('/sitemap.xml').expect(503);

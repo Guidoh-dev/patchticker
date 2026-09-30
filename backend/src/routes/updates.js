@@ -175,8 +175,8 @@ router.get(
 
       const userId = req.user?.id ?? null;
       const [liveRatings, userVote] = await Promise.all([
-        getLiveRatings(req.params.id),
-        getUserVote(req.params.id, userId),
+        getLiveRatings(update.id),
+        getUserVote(update.id, userId),
       ]);
 
       const enriched = {
