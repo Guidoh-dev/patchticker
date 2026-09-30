@@ -56,6 +56,19 @@ test('a catalog-only build never presents the catalog timestamp as a verified re
   expect(html).toContain('content="noindex,follow"');
 });
 
+test('version-only source timestamps are not presented as confirmed release dates', () => {
+  const manifestOnly = {
+    ...versionOnly, dateBasis: 'source-updated',
+    evidence: [{ source: 'GOG Installer Manifest', url: versionOnly.sourceUrl, dateBasis: 'source-updated' }],
+  };
+  const html = renderRelease(manifestOnly);
+  expect(html).toContain('<dt>Source updated</dt>');
+  expect(html).not.toContain('<dt>Released</dt>');
+  expect(html).toContain('not a confirmed public release date');
+  expect(html).toContain('content="noindex,follow"');
+  expect(html).toContain('Not graded');
+});
+
 test('release routes, platform pages, and sitemap serve crawlable HTML', async () => {
   const app = express().use(createPublicPagesRouter({
     listUpdates: async () => [update, versionOnly],

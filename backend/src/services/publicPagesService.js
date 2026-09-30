@@ -72,8 +72,13 @@ function renderPlatform(platform, updates) {
 function renderRelease(update) {
   const date = isoDate(update.releasedAt);
   const noindex = !isIndexable(update);
-  const limitedCatalog = (Array.isArray(update.evidence) ? update.evidence : [])
+  const sourceEvidence = Array.isArray(update.evidence) ? update.evidence : [];
+  const limitedCatalog = sourceEvidence
     .some(item => item?.detailsUnavailable === true && item?.dateBasis === 'catalog-updated');
+  const sourceUpdated = update.dateBasis === 'source-updated'
+    || sourceEvidence.some(item => item?.url === update.sourceUrl && item?.dateBasis === 'source-updated');
+  const dateLabel = limitedCatalog ? 'Catalog updated' : sourceUpdated ? 'Source updated'
+    : update.dateBasis === 'published' ? 'Published' : 'Released';
   const score = typeof update.score === 'number' && Number.isFinite(update.score) && update.score >= 0 && update.score <= 10 && !noindex
     ? update.score.toFixed(1) + '/10' : 'Not graded';
   const issues = (Array.isArray(update.knownIssues) ? update.knownIssues : []).filter(item => typeof item === 'string' && item.trim()).slice(0, 20);
@@ -87,10 +92,12 @@ function renderRelease(update) {
   const facts = '<dl class="discovery-facts">' +
     fact('Platform', '<a href="' + esc(platformPath(update.platform)) + '">' + esc(update.platform) + '</a>') +
     fact('Version', esc(update.version || 'Not stated')) +
-    fact(limitedCatalog ? 'Catalog updated' : 'Released', date ? '<time datetime="' + date + '">' + date + '</time>' : 'Date unverified') +
+    fact(dateLabel, date ? '<time datetime="' + date + '">' + date + '</time>' : 'Date unverified') +
     fact('PatchTicker assessment', score) + '</dl>';
   const caveat = limitedCatalog
     ? 'The vendor catalog confirms the package, but the release date and full notes could not be verified. This is not a hands-on compatibility test.'
+    : sourceUpdated
+      ? 'This date is when the vendor source or installer artifact was updated, not a confirmed public release date. A full per-build changelog may be unavailable; this is not a hands-on compatibility test.'
     : noindex ? 'Only the version or limited release information is verified. Full notes and a stability conclusion are unavailable.'
       : 'This is source-based guidance, not a hands-on compatibility test. Check the vendor notes and your exact hardware before installing.';
   return shell({
