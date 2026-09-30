@@ -337,7 +337,7 @@ test('natural latest and current searches normalize intent before lane routing',
   assert.match(mainSource, /const LATEST_ONLY_SEARCH_TERMS = new Set\(\['latest', 'current', 'newest', 'new'\]\)/);
   assert.match(mainSource, /\\bwhat\['’\]s\\b/);
   assert.match(mainSource, /const latestOnly = hasLatestOnlySearchIntent\(query\)/);
-  assert.match(mainSource, /if \(intent\.latestOnly\) filtered = latestUniqueUpdates\(filtered, releaseLaneKey\)/);
+  assert.match(mainSource, /if \(intent\.latestOnly && !serverResultsReady\) filtered = latestUniqueUpdates\(filtered, releaseLaneKey\)/);
   assert.match(mainSource, /const recencyLabel = intent\.latestOnly \? 'Latest · ' : ''/);
   assert.match(mainSource, /for \(const intentQuery of intentQueries\)/);
   assert.match(mainSource, /exactPlatformForSearch\(intentQuery\)/);
@@ -350,7 +350,9 @@ test('multi-part searches use strict all-term matching without phrase-order fail
   assert.match(mainSource, /function searchTermGroups\(raw\)/);
   assert.match(mainSource, /tokens\.length > 1[\s\S]*?map\(token => \[token\]\)/);
   assert.match(mainSource, /groups\.every\(group => group\.some\(needle => searchDocumentContains\(haystack, needle\)\)\)/);
-  assert.match(mainSource, /filtered = filtered\.filter\(u => \{[\s\S]*?groups\.every\(group => group\.some\(term => searchDocumentContains\(haystack, term\)\)\)/);
+  assert.match(mainSource, /filtered = filterSearchResultsByProvenance\(filtered, \{/);
+  assert.match(mainSource, /authoritative: serverResultsReady/);
+  assert.match(filterLogicSource, /groups\.every\(group => group\.some\(term => contains\(searchText\(update\), term\)\)\)/);
   assert.match(mainSource, /return 'Across update details'/);
   assert.match(mainSource, /All \$\{H\(String\(matchedTermCount\)\)\} search terms matched/);
 });
@@ -363,7 +365,7 @@ test('search results expose staged platform facets, verification timing, and hon
   assert.match(mainSource, /Platform releases · \$\{H\(platformLabel\(resolvedSearchIntent\.platform\)\)\}/);
   assert.match(mainSource, /Official compatibility table · all \$\{H\(String\(matchedTermCount\)\)\} terms matched/);
   assert.match(mainSource, /Compatibility check · current vendor release/);
-  assert.match(mainSource, /return u\.compatibilitySearchFallback[\s\S]*?groups\.every/);
+  assert.match(filterLogicSource, /update\.compatibilitySearchFallback[\s\S]*?groups\.every/);
   assert.match(mainSource, /compatibilityQuery: update\.compatibilitySearchFallback \? search : null/);
   assert.match(mainSource, /\?hardware=\$\{encodeURIComponent\(compatibilityQuery\)\}/);
   assert.match(mainSource, /Check \$\{compatibilityQuery\} compatibility with \$\{u\.name\}/);
@@ -563,7 +565,7 @@ test('filter controls stage draft state and only update the feed through Apply',
   assert.match(mainSource, /getElementById\('dash-top-apply-filters'\)\?\.addEventListener\('click', applyDraftFilters\)/);
   assert.match(mainSource, /if \(platform\) filtered = filtered\.filter/);
   assert.match(mainSource, /if \(status\)\s+filtered = filtered\.filter/);
-  assert.match(mainSource, /groups\.every\(group => group\.some\(term => searchDocumentContains\(haystack, term\)\)\)/);
+  assert.match(filterLogicSource, /groups\.every\(group => group\.some\(term => contains\(searchText\(update\), term\)\)\)/);
   assert.doesNotMatch(mainSource, /setTimeout\(\(\) => runAuthoritativeSearch/);
 });
 

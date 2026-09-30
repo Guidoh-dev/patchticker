@@ -9,3 +9,17 @@ export function filterUpdatesBySetup(updates, setup) {
   if (!platforms.length) return [...(updates || [])];
   return (updates || []).filter(update => platforms.includes(update?.platform));
 }
+
+// A completed database search already matched vendor notes, device tables,
+// and inflected issue terms. Rechecking with the browser's smaller vocabulary
+// silently discards valid results (for example "crashes" vs "crash").
+export function filterSearchResultsByProvenance(updates, {
+  authoritative = false, groups = [], searchText, contains,
+} = {}) {
+  const candidates = [...(updates || [])];
+  if (authoritative || !groups.length) return candidates;
+  return candidates.filter(update => (
+    update.compatibilitySearchFallback
+    || groups.every(group => group.some(term => contains(searchText(update), term)))
+  ));
+}

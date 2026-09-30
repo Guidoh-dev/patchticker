@@ -24,7 +24,7 @@ import {
   openAnalyticsPreferences, syncAnalyticsIdentity,
 } from './analytics.js';
 import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCandidates.js';
-import { SETUP_LENSES, filterUpdatesBySetup } from './filterLogic.js';
+import { SETUP_LENSES, filterUpdatesBySetup, filterSearchResultsByProvenance } from './filterLogic.js';
 import { compatibilityProfileFromUpdate, evaluateCompatibility } from './compatibility.js';
 import { preferredReleaseAt, selectUpdateBrief } from './updateBrief.js';
 import { releaseLaneKey } from './releaseLanes.js';
@@ -3439,7 +3439,8 @@ async function renderDashboard({ focusId = null } = {}) {
 
   function applyFilters() {
     const { platform, setup, status, sort, search } = _filterState;
-    let filtered = search && _searchMode === 'server' && Array.isArray(_serverSearchResults)
+    const serverResultsReady = Boolean(search && _searchMode === 'server' && Array.isArray(_serverSearchResults));
+    let filtered = serverResultsReady
       ? _serverSearchResults
       : _allUpdates;
 
@@ -3448,26 +3449,27 @@ async function renderDashboard({ focusId = null } = {}) {
     if (status)   filtered = filtered.filter(u => u.status   === status);
     if (search) {
       const intent = resolveSearchIntentForPlatform(searchIntentForQuery(search), platform);
-      if (intent.status && !status) filtered = filtered.filter(u => u.status === intent.status);
-      if (intent.platform) filtered = filtered.filter(u => u.platform === intent.platform);
-      if (intent.sourceKind) filtered = filtered.filter(u => u.sourceKind === intent.sourceKind);
-      if (intent.productId) filtered = filtered.filter(u => String(u.productId || '') === intent.productId);
-      if (intent.lanes?.length) {
-        filtered = filtered.filter(update => intent.lanes.some(lane =>
-          update.platform === lane.platform && (!lane.sourceKind || update.sourceKind === lane.sourceKind)
-        ));
+      if (!serverResultsReady) {
+        if (intent.status && !status) filtered = filtered.filter(u => u.status === intent.status);
+        if (intent.platform) filtered = filtered.filter(u => u.platform === intent.platform);
+        if (intent.sourceKind) filtered = filtered.filter(u => u.sourceKind === intent.sourceKind);
+        if (intent.productId) filtered = filtered.filter(u => String(u.productId || '') === intent.productId);
+        if (intent.lanes?.length) {
+          filtered = filtered.filter(update => intent.lanes.some(lane =>
+            update.platform === lane.platform && (!lane.sourceKind || update.sourceKind === lane.sourceKind)
+          ));
+        }
       }
       const groups = searchTermGroups(intent.semanticQuery);
-      if (groups.length) {
-        filtered = filtered.filter(u => {
-          const haystack = isReleaseIdentityQuery(intent.semanticQuery)
+      filtered = filterSearchResultsByProvenance(filtered, {
+        authoritative: serverResultsReady,
+        groups,
+        searchText: u => isReleaseIdentityQuery(intent.semanticQuery)
             ? [u.name, u.version, u.internalVersion].filter(Boolean).join(' ')
-            : searchableTextForUpdate(u);
-          return u.compatibilitySearchFallback
-            || groups.every(group => group.some(term => searchDocumentContains(haystack, term)));
-        });
-      }
-      if (intent.latestOnly) filtered = latestUniqueUpdates(filtered, releaseLaneKey);
+            : searchableTextForUpdate(u),
+        contains: searchDocumentContains,
+      });
+      if (intent.latestOnly && !serverResultsReady) filtered = latestUniqueUpdates(filtered, releaseLaneKey);
     }
 
     const sorters = {
@@ -3477,7 +3479,7 @@ async function renderDashboard({ focusId = null } = {}) {
       score_asc:  (a, b) => (validScoreOrNull(a.score) ?? 11) - (validScoreOrNull(b.score) ?? 11),
       relevance:  (a, b) => updateSearchRelevance(b, search) - updateSearchRelevance(a, search),
     };
-    if (sorters[sort]) filtered = [...filtered].sort(sorters[sort]);
+    if (sorters[sort] && !(serverResultsReady && sort === 'relevance')) filtered = [...filtered].sort(sorters[sort]);
 
     const listEl = document.getElementById('updates-list');
     if (!listEl) return filtered.length;
