@@ -361,6 +361,7 @@ select.field-input { cursor: pointer; }
 .update-card.problematic .score-number, .score-number.problematic { color: var(--red); }
 .status-badge.stable     { background: rgba(74,222,128,.12); color: var(--green); }
 .status-badge.caution    { background: rgba(251,191,36,.12); color: var(--yellow); }
+.status-badge.unscored   { background: rgba(34,211,238,.10); color: var(--cyan); }
 .status-badge.problematic { background: rgba(248,113,113,.12); color: var(--red); }
 
 /* CSP-safe semantic score colors. Dynamic inline styles are intentionally
@@ -2085,6 +2086,7 @@ select.field-input { cursor: pointer; }
 }
 .platform-status-badge.stable  { color: var(--green); border-color: var(--green); }
 .platform-status-badge.caution { color: var(--yellow); border-color: var(--yellow); }
+.platform-status-badge.unscored { color: var(--cyan); border-color: var(--cyan); }
 .platform-status-badge.avoid   { color: var(--red); border-color: var(--red); }
 
 /* Version history table */

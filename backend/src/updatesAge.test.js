@@ -304,6 +304,51 @@ test('invalid persisted scores are dropped with their derived status', () => {
   expect(update.status).toBeNull();
 });
 
+test('build-only detections expose verified versions without an unsupported safety score', () => {
+  const base = {
+    id: 'battlenet-2-53-3', platform: 'BattleNet', name: 'Battle.net 2.53.3', version: '2.53.3',
+    released_at: '2026-08-10', score: '5.9', status: 'caution', changelog: ['Build 2.53.3 verified.'],
+    known_issues: [], risk_factors: [], evidence: [{
+      source: 'Blizzard manifest', url: 'https://example.com/build', releaseType: 'official-version',
+      dateBasis: 'source-updated',
+    }],
+  };
+  expect(updatesService.__test.rowToUpdate({ ...base, source_kind: 'official-version' }))
+    .toMatchObject({ score: null, impactScore: null, status: null, sourceKind: 'official-version',
+      verdict: expect.stringContaining('has not rated install safety') });
+  expect(updatesService.__test.rowToUpdate({ ...base, source_kind: null }))
+    .toMatchObject({ score: null, status: null, sourceKind: 'official-version' });
+  expect(updatesService.__test.rowToUpdate({
+    ...base, source_kind: 'official-release-notes', evidence: [{
+      source: 'Vendor catalog', url: 'https://example.com/catalog', releaseType: 'official-release-notes',
+      detailsUnavailable: true,
+    }],
+  })).toMatchObject({ score: null, status: null });
+  expect(updatesService.__test.rowToUpdate({
+    ...base, source_kind: 'official-release-notes', evidence: [{
+      source: 'Vendor notes', url: 'https://example.com/notes', releaseType: 'official-release-notes',
+    }],
+  })).toMatchObject({ score: 5.9, status: 'caution' });
+});
+
+test('status filters do not return internally cautious rows lacking public assessment evidence', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  const base = {
+    id: 'battlenet-2-53-3', platform: 'BattleNet', name: 'Battle.net 2.53.3', version: '2.53.3',
+    released_at: '2026-08-10', score: '5.9', status: 'caution', changelog: ['Build verified.'],
+    known_issues: [], risk_factors: [], source_kind: 'official-version',
+    evidence: [{ source: 'Vendor', url: 'https://example.com/build', releaseType: 'official-version' }],
+  };
+  mockQuery.mockImplementation(async sql => sql.includes('FROM update_ratings')
+    ? { rows: [] }
+    : { rows: [base, { ...base, id: 'driver-1', platform: 'NVIDIA', name: 'Driver 1',
+      source_kind: 'official-release-notes', evidence: [{
+        source: 'Vendor notes', url: 'https://example.com/notes', releaseType: 'official-release-notes',
+      }] }] });
+  const updates = await updatesService.getUpdates({ status: 'caution' });
+  expect(updates.map(update => update.id)).toEqual(['driver-1']);
+});
+
 test('detail pages rank same-product releases before same-lane and platform releases', async () => {
   const row = (overrides = {}) => ({
     id: 'steam-current', platform: 'Steam', name: 'Marvel Rivals current patch', version: '9.5',

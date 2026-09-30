@@ -1263,7 +1263,7 @@ async function hydrateLandingSignals() {
 
     const score = validScoreOrNull(latest.score);
     const scoreBucket = score === null ? null : Math.round(score);
-    const status = ['stable', 'caution', 'avoid'].includes(latest.status) ? latest.status : 'caution';
+    const status = ['stable', 'caution', 'avoid'].includes(latest.status) ? latest.status : 'unscored';
     const state = document.getElementById('landing-live-state');
     const scoreEl = document.getElementById('landing-live-score');
     const statusEl = document.getElementById('landing-live-status');
@@ -1280,7 +1280,7 @@ async function hydrateLandingSignals() {
     }
     if (statusEl) {
       statusEl.className = `status-badge ${status}`;
-      statusEl.textContent = status.toUpperCase();
+      statusEl.textContent = status === 'unscored' ? 'REVIEW' : status.toUpperCase();
     }
     if (name) {
       const updateName = String(latest.name || platformLabel(latest.platform));
@@ -2643,7 +2643,7 @@ function renderUpdateCard(u) {
   const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
   const limitedScoreEvidence = !rating.votes && methodMeta.tone === 'limited';
-  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Provisional score' : 'Safety score';
+  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Assessment pending' : 'Safety score';
   const ratingSource = rating.votes ? 'Live community' : limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
   const ratingDetail = rating.votes
     ? `${rating.votes.toLocaleString()} vote${rating.votes === 1 ? '' : 's'}`
@@ -2756,13 +2756,13 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
   const limitedScoreEvidence = !rating.votes && methodMeta.tone === 'limited';
-  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Provisional score' : 'Safety score';
+  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Assessment pending' : 'Safety score';
   const ratingSource = rating.votes ? 'Live community' : limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
   return `
     <a class="mini-update-card${tone}" href="#/updates/${H(u.id)}">
       <div class="mini-update-top">
         ${renderPlatformLogo(u.platform, 'update-platform-icon mini-update-icon')}
-        <span class="mini-update-status status-badge ${H(u.status)}">${H(u.status)}</span>
+        <span class="mini-update-status status-badge ${H(u.status || 'unscored')}">${H(u.status || 'Review')}</span>
       </div>
       <div class="mini-update-title">${H(u.name)}</div>
       <div class="mini-update-meta">
@@ -5825,7 +5825,7 @@ async function renderPlatformPage(platformName) {
     } else {
       const currentScore = validScoreOrNull(current.score);
       const scoreTone = scoreToneClass(currentScore);
-      const status = current.status || 'caution';
+      const status = current.status || 'unscored';
       currentEl.innerHTML = `
         <div class="platform-current-card ${scoreTone}">
           <div class="platform-current-left">
@@ -5841,7 +5841,7 @@ async function renderPlatformPage(platformName) {
               ${currentScore === null ? '' : '<span class="platform-score-label">/ 10</span>'}
             </div>
             <div class="platform-status-badge ${H(status)}">
-              ${status.toUpperCase()}
+              ${status === 'unscored' ? 'REVIEW' : status.toUpperCase()}
             </div>
             <a class="btn btn--outline btn--sm" href="#/updates/${H(current.id)}">Full details →</a>
           </div>

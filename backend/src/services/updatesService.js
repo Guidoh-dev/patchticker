@@ -1504,6 +1504,11 @@ function latestOfficialCheck(evidence = []) {
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
 }
 
+function hasScoreableReleaseEvidence(sourceKind, evidence) {
+  return !['official-version', 'official-artifact'].includes(sourceKind)
+    && !evidence.some(item => item?.detailsUnavailable === true);
+}
+
 function rowToUpdate(row) {
   const changelog = normaliseReleaseTextArray(jsonArray(row.changelog));
   const knownIssues = normaliseReleaseTextArray(jsonArray(row.known_issues));
@@ -1544,10 +1549,18 @@ function rowToUpdate(row) {
   const whql = evidence.some(item => item?.whql === true)
     ? true
     : evidence.some(item => item?.whql === false) ? false : null;
-  const score = scoreOrNull(row.score, { updateId: row.id, field: 'score' });
   const sourceKind = row.source_kind || sourceKindFromEvidence(evidence);
+  const sourceOnly = !hasScoreableReleaseEvidence(sourceKind, evidence);
+  // A build manifest proves version identity, not install safety. Keep the
+  // deterministic internal score for pipeline bookkeeping, but do not publish
+  // numerical confidence without release details to evaluate.
+  const storedScore = scoreOrNull(row.score, { updateId: row.id, field: 'score' });
+  const score = sourceOnly ? null : storedScore;
   const guidance = publicWindowsGuidance(row.platform, row.name, row.verdict, row.reasoning);
   const identity = publicWindowsReleaseIdentity(row.platform, row.name, row.affects);
+  const publicVerdict = sourceOnly
+    ? `Official source confirms ${identity.name}, but full release notes are unavailable. PatchTicker has not rated install safety for this build.`
+    : guidance.verdict || null;
   return {
     id:                   row.id,
     platform:             row.platform,
@@ -1567,10 +1580,10 @@ function rowToUpdate(row) {
     releasedAt:           row.released_at,
     status:               score === null ? null : statusForScore(score),
     score,
-    impactScore:          scoreOrNull(row.impact_score, { updateId: row.id, field: 'impact_score', allowNull: true }),
+    impactScore:          sourceOnly ? null : scoreOrNull(row.impact_score, { updateId: row.id, field: 'impact_score', allowNull: true }),
     bugCount:             row.bug_count || 0,
     affects:              identity.affects || null,
-    verdict:              guidance.verdict || null,
+    verdict:              publicVerdict,
     reasoning:            guidance.reasoning || null,
     changelog,
     knownIssues,
@@ -1760,7 +1773,14 @@ async function getUpdates({ platform, status, sort, search } = {}) {
       query += ` ORDER BY ${sort === 'relevance' && relevanceOrder ? relevanceOrder : ''}released_at DESC, created_at DESC LIMIT 100`;
 
       const rows = await db.query(query, params);
-      let updates = dedupeArticleReleases(rows.rows.map(rowToUpdate).filter(isUpdateDisplayable));
+      // Database status is an internal pipeline value. A build-only release
+      // loses its public assessment during hydration, so it must not leak back
+      // into an INSTALL/WAIT/AVOID filter merely because its stored row says
+      // caution.
+      const publicStatus = status || searchIntent.status || null;
+      let updates = dedupeArticleReleases(rows.rows.map(rowToUpdate)
+        .filter(isUpdateDisplayable)
+        .filter(update => !publicStatus || update.status === publicStatus));
       const compatibilityFallbackPlatform = !status
         ? hardwareCompatibilitySearchPlatform(search, platform || searchPlatform)
         : null;
@@ -1984,6 +2004,7 @@ async function getSentimentSummary() {
         stable:          updates.filter(u => u.status === 'stable').length,
         caution:         updates.filter(u => u.status === 'caution').length,
         avoid:           updates.filter(u => u.status === 'avoid').length,
+        unscored:        updates.filter(u => u.score === null).length,
         totalBugReports: updates.reduce((sum, u) => sum + (u.bugCount || 0), 0),
         avgScore:        updates.some(u => u.score !== null)
           ? +(updates.filter(u => u.score !== null).reduce((sum, u) => sum + u.score, 0) / updates.filter(u => u.score !== null).length).toFixed(1)
@@ -2000,6 +2021,7 @@ async function getSentimentSummary() {
     stable:          updates.filter(u => u.status === 'stable').length,
     caution:         updates.filter(u => u.status === 'caution').length,
     avoid:           updates.filter(u => u.status === 'avoid').length,
+    unscored:        updates.filter(u => u.score === null).length,
     totalBugReports: updates.reduce((sum, u) => sum + u.bugCount, 0),
     avgScore:        updates.some(u => u.score !== null)
       ? +(updates.filter(u => u.score !== null).reduce((sum, u) => sum + u.score, 0) / updates.filter(u => u.score !== null).length).toFixed(1)
@@ -2028,13 +2050,15 @@ async function getUpdateHistory(platform, limit = 20) {
     const updates = rows.rows.map(r => {
       const evidence = jsonArray(r.evidence);
       const officialEvidence = primaryOfficialEvidence(evidence);
-      const score = scoreOrNull(r.score, { updateId: r.id, field: 'score' });
+      const sourceKind = r.source_kind || sourceKindFromEvidence(evidence);
+      const score = hasScoreableReleaseEvidence(sourceKind, evidence)
+        ? scoreOrNull(r.score, { updateId: r.id, field: 'score' }) : null;
       return {
         id:          r.id,
         platform:    r.platform,
         name:        publicWindowsReleaseIdentity(r.platform, r.name, r.affects).name,
         version:     r.version,
-        sourceKind:  r.source_kind,
+        sourceKind,
         releasedAt:  r.released_at,
         status:      score === null ? null : statusForScore(score),
         score,
