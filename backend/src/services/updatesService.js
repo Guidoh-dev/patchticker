@@ -9,7 +9,7 @@ const { validateScore, statusForScore } = require('../utils/updateScore');
 const { normaliseReleaseText, normaliseReleaseTextArray } = require('../utils/releaseText');
 const { getFreshnessSlaHours } = require('../config/platformRegistry');
 const { currentSteamGameRoster } = require('./steamGameEligibilityService');
-const { publicWindowsGuidance } = require('../utils/windowsReleaseGuidance');
+const { publicWindowsGuidance, publicWindowsReleaseIdentity } = require('../utils/windowsReleaseGuidance');
 const { isExplicitlySmallReleaseTitle } = require('../utils/steamReleasePolicy');
 
 const MAX_UPDATE_AGE_DAYS = 240;
@@ -1547,10 +1547,11 @@ function rowToUpdate(row) {
   const score = scoreOrNull(row.score, { updateId: row.id, field: 'score' });
   const sourceKind = row.source_kind || sourceKindFromEvidence(evidence);
   const guidance = publicWindowsGuidance(row.platform, row.name, row.verdict, row.reasoning);
+  const identity = publicWindowsReleaseIdentity(row.platform, row.name, row.affects);
   return {
     id:                   row.id,
     platform:             row.platform,
-    name:                 row.name,
+    name:                 identity.name,
     version:              row.display_version || row.version,
     internalVersion:      row.version,
     productId:            row.product_id || null,
@@ -1568,7 +1569,7 @@ function rowToUpdate(row) {
     score,
     impactScore:          scoreOrNull(row.impact_score, { updateId: row.id, field: 'impact_score', allowNull: true }),
     bugCount:             row.bug_count || 0,
-    affects:              row.affects || null,
+    affects:              identity.affects || null,
     verdict:              guidance.verdict || null,
     reasoning:            guidance.reasoning || null,
     changelog,
@@ -2013,7 +2014,7 @@ async function getUpdateHistory(platform, limit = 20) {
   if (!db.isAvailable()) return [];
   try {
     const rows = await db.query(
-      `SELECT id, platform, name, version, source_kind, released_at, status, score, bug_count,
+      `SELECT id, platform, name, version, source_kind, affects, released_at, status, score, bug_count,
               ai_generated, evidence, created_at, updated_at
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
@@ -2031,7 +2032,7 @@ async function getUpdateHistory(platform, limit = 20) {
       return {
         id:          r.id,
         platform:    r.platform,
-        name:        r.name,
+        name:        publicWindowsReleaseIdentity(r.platform, r.name, r.affects).name,
         version:     r.version,
         sourceKind:  r.source_kind,
         releasedAt:  r.released_at,

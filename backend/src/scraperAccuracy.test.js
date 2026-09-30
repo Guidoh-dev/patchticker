@@ -77,6 +77,18 @@ describe('scraper accuracy guards', () => {
     expect(__test.parseWindowsHistoryCandidates($, url, '26H1')).toEqual([]);
   });
 
+  test('Windows KB applicability comes from Microsoft’s article, not the history sidebar', () => {
+    const $ = cheerio.load(`
+      <div class="learnRenderLeftNavCategory"><a>Windows 11, version 26H1</a></div>
+      <section class="supAppliesToSection"><div>
+        <span class="appliesToItem">Windows 11 version 26H2, all editions</span>
+        <span class="appliesToItem">Windows 11 version 25H2, all editions</span>
+        <span class="appliesToItem">Windows 11 version 24H2, all editions</span>
+      </div></section>
+    `);
+    expect(__test.parseWindowsApplicableVersions($)).toEqual(['24H2', '25H2', '26H2']);
+  });
+
   test('Windows note cleanup removes historical preview titles and false known-issue language', () => {
     expect(__test.normalizeWindowsDetailNotes([
       'This update includes new features and quality improvements that were part of the following update:',

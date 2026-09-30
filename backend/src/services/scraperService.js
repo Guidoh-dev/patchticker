@@ -1670,12 +1670,20 @@ function parseWindowsHistoryCandidates($, historyUrl, scope) {
     .sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt));
 }
 
+function parseWindowsApplicableVersions($) {
+  return [...new Set($('.supAppliesToSection .appliesToItem').map((_, item) => (
+    cleanText($(item).text(), 120).match(/\bWindows 11\s+version\s+(\d{2}H[12])\b/i)?.[1] || null
+  )).get().filter(Boolean))].sort();
+}
+
 async function windowsReleaseFromCandidate(update) {
   let changelog = [];
   let knownIssues = [];
   let knownIssuesAuthoritative = false;
+  let applicableVersions = [];
   try {
     const detail = cheerio.load(await fetchHtml(update.sourceUrl));
+    applicableVersions = parseWindowsApplicableVersions(detail);
     changelog = sectionBullets(detail, ['Highlights', 'Improvements', 'This update'], 5);
     knownIssues = parseWindowsKnownIssues(detail, 8);
     knownIssuesAuthoritative = true;
@@ -1691,14 +1699,19 @@ async function windowsReleaseFromCandidate(update) {
     ? 'This is a Microsoft preview update; preview releases are generally optional and should be reviewed before broad installation.'
     : 'This is an official Microsoft cumulative update; review the KB page for deployment notes and known issues.';
   const securityCriticality = microsoftSecurityCriticality(update.title, update.sourceUrl);
+  const releaseVersions = applicableVersions.length
+    ? applicableVersions
+    : update.scope === '26H1' ? ['26H1'] : ['24H2', '25H2'];
+  const versionLabel = releaseVersions.join('/');
+  const affects = releaseVersions.length === 1 && releaseVersions[0] === '26H1'
+    ? 'Windows 11 version 26H1 / select new-silicon devices only / cumulative OS servicing'
+    : `Windows 11 versions ${releaseVersions.join(', ')} / cumulative OS servicing`;
   return {
     platform: 'Windows',
-    name: `Windows 11 ${update.scope} ${update.title}`.slice(0, 140),
+    name: `Windows 11 ${versionLabel} ${update.title}`.slice(0, 160),
     version: update.kb,
     releasedAt: update.releasedAt,
-    affects: update.scope === '26H1'
-      ? 'Windows 11 version 26H1 / select new-silicon devices only / cumulative OS servicing'
-      : 'Windows 11 versions 24H2 and 25H2 / cumulative OS servicing',
+    affects,
     changelog: unique([previewNote, ...changelog]).slice(0, 6),
     knownIssues,
     knownIssuesAuthoritative,
@@ -1708,6 +1721,7 @@ async function windowsReleaseFromCandidate(update) {
       publishedAt: update.releasedAt,
       releaseType: securityCriticality.level !== 'none' ? 'official-security-release' : 'official-release',
       knownIssuesAuthoritative,
+      applicableWindowsVersions: releaseVersions,
     }),
     sourceUrl: update.sourceUrl,
   };
@@ -3279,5 +3293,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, parseWindowsHistoryCandidates, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
+  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, parseWindowsHistoryCandidates, parseWindowsApplicableVersions, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
 };

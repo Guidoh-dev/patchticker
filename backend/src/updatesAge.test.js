@@ -13,6 +13,7 @@ jest.mock('./config/secrets', () => ({
 jest.mock('./utils/logger', () => ({ info: jest.fn(), warn: jest.fn(), error: jest.fn() }));
 
 const updatesService = require('./services/updatesService');
+const { publicWindowsReleaseIdentity } = require('./utils/windowsReleaseGuidance');
 const { sanitizeInput } = require('./utils/sanitize');
 const originalNodeEnv = process.env.NODE_ENV;
 
@@ -45,6 +46,23 @@ test('public reads reject implausibly future-dated releases', () => {
     releasedAt: '2026-08-12T12:01:00Z', evidence: [], platform: 'AMD', version: '1.0',
   })).toBe(false);
   expect(now).toBe(Date.now());
+});
+
+test('Windows public titles name every OS servicing lane proven by the KB build list', () => {
+  const old = 'Windows 11 25H2 September 22, 2026—KB5124010 (OS Builds 26300.9550, 26200.9550, and 26100.9550) Preview';
+  const fixed = publicWindowsReleaseIdentity('Windows', old, 'Windows 11 versions 24H2 and 25H2 / cumulative OS servicing');
+  expect(fixed.name).toContain('Windows 11 24H2/25H2/26H2 September');
+  expect(fixed.affects).toContain('24H2, 25H2, 26H2');
+  expect(publicWindowsReleaseIdentity('Windows', fixed.name, fixed.affects)).toEqual(fixed);
+  const hydrated = updatesService.__test.rowToUpdate({
+    id: 'windows-kb5124010', platform: 'Windows', name: old, version: 'KB5124010',
+    affects: 'Windows 11 versions 24H2 and 25H2 / cumulative OS servicing',
+    released_at: '2026-09-22', score: '4.8', evidence: [], changelog: [], known_issues: [], risk_factors: [],
+  });
+  expect(hydrated).toMatchObject({ name: fixed.name, affects: fixed.affects });
+  expect(publicWindowsReleaseIdentity('Windows', 'Windows 11 26H1 KB5124006 (OS Build 28000.3086)', 'new-silicon devices')).toEqual({
+    name: 'Windows 11 26H1 KB5124006 (OS Build 28000.3086)', affects: 'new-silicon devices',
+  });
 });
 
 test('expired direct update permalinks no longer return update content', async () => {
