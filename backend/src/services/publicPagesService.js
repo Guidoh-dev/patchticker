@@ -93,7 +93,8 @@ function renderRelease(update) {
     .some(item => item?.detailsUnavailable === true && item?.dateBasis === 'catalog-updated');
   const sourceUpdated = update.dateBasis === 'source-updated'
     || sourceEvidence.some(item => item?.url === update.sourceUrl && item?.dateBasis === 'source-updated');
-  const dateLabel = limitedCatalog ? 'Catalog updated' : sourceUpdated ? 'Source updated'
+  const artifactDated = update.dateBasis === 'artifact-published';
+  const dateLabel = limitedCatalog ? 'Catalog updated' : sourceUpdated ? 'Source updated' : artifactDated ? 'Package updated'
     : update.dateBasis === 'published' ? 'Published' : 'Released';
   const score = typeof update.score === 'number' && Number.isFinite(update.score) && update.score >= 0 && update.score <= 10 && !noindex
     ? update.score.toFixed(1) + '/10' : 'Not graded';
@@ -114,6 +115,8 @@ function renderRelease(update) {
     ? 'The vendor catalog confirms the package, but the release date and full notes could not be verified. This is not a hands-on compatibility test.'
     : sourceUpdated
       ? 'This date is when the vendor source or installer artifact was updated, not a confirmed public release date. A full per-build changelog may be unavailable; this is not a hands-on compatibility test.'
+    : artifactDated
+      ? 'This date comes from the vendor package metadata, not a confirmed public release announcement. The notes describe the named software version and may not document a package-only revision; this is not a hands-on compatibility test.'
     : noindex ? 'Only the version or limited release information is verified. Full notes and a stability conclusion are unavailable.'
       : 'This is source-based guidance, not a hands-on compatibility test. Check the vendor notes and your exact hardware before installing.';
   return shell({

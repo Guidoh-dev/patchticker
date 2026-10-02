@@ -19,6 +19,8 @@ test('source-updated driver metadata is not presented as a confirmed release dat
   assert.match(mainSource, /\$\{H\(updateDateLabel\(latest\)\)\} \$\{H\(timeAgo\(preferredReleaseAt\(latest\)\)\)\}/);
   assert.match(mainSource, /\$\{H\(updateDateLabel\(current\)\)\} \$\{H\(formatReleaseDate\(current\.releasedAt\)\)\}/);
   assert.match(mainSource, /Vendor catalog metadata, not a confirmed release date/);
+  assert.match(mainSource, /update\?\.dateBasis === 'artifact-published'\) return 'Package updated'/);
+  assert.match(mainSource, /Vendor package metadata, not a confirmed public release date/);
 });
 
 test('router resolves exact and dynamic update directories', () => {
@@ -217,7 +219,7 @@ test('update cards organize title, release date, package size, and rating withou
   assert.match(mainSource, /class="decision-card-facts" aria-label="Update facts"/);
   assert.match(mainSource, /<dt>Package size<\/dt>/);
   assert.match(mainSource, /class="decision-card-rating\$\{limitedScoreEvidence \? ' decision-card-rating--limited' : ''\}" aria-label="Patch recommendation and rating"/);
-  assert.match(mainSource, /const scoreLabel = rating\.votes \? 'User rating' : limitedScoreEvidence \? 'Assessment pending' : 'Safety score'/);
+  assert.match(mainSource, /const scoreLabel = rating\.votes \? 'User rating' : limitedScoreEvidence \? 'Assessment pending' : 'Source-based score'/);
   assert.match(mainSource, /const ratingSource = rating\.votes \? 'Live community' : limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
   assert.match(cssSource, /\.decision-card-facts\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
   assert.match(cssSource, /\.decision-card-link:hover,[\s\S]*?text-decoration:\s*none !important/s);
@@ -661,7 +663,7 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /detail-source-health/);
   assert.match(mainSource, /official source/);
   assert.match(mainSource, /Official source \+ issue signals/);
-  assert.match(mainSource, /scoreLabel = rating\.votes \? 'User rating' : limitedScoreEvidence \? 'Assessment pending' : 'Safety score'/);
+  assert.match(mainSource, /scoreLabel = rating\.votes \? 'User rating' : limitedScoreEvidence \? 'Assessment pending' : 'Source-based score'/);
   assert.match(mainSource, /ratingSource = rating\.votes \? 'Live community' : limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
   assert.match(mainSource, /updateDateLabel\(u\)/);
   assert.match(mainSource, /id="dash-coverage-pulse"/);
@@ -704,7 +706,7 @@ test('source-depth labels distinguish full notes from version-only verification'
   assert.match(mainSource, /class="source-depth-signal source-depth-signal--\$\{H\(methodMeta\.tone\)\}"/);
   assert.match(mainSource, /detailSectionHeading\('03 · Release contents', detailMethodMeta\.heading/);
   assert.match(mainSource, /\$\{H\(detailMethodMeta\.note\)\}/);
-  assert.match(mainSource, /limitedScoreEvidence \? 'Assessment pending' : 'Safety score'/);
+  assert.match(mainSource, /limitedScoreEvidence \? 'Assessment pending' : 'Source-based score'/);
   assert.match(mainSource, /mini-update-status status-badge \$\{H\(u\.status \|\| 'unscored'\)\}/);
   assert.match(mainSource, /const status = current\.status \|\| 'unscored'/);
   assert.match(mainSource, /limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
@@ -931,7 +933,7 @@ test('landing page hydrates from verified updates instead of fabricated ratings'
   assert.match(mainSource, /function hydrateLandingSignals\(\)/);
   assert.match(mainSource, /Promise\.all\(\[fetchUpdates\(\{ sort: 'date_desc' \}\), fetchSummary\(\)\]\)/);
   assert.match(mainSource, /latest\.userRating\?\.totalVotes/);
-  assert.match(mainSource, /out of 10 PatchTicker score/);
+  assert.match(mainSource, /out of 10 source-based score/);
   assert.match(mainSource, /No sample score is shown while verified source data is unavailable/);
   assert.doesNotMatch(mainSource, /Latest user signal/);
   assert.doesNotMatch(mainSource, /<strong>8\.7<\/strong>/);

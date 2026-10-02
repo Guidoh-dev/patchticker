@@ -1198,7 +1198,7 @@ function renderLanding() {
           <div class="landing-score-row">
             <div class="landing-score-value">
               <strong id="landing-live-score">—</strong>
-              <small>PatchTicker score /10</small>
+              <small>Source-based score /10</small>
             </div>
             <div>
               <span class="status-badge caution" id="landing-live-status">CHECKING</span>
@@ -1276,7 +1276,7 @@ async function hydrateLandingSignals() {
     if (state) state.textContent = 'LIVE';
     if (scoreEl) {
       scoreEl.textContent = scoreDisplay(score);
-      scoreEl.setAttribute('aria-label', score === null ? 'PatchTicker score unavailable' : `${score.toFixed(1)} out of 10 PatchTicker score`);
+      scoreEl.setAttribute('aria-label', score === null ? 'Source-based score unavailable' : `${score.toFixed(1)} out of 10 source-based score`);
     }
     if (statusEl) {
       statusEl.className = `status-badge ${status}`;
@@ -2216,6 +2216,7 @@ function updateDateLabel(update) {
   if (Array.isArray(update?.evidence)
     && update.evidence.some(item => item?.detailsUnavailable === true && item?.dateBasis === 'catalog-updated')) return 'Catalog updated';
   if (update?.dateBasis === 'source-updated') return 'Source updated';
+  if (update?.dateBasis === 'artifact-published') return 'Package updated';
   if (update?.dateBasis === 'published') return 'Published';
   return 'Released';
 }
@@ -2286,7 +2287,9 @@ function renderSourceTimeline(update) {
     } : {
       label: updateDateLabel(update),
       value: formatReleaseDate(update?.releasedAt),
-      detail: updateDateLabel(update) === 'Catalog updated' ? 'Vendor catalog metadata, not a confirmed release date' : 'Vendor or publisher date',
+      detail: updateDateLabel(update) === 'Catalog updated' ? 'Vendor catalog metadata, not a confirmed release date'
+        : updateDateLabel(update) === 'Package updated' ? 'Vendor package metadata, not a confirmed public release date'
+        : 'Vendor or publisher date',
       datetime: update?.releasedAt,
     },
     ...(availableAt ? [{
@@ -2675,7 +2678,7 @@ function renderUpdateCard(u) {
   const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
   const limitedScoreEvidence = !rating.votes && methodMeta.tone === 'limited';
-  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Assessment pending' : 'Safety score';
+  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Assessment pending' : 'Source-based score';
   const ratingSource = rating.votes ? 'Live community' : limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
   const ratingDetail = rating.votes
     ? `${rating.votes.toLocaleString()} vote${rating.votes === 1 ? '' : 's'}`
@@ -2788,7 +2791,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
   const limitedScoreEvidence = !rating.votes && methodMeta.tone === 'limited';
-  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Assessment pending' : 'Safety score';
+  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Assessment pending' : 'Source-based score';
   const ratingSource = rating.votes ? 'Live community' : limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
   return `
     <a class="mini-update-card${tone}" href="#/updates/${H(u.id)}">
@@ -4914,7 +4917,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
           <div class="status-badge ${H(updateStatus)} detail-status-badge">${H(updateStatusLabel)}</div>
           <div class="detail-decision-score">
             <span class="${updateScoreTone}">${H(updateScoreDisplay)}</span>
-            <em>${updateScore === null ? 'Patch notes available · rating rejected or unavailable' : 'PatchTicker score · out of 10'}</em>
+            <em>${updateScore === null ? 'Patch notes available · rating rejected or unavailable' : 'Source-based score · out of 10'}</em>
           </div>
           <div class="detail-decision-facts">
             ${decisionFactsHTML}
@@ -4967,7 +4970,9 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
               <div>
                 <span>${H(updateDateLabel(u))}</span>
                 <strong>${H(formatReleaseDate(u.releasedAt))}</strong>
-                <small>${H(updateDateLabel(u) === 'Catalog updated' ? 'Vendor catalog metadata; release date unverified' : 'Vendor-published date')}</small>
+                <small>${H(updateDateLabel(u) === 'Catalog updated' ? 'Vendor catalog metadata; release date unverified'
+    : updateDateLabel(u) === 'Package updated' ? 'Package metadata; public release date unverified'
+    : 'Vendor-published date')}</small>
               </div>
               <div>
                 <span>Package</span>

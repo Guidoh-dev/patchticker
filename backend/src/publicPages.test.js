@@ -99,6 +99,15 @@ test('version-only source timestamps are not presented as confirmed release date
   expect(html).toContain('Not graded');
 });
 
+test('PS5 package timestamps are not described as confirmed firmware release dates', () => {
+  const ps5Package = { ...update, id: 'ps5-pup-2026-10-01-c1738494', platform: 'PS5',
+    name: 'PS5 System Software 26.06-14.10.00', dateBasis: 'artifact-published' };
+  const html = renderRelease(ps5Package);
+  expect(html).toContain('<dt>Package updated</dt>');
+  expect(html).toContain('not a confirmed public release announcement');
+  expect(html).not.toContain('<dt>Released</dt>');
+});
+
 test('routine source rechecks do not claim every release page changed in the sitemap', () => {
   const rechecked = { ...update, createdAt: '2026-09-20T12:00:00Z', updatedAt: '2026-09-30T22:00:00Z' };
   const sitemap = renderSitemap([rechecked], PLATFORMS);

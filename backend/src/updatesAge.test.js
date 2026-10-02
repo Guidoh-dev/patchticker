@@ -1212,6 +1212,64 @@ test('rolling support pages do not collapse distinct console releases', () => {
   expect(updatesService.__test.dedupeArticleReleases(releases)).toEqual(releases);
 });
 
+test('PS5 package revisions with the same Sony version yield one current public release', () => {
+  const base = {
+    platform: 'PS5', sourceKind: 'official-release-notes', displayVersion: '26.06-14.10.00',
+    version: '26.06-14.10.00', sourceUrl: 'https://www.playstation.com/en-us/support/hardware/ps5/system-software-info/',
+    changelog: ['Sony documents security fixes.', 'Sony documents performance improvements.'],
+    evidence: [{ releaseType: 'official-release-notes', checkedAt: '2026-10-02T12:00:00Z' }],
+  };
+  const old = { ...base, id: 'ps5-pup-2026-09-15-1eb4b184', releasedAt: '2026-09-15' };
+  const current = { ...base, id: 'ps5-pup-2026-10-01-c1738494', releasedAt: '2026-10-01' };
+  const otherVersion = { ...base, id: 'ps5-other', version: '26.06-14.00.00', displayVersion: '26.06-14.00.00' };
+  expect(updatesService.__test.canonicalArticleSourceKey(old)).toBe('ps5-version|26.06-14.10.00');
+  expect(updatesService.__test.dedupeArticleReleases([old, current, otherVersion])).toEqual([current, otherVersion]);
+  expect(updatesService.__test.dedupeArticleReleases([current, old])).toEqual([current]);
+});
+
+test('old PS5 artifact links resolve to the newest package for the same documented version', async () => {
+  jest.setSystemTime(new Date('2026-10-02T12:00:00Z'));
+  mockIsAvailable.mockReturnValue(true);
+  const base = {
+    platform: 'PS5', name: 'PS5 System Software 26.06-14.10.00', display_version: '26.06-14.10.00',
+    source_kind: 'official-release-notes', score: '7.8', impact_score: '3.5',
+    changelog: ['Security fixes.', 'Performance improvements.'], known_issues: [], risk_factors: [],
+    evidence: [
+      { url: 'https://www.playstation.com/en-us/support/hardware/ps5/system-software/', releaseType: 'official-artifact' },
+      { url: 'https://www.playstation.com/en-us/support/hardware/ps5/system-software-info/', releaseType: 'official-release-notes' },
+    ],
+  };
+  const old = { ...base, id: 'ps5-pup-2026-09-15-1eb4b184', version: 'PUP-2026.09.15-1eb4b184', released_at: '2026-09-15' };
+  const current = { ...base, id: 'ps5-pup-2026-10-01-c1738494', version: 'PUP-2026.10.01-c1738494', released_at: '2026-10-01' };
+  mockQuery.mockResolvedValueOnce({ rows: [old] })
+    .mockResolvedValueOnce({ rows: [old, current] })
+    .mockResolvedValueOnce({ rows: [old] });
+
+  const detail = await updatesService.getUpdateById(old.id);
+  expect(detail).toMatchObject({ id: current.id, version: '26.06-14.10.00', dateBasis: 'artifact-published' });
+  expect(detail.related).toEqual([]);
+  expect(mockQuery.mock.calls[1][0]).toContain('display_version = $1');
+  expect(mockQuery.mock.calls[1][1]).toEqual(['26.06-14.10.00']);
+});
+
+test('PS5 history retains fingerprint validation while deduplicating the public version', async () => {
+  jest.setSystemTime(new Date('2026-10-02T12:00:00Z'));
+  mockIsAvailable.mockReturnValue(true);
+  const base = {
+    platform: 'PS5', name: 'PS5 System Software 26.06-14.10.00', display_version: '26.06-14.10.00',
+    source_kind: 'official-release-notes', score: '7.8',
+    evidence: [{ url: 'https://www.playstation.com/en-us/support/hardware/ps5/system-software/', releaseType: 'official-artifact' }],
+  };
+  mockQuery.mockResolvedValue({ rows: [
+    { ...base, id: 'ps5-old', version: 'PUP-2026.09.15-1eb4b184', released_at: '2026-09-15' },
+    { ...base, id: 'ps5-current', version: 'PUP-2026.10.01-c1738494', released_at: '2026-10-01' },
+  ] });
+  const history = await updatesService.getUpdateHistory('PS5');
+  expect(history).toHaveLength(1);
+  expect(history[0]).toMatchObject({ id: 'ps5-current', version: '26.06-14.10.00', dateBasis: 'artifact-published' });
+  expect(mockQuery.mock.calls[0][0]).toContain('display_version');
+});
+
 test('Intel catalog and WHQL notes for one package resolve to the richer release', () => {
   const catalog = 'https://www.intel.com/content/www/us/en/download/785597/intel-arc-graphics-windows.html';
   const base = {

@@ -785,6 +785,16 @@ function normaliseReleaseUrl(value) {
 }
 
 function canonicalArticleSourceKey(update) {
+  // Sony's rolling notes page identifies the public console version, while
+  // the download URL identifies an individual package artifact. A new package
+  // fingerprint with the same public version is not a second documented
+  // release. Keep its immutable artifact identity in storage, but show one
+  // current version to readers.
+  if (update?.platform === 'PS5'
+    && update.sourceKind === 'official-release-notes'
+    && /^\d{2}\.\d{2}-\d+(?:\.\d+)+$/.test(String(update.displayVersion || update.version || ''))) {
+    return `ps5-version|${update.displayVersion || update.version}`;
+  }
   // Intel may first expose a catalog-only build and later publish a WHQL PDF
   // under a new row for the *same* download. Keep one public result, selected
   // by evidence quality, rather than showing contradictory install guidance.
@@ -843,7 +853,10 @@ function dedupeArticleReleases(updates = []) {
     const key = canonicalArticleSourceKey(update);
     if (!key) continue;
     const current = winnerBySource.get(key);
-    if (!current || isHigherQualityRelease(update, current)) winnerBySource.set(key, update);
+    if (!current || (key.startsWith('ps5-version|')
+      ? Date.parse(update.releasedAt) > Date.parse(current.releasedAt)
+        || (Date.parse(update.releasedAt) === Date.parse(current.releasedAt) && isHigherQualityRelease(update, current))
+      : isHigherQualityRelease(update, current))) winnerBySource.set(key, update);
   }
   return updates.filter(update => {
     const key = canonicalArticleSourceKey(update);
@@ -1601,7 +1614,8 @@ function rowToUpdate(row) {
     riskFactors,
     evidence,
     sourceUrl:            officialEvidence?.url || evidence.find(e => e?.url)?.url || null,
-    dateBasis:            officialEvidence?.dateBasis || 'released',
+    dateBasis:            row.platform === 'PS5' && evidence.some(item => item?.releaseType === 'official-artifact')
+      ? 'artifact-published' : officialEvidence?.dateBasis || 'released',
     lastCheckedAt:        lastOfficialCheck || row.updated_at || row.created_at || null,
     officialSourceCount:  evidence.filter(isOfficialEvidence).length,
     sourceCheckSlaHours:  getFreshnessSlaHours(row.platform),
@@ -1951,6 +1965,30 @@ async function getUpdateById(id) {
     }
   }
 
+  // A Sony package may be republished without changing the official console
+  // version or release notes. Old artifact permalinks resolve to the newest
+  // package for that documented version instead of repeating today's notes as
+  // an independent, earlier update.
+  const ps5VersionKey = dbReadSucceeded ? canonicalArticleSourceKey(update) : null;
+  if (ps5VersionKey?.startsWith('ps5-version|') && db.isAvailable()) {
+    try {
+      const peers = await db.query(
+        `SELECT * FROM software_updates
+         WHERE platform = 'PS5'
+           AND display_version = $1
+           AND released_at >= NOW() - INTERVAL '${MAX_UPDATE_AGE_DAYS} days'
+           AND released_at <= NOW() + INTERVAL '${MAX_PUBLIC_FUTURE_SKEW_HOURS} hours'
+         ORDER BY released_at DESC, created_at DESC
+         LIMIT 10`,
+        [update.version]
+      );
+      update = dedupeArticleReleases(peers.rows.map(rowToUpdate)
+        .filter(candidate => isUpdateDisplayable(candidate) && canonicalArticleSourceKey(candidate) === ps5VersionKey))[0] || update;
+    } catch (err) {
+      logger.warn('[updates] PS5 canonical lookup failed', { id, error: err.message });
+    }
+  }
+
   let related = [];
   if (dbReadSucceeded && db.isAvailable()) {
     try {
@@ -1978,10 +2016,12 @@ async function getUpdateById(id) {
          LIMIT $5`,
         [update.id, update.platform, update.productId, update.sourceKind, 4]
       );
+      const currentCanonicalKey = canonicalArticleSourceKey(update);
       related = dedupeArticleReleases(rows.rows.map(row => ({
         ...rowToUpdate(row),
         relationType: row.relation_type || 'same-platform',
-      })).filter(isUpdateDisplayable));
+      })).filter(candidate => isUpdateDisplayable(candidate)
+        && (!currentCanonicalKey || canonicalArticleSourceKey(candidate) !== currentCanonicalKey)));
     } catch (err) {
       logger.warn('[updates] Related releases unavailable', { id, error: err.message });
     }
@@ -2046,7 +2086,7 @@ async function getUpdateHistory(platform, limit = 20) {
   if (!db.isAvailable()) return [];
   try {
     const rows = await db.query(
-      `SELECT id, platform, name, version, source_kind, affects, released_at, status, score, bug_count,
+      `SELECT id, platform, name, version, display_version, source_kind, affects, released_at, status, score, bug_count,
               ai_generated, evidence, created_at, updated_at
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
@@ -2067,7 +2107,9 @@ async function getUpdateHistory(platform, limit = 20) {
         id:          r.id,
         platform:    r.platform,
         name:        publicWindowsReleaseIdentity(r.platform, r.name, r.affects).name,
-        version:     r.version,
+        version:     r.display_version || r.version,
+        displayVersion: r.display_version || null,
+        internalVersion: r.version,
         sourceKind,
         releasedAt:  r.released_at,
         status:      score === null ? null : statusForScore(score),
@@ -2075,7 +2117,8 @@ async function getUpdateHistory(platform, limit = 20) {
         bugCount:    r.bug_count,
         aiGenerated: r.ai_generated,
         evidence,
-        dateBasis:   officialEvidence?.dateBasis || 'released',
+        dateBasis:   r.platform === 'PS5' && evidence.some(item => item?.releaseType === 'official-artifact')
+          ? 'artifact-published' : officialEvidence?.dateBasis || 'released',
         lastCheckedAt: latestOfficialCheck(evidence) || r.updated_at || r.created_at || null,
       };
     }).filter(isUpdateDisplayable);
