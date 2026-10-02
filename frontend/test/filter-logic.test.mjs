@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SETUP_LENSES, filterUpdatesBySetup, filterSearchResultsByProvenance, untrackedProductForSearch } from '../src/filterLogic.js';
+import { SETUP_LENSES, filterUpdatesBySetup, filterSearchResultsByProvenance } from '../src/filterLogic.js';
 
 const updates = [
   { id: 'windows', platform: 'Windows' },
   { id: 'nvidia', platform: 'NVIDIA' },
   { id: 'steam', platform: 'Steam' },
   { id: 'switch', platform: 'Switch' },
+  { id: 'switch2', platform: 'Switch2' },
   { id: 'apple', platform: 'Apple' },
   { id: 'macos', platform: 'macOS' },
   { id: 'chrome', platform: 'Chrome' },
@@ -15,7 +16,7 @@ const updates = [
 ];
 
 test('setup lenses apply OR semantics inside each ecosystem', () => {
-  assert.deepEqual(filterUpdatesBySetup(updates, 'console').map(update => update.id), ['steam', 'switch']);
+  assert.deepEqual(filterUpdatesBySetup(updates, 'console').map(update => update.id), ['steam', 'switch', 'switch2']);
   assert.deepEqual(filterUpdatesBySetup(updates, 'apple').map(update => update.id), ['apple', 'macos']);
   assert.deepEqual(filterUpdatesBySetup(updates, 'pc').map(update => update.id), ['windows', 'nvidia', 'steam', 'chrome', 'firefox', 'edge']);
 });
@@ -59,16 +60,4 @@ test('cached local searches still require every term group and respect explicit 
     contains: (text, term) => text.toLowerCase().includes(term),
   });
   assert.deepEqual(filtered.map(update => update.id), ['amd']);
-});
-
-test('Switch 2 searches disclose the separate, untracked firmware lane', () => {
-  for (const query of ['Switch 2', 'Nintendo Switch 2 firmware', 'switch-2 update']) {
-    assert.deepEqual(untrackedProductForSearch(query), {
-      name: 'Nintendo Switch 2',
-      sourceUrl: 'https://en-americas-support.nintendo.com/app/answers/detail/a_id/68526',
-    });
-  }
-  for (const query of ['Switch', 'Switch OLED', 'Switch version 23.0.1', 'PlayStation 5']) {
-    assert.equal(untrackedProductForSearch(query), null);
-  }
 });

@@ -261,6 +261,11 @@ function platformContext(platform, detected) {
       verdict: 'Install for online services and compatibility unless early reports flag firmware or controller regressions.',
       reasoning: 'Switch firmware updates can affect online play, eShop access, Joy-Con behavior, system stability, and game compatibility.',
     },
+    Switch2: {
+      affects: 'Nintendo Switch 2 / system firmware / GameChat / online play / game compatibility',
+      verdict: 'Review Nintendo’s Switch 2 release notes, then install through the console updater if the listed fixes apply.',
+      reasoning: 'Nintendo publishes Switch 2 firmware separately from original Switch firmware. PatchTicker uses the Switch 2 support record and does not transfer ratings or compatibility claims between console generations.',
+    },
     Discord: {
       affects: 'Discord desktop / voice chat / overlay / streaming / API and gateway services',
       verdict: 'Safe for most users, but verify overlay and voice behavior if Discord is part of your gaming setup.',

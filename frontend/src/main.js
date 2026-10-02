@@ -24,7 +24,7 @@ import {
   openAnalyticsPreferences, syncAnalyticsIdentity,
 } from './analytics.js';
 import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCandidates.js';
-import { SETUP_LENSES, filterUpdatesBySetup, filterSearchResultsByProvenance, untrackedProductForSearch } from './filterLogic.js';
+import { SETUP_LENSES, filterUpdatesBySetup, filterSearchResultsByProvenance } from './filterLogic.js';
 import { compatibilityProfileFromUpdate, evaluateCompatibility } from './compatibility.js';
 import { preferredReleaseAt, selectUpdateBrief } from './updateBrief.js';
 import { releaseLaneKey } from './releaseLanes.js';
@@ -1315,9 +1315,9 @@ async function hydrateLandingSignals() {
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
 const PLATFORM_CLASS = {
   AMD:'amd', NVIDIA:'nvidia', Apple:'apple', PS5:'ps5', Windows:'windows', Steam:'steam',
-  macOS:'macos', Chrome:'chrome', Firefox:'firefox', Edge:'edge', Intel:'intel', Xbox:'xbox', Switch:'switch', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
+  macOS:'macos', Chrome:'chrome', Firefox:'firefox', Edge:'edge', Intel:'intel', Xbox:'xbox', Switch:'switch', Switch2:'switch2', Discord:'discord', BattleNet:'battlenet', GOG:'gog',
 };
-const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Chrome:'CHR', Firefox:'FF', Edge:'EDG', Intel:'INT', Xbox:'XBX', Switch:'SW', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
+const PLATFORM_SHORT = { AMD:'AMD', NVIDIA:'NV', Apple:'', PS5:'PS5', Windows:'WIN', Steam:'STM', macOS:'MAC', Chrome:'CHR', Firefox:'FF', Edge:'EDG', Intel:'INT', Xbox:'XBX', Switch:'SW', Switch2:'S2', Discord:'DSC', BattleNet:'BNET', GOG:'GOG' };
 const PLATFORM_LOGOS = {
   AMD:       '/platform-logos/simple-icons/amd.svg',
   NVIDIA:    '/platform-logos/simple-icons/nvidia.svg',
@@ -1337,22 +1337,22 @@ const PLATFORM_LOGOS = {
   Firefox:   '/platform-logos/simple-icons/firefoxbrowser.svg',
   Edge:      '/platform-logos/wikimedia/microsoft-edge.svg',
 };
-const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Chrome','Firefox','Edge','Steam','Discord','BattleNet','GOG','Switch','Xbox','PS5'];
+const TRACKED_PLATFORMS = ['AMD','NVIDIA','Intel','Apple','macOS','Windows','Chrome','Firefox','Edge','Steam','Discord','BattleNet','GOG','Switch','Switch2','Xbox','PS5'];
 const TICKER_SERVICES = [
   'AMD', 'NVIDIA', 'Intel', 'Apple iOS', 'macOS', 'Windows', 'Google Chrome', 'Mozilla Firefox', 'Microsoft Edge',
-  'Steam', 'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy', 'Switch', 'Xbox', 'PS5',
+  'Steam', 'Steam Deck', 'SteamOS', 'Discord', 'Battle.net', 'GOG Galaxy', 'Switch', 'Switch 2', 'Xbox', 'PS5',
 ];
 const PLATFORM_CATEGORY_META = {
   pcHardware: { title: 'PC Hardware & Drivers', subtitle: 'GPU, graphics driver, and silicon update lanes.', platforms: ['NVIDIA', 'AMD', 'Intel'] },
   desktopOs:  { title: 'Desktop OS & Apple', subtitle: 'Windows, macOS, and iOS security and stability releases.', platforms: ['Windows', 'Apple', 'macOS'] },
-  gaming:     { title: 'Gaming Platforms', subtitle: 'Steam, Steam Deck, consoles, launchers, and live game-service tooling.', platforms: ['Steam', 'Switch', 'Xbox', 'PS5', 'Discord', 'BattleNet', 'GOG'] },
+  gaming:     { title: 'Gaming Platforms', subtitle: 'Steam, Steam Deck, consoles, launchers, and live game-service tooling.', platforms: ['Steam', 'Switch', 'Switch2', 'Xbox', 'PS5', 'Discord', 'BattleNet', 'GOG'] },
   browsers:   { title: 'Web Browsers', subtitle: 'Stable desktop browser releases and documented security fixes.', platforms: ['Chrome', 'Firefox', 'Edge'] },
 };
 const PLATFORM_CATEGORY_ORDER = ['pcHardware', 'desktopOs', 'gaming', 'browsers'];
 const PLATFORM_TO_CATEGORY = Object.fromEntries(Object.entries(PLATFORM_CATEGORY_META).flatMap(([key, meta]) => meta.platforms.map(platform => [platform, key])));
 const SEARCH_SUGGESTIONS = [
   'Steam Deck', 'Steam client', 'Discord', 'Battle.net', 'GOG Galaxy',
-  'Switch OLED', 'Joy-Con', 'PS5 system software', 'Windows security',
+  'Switch OLED', 'Switch 2', 'Joy-Con', 'PS5 system software', 'Windows security',
   'Radeon RX 7900 XT', 'Intel Arc A770 25H2',
   'Chrome security', 'Firefox security', 'Edge security',
 ];
@@ -1433,7 +1433,8 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['windows', 'Windows'], ['steam', 'Steam'], ['discord', 'Discord'],
   ['battle.net', 'BattleNet'], ['battle net', 'BattleNet'], ['battlenet', 'BattleNet'],
   ['gog', 'GOG'], ['gog galaxy', 'GOG'],
-  ['switch', 'Switch'], ['nintendo', 'Switch'], ['nintendo switch', 'Switch'],
+  ['switch', 'Switch'], ['nintendo switch', 'Switch'],
+  ['switch 2', 'Switch2'], ['switch2', 'Switch2'], ['nintendo switch 2', 'Switch2'],
   ['xbox', 'Xbox'], ['ps5', 'PS5'], ['playstation', 'PS5'], ['playstation 5', 'PS5'],
   ['macbook', 'macOS'],
 ]);
@@ -1494,7 +1495,7 @@ const CATEGORY_SEARCH_INTENTS = [
   {
     aliases: ['console firmware', 'console updates', 'console update', 'console patches', 'consoles', 'console'],
     label: 'Console firmware',
-    lanes: [{ platform: 'Switch' }, { platform: 'Xbox' }, { platform: 'PS5' }],
+    lanes: [{ platform: 'Switch' }, { platform: 'Switch2' }, { platform: 'Xbox' }, { platform: 'PS5' }],
   },
   {
     aliases: ['game launchers', 'game launcher', 'gaming launchers', 'launcher updates', 'launcher update', 'launchers'],
@@ -1512,7 +1513,7 @@ const CATEGORY_SEARCH_INTENTS = [
   {
     aliases: ['handheld updates', 'handheld firmware', 'handhelds', 'handheld'],
     label: 'Handheld systems',
-    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }],
+    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }, { platform: 'Switch2' }],
   },
 ];
 const STEAM_GAME_SEARCH_ALIASES = new Map([
@@ -1533,7 +1534,7 @@ function steamGameRosterDescription() {
 }
 
 function platformSuffix(p) { return PLATFORM_CLASS[p] || 'default'; }
-function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy', Chrome: 'Google Chrome', Firefox: 'Mozilla Firefox', Edge: 'Microsoft Edge' })[p] || p; }
+function platformLabel(p) { return ({ BattleNet: 'Battle.net', GOG: 'GOG Galaxy', Chrome: 'Google Chrome', Firefox: 'Mozilla Firefox', Edge: 'Microsoft Edge', Switch2: 'Switch 2' })[p] || p; }
 function platformLogoPath(platform) { return PLATFORM_LOGOS[platform] || null; }
 function renderPlatformLogo(platform, extraClass = '') {
   const pSuffix = platformSuffix(platform);
@@ -1554,6 +1555,7 @@ function serviceLogoKey(service) {
     'Google Chrome': 'Chrome',
     'Mozilla Firefox': 'Firefox',
     'Microsoft Edge': 'Edge',
+    'Switch 2': 'Switch2',
   })[service] || service;
 }
 function renderServiceTickerItem(service) {
@@ -1798,6 +1800,14 @@ function searchIntentForQuery(raw) {
     stripSearchIntentStopwords(framedQuery),
     queryWithoutStatus,
   ].filter(Boolean))];
+  if (intentQueries.includes('nintendo')) {
+    return withStatus({
+      platform: null, sourceKind: null, sourceLabel: null,
+      categoryLabel: 'Nintendo consoles',
+      lanes: [{ platform: 'Switch' }, { platform: 'Switch2' }],
+      semanticQuery: '',
+    });
+  }
   for (const intentQuery of intentQueries) {
     for (const intent of SOURCE_SEARCH_INTENTS) {
       const alias = [...intent.aliases].sort((a, b) => b.length - a.length)
@@ -3446,6 +3456,7 @@ async function renderDashboard({ focusId = null } = {}) {
       ['macOS', /macbook|macos|mac os|apple silicon|\bm[1-4]\b/],
       ['Apple', /iphone|ipad|ios|ipados/],
       ['Windows', /windows|\bkb\d+/],
+      ['Switch2', /\bswitch\s*2\b/],
       ['Switch', /switch|joy-?con|nintendo/],
       ['Xbox', /xbox/],
       ['PS5', /ps5|playstation/],
@@ -3512,19 +3523,14 @@ async function renderDashboard({ focusId = null } = {}) {
         ? (search
           ? (() => {
             const emptyIntent = resolveSearchIntentForPlatform(searchIntentForQuery(search), platform);
-            const untrackedProduct = untrackedProductForSearch(search);
             const browsePlatform = platform || emptyIntent.platform || suggestedPlatformForSearch(search);
-            const emptyTitle = untrackedProduct
-              ? `${untrackedProduct.name} is not tracked yet.`
-              : emptyIntent.productId && emptyIntent.sourceLabel
+            const emptyTitle = emptyIntent.productId && emptyIntent.sourceLabel
               ? `No current verified ${emptyIntent.sourceLabel} release.`
               : `No verified updates found for “${search}”.`;
-            const emptyDetail = untrackedProduct
-              ? 'PatchTicker’s Switch releases cover the original Switch family, not Switch 2. Check Nintendo’s separate Switch 2 history for its current firmware.'
-              : emptyIntent.productId
+            const emptyDetail = emptyIntent.productId
               ? `PatchTicker found the exact Steam product (App ${emptyIntent.productId}), but no qualifying official release is inside the 240-day display window.`
               : 'No matching source-verified release was found. The product may be untracked, outside the 240-day display window, or excluded by your filters.';
-            return `<div class="empty-state empty-state--search"><strong>${H(emptyTitle)}</strong><span>${H(emptyDetail)}</span><div class="empty-search-actions">${untrackedProduct ? `<a class="link-btn" href="${H(untrackedProduct.sourceUrl)}" target="_blank" rel="noopener noreferrer">Nintendo’s official Switch 2 history ↗</a>` : browsePlatform ? `<button class="link-btn" type="button" data-empty-platform="${H(browsePlatform)}">Browse ${H(platformLabel(browsePlatform))} releases</button>` : ''}<button class="link-btn" id="clear-inline" type="button">Clear filters</button></div></div>`;
+            return `<div class="empty-state empty-state--search"><strong>${H(emptyTitle)}</strong><span>${H(emptyDetail)}</span><div class="empty-search-actions">${browsePlatform ? `<button class="link-btn" type="button" data-empty-platform="${H(browsePlatform)}">Browse ${H(platformLabel(browsePlatform))} releases</button>` : ''}<button class="link-btn" id="clear-inline" type="button">Clear filters</button></div></div>`;
           })()
           : '<p class="empty-state">No updates match your filters. <button class="link-btn" id="clear-inline">Clear filters</button></p>')
         : '<p class="empty-state">No updates found.</p>';
@@ -4723,6 +4729,12 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
       status: 'Nintendo system update',
       summary: 'Nintendo distributes compatible firmware through the console updater; this release does not provide a component-level hardware matrix.',
       action: 'Use System Settings → System Update and verify Nintendo’s official notes before troubleshooting with manual recovery steps.',
+    },
+    Switch2: {
+      title: 'Console compatibility',
+      status: 'Nintendo Switch 2 system update',
+      summary: 'This release belongs to Nintendo Switch 2. The original Switch has a separate update history and must not inherit this rating.',
+      action: 'Use the Switch 2 System Settings updater and check Nintendo’s Switch 2 release notes before troubleshooting.',
     },
   };
   const compatibilityFallback = compatibilityFallbacks[u.platform] || {

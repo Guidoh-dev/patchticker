@@ -130,8 +130,10 @@ const EXACT_PLATFORM_SEARCHES = new Map([
   ['gog', 'GOG'],
   ['gog galaxy', 'GOG'],
   ['switch', 'Switch'],
-  ['nintendo', 'Switch'],
   ['nintendo switch', 'Switch'],
+  ['switch 2', 'Switch2'],
+  ['switch2', 'Switch2'],
+  ['nintendo switch 2', 'Switch2'],
   ['xbox', 'Xbox'],
   ['ps5', 'PS5'],
   ['playstation', 'PS5'],
@@ -214,7 +216,7 @@ const CATEGORY_SEARCH_INTENTS = [
   {
     aliases: ['console firmware', 'console updates', 'console update', 'console patches', 'consoles', 'console'],
     label: 'Console firmware',
-    lanes: [{ platform: 'Switch' }, { platform: 'Xbox' }, { platform: 'PS5' }],
+    lanes: [{ platform: 'Switch' }, { platform: 'Switch2' }, { platform: 'Xbox' }, { platform: 'PS5' }],
   },
   {
     aliases: ['game launchers', 'game launcher', 'gaming launchers', 'launcher updates', 'launcher update', 'launchers'],
@@ -232,7 +234,7 @@ const CATEGORY_SEARCH_INTENTS = [
   {
     aliases: ['handheld updates', 'handheld firmware', 'handhelds', 'handheld'],
     label: 'Handheld systems',
-    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }],
+    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }, { platform: 'Switch2' }],
   },
 ];
 
@@ -400,6 +402,14 @@ function parseSearchIntent(rawSearch) {
     stripIntentStopwords(framedQuery),
     queryWithoutStatus,
   ].filter(Boolean))];
+  if (intentQueries.includes('nintendo')) {
+    return withStatus({
+      platform: null, sourceKind: null, sourceLabel: null,
+      categoryLabel: 'Nintendo consoles',
+      lanes: [{ platform: 'Switch' }, { platform: 'Switch2' }],
+      semanticQuery: '',
+    });
+  }
   for (const intentQuery of intentQueries) {
     for (const intent of SOURCE_SEARCH_INTENTS) {
       const alias = [...intent.aliases].sort((a, b) => b.length - a.length)

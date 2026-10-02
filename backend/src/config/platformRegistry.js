@@ -16,6 +16,7 @@ const PLATFORMS = Object.freeze([
   { key: 'Intel',     label: 'Intel',        lane: 'drivers',  sourceType: 'html',     priority: 2, freshnessSlaHours: 4, official: true, topTier: true, engagementBoundary: 'vendor-current-driver-family' },
   { key: 'Steam',     label: 'Steam',        lane: 'gaming',   sourceType: 'rss',      priority: 3, freshnessSlaHours: 4, official: true, topTier: true, engagementBoundary: 'official-core-client' },
   { key: 'Switch',    label: 'Switch',       lane: 'console',  sourceType: 'html',     priority: 3, freshnessSlaHours: 8, official: true, topTier: true, engagementBoundary: 'platform-wide-system' },
+  { key: 'Switch2',   label: 'Switch 2',     lane: 'console',  sourceType: 'html',     priority: 3, freshnessSlaHours: 8, official: true, topTier: true, engagementBoundary: 'platform-wide-system' },
   { key: 'Xbox',      label: 'Xbox',         lane: 'console',  sourceType: 'json',     priority: 3, freshnessSlaHours: 8, official: true, topTier: true, engagementBoundary: 'platform-wide-system' },
   { key: 'PS5',       label: 'PS5',          lane: 'console',  sourceType: 'artifact', priority: 3, freshnessSlaHours: 8, official: true, topTier: true, engagementBoundary: 'platform-wide-system' },
   { key: 'Discord',   label: 'Discord',      lane: 'services', sourceType: 'html',     priority: 4, freshnessSlaHours: 4, official: true, topTier: true, engagementBoundary: 'official-core-client' },

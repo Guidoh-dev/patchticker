@@ -31,6 +31,33 @@ describe('scraper accuracy guards', () => {
     ]);
   });
 
+  test('Switch 2 detector keeps a separate console identity and official source', async () => {
+    jest.setSystemTime(new Date('2026-10-02T12:00:00Z'));
+    const update = await __test.detectSwitch2(async url => {
+      expect(url).toBe('https://en-americas-support.nintendo.com/app/answers/detail/a_id/68473');
+      return `<h3>Ver. 23.0.1 (Released September 30, 2026)</h3>
+        <p>Fixed an issue from system version 23.0.0 where software occasionally took a long time to start, pause, or close.</p>
+        <h3>Ver. 23.0.0 (Released September 9, 2026)</h3>`;
+    });
+    expect(update).toMatchObject({
+      platform: 'Switch2',
+      name: 'Nintendo Switch 2 System Update 23.0.1',
+      version: '23.0.1',
+      releasedAt: '2026-09-30',
+    });
+    expect(update.changelog).toEqual([
+      'Fixed an issue from system version 23.0.0 where software occasionally took a long time to start, pause, or close.',
+    ]);
+    expect(update.evidence[0].url).toBe(update.sourceUrl);
+    expect(__test.validateDetectedUpdate('Switch2', update).platform).toBe('Switch2');
+    const { buildInitialUpdate } = require('./services/pipelineService').__test;
+    const scored = buildInitialUpdate('Switch2', __test.validateDetectedUpdate('Switch2', update));
+    expect(scored.id).toBe('switch2-23-0-1');
+    expect(scored.score).toBeGreaterThanOrEqual(0);
+    expect(scored.score).toBeLessThanOrEqual(10);
+    expect(scored.evidence[0].url).toBe(update.sourceUrl);
+  });
+
   test('Nintendo security index parser captures only a dated official advisory asset', () => {
     expect(__test.parseNintendoSecurityNoticeIndex(`
       <ul><li class="section-news-listitem">

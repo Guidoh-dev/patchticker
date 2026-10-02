@@ -445,9 +445,17 @@ test('common platform-name mistakes are corrected without fuzzy matching release
   expect(updatesService.__test.exactPlatformForSearch('mac book')).toBe('macOS');
   expect(updatesService.__test.exactPlatformForSearch('ipad os')).toBe('Apple');
   expect(updatesService.__test.exactPlatformForSearch('play station')).toBe('PS5');
-  expect(updatesService.__test.exactPlatformForSearch('nintendo')).toBe('Switch');
+  expect(updatesService.__test.exactPlatformForSearch('nintendo')).toBeNull();
+  expect(updatesService.__test.parseSearchIntent('nintendo')).toEqual(expect.objectContaining({
+    categoryLabel: 'Nintendo consoles',
+    lanes: [{ platform: 'Switch' }, { platform: 'Switch2' }],
+  }));
   expect(updatesService.__test.exactPlatformForSearch('game ready driver')).toBe('NVIDIA');
-  expect(updatesService.__test.exactPlatformForSearch('switch 2')).toBeNull();
+  expect(updatesService.__test.exactPlatformForSearch('switch 2')).toBe('Switch2');
+  expect(updatesService.__test.exactPlatformForSearch('nintendo switch 2')).toBe('Switch2');
+  expect(updatesService.__test.exactPlatformForSearch('switch oled')).toBeNull();
+  expect(updatesService.__test.parseSearchIntent('latest Nintendo Switch 2 firmware'))
+    .toEqual(expect.objectContaining({ platform: 'Switch2', semanticQuery: '', latestOnly: true }));
   expect(updatesService.__test.parseSearchIntent('Ge Force RTX 5090')).toEqual(expect.objectContaining({
     platform: 'NVIDIA', semanticQuery: 'rtx 5090', sourceKind: null,
   }));
@@ -786,8 +794,25 @@ test('natural status and category searches become strict SQL filters', async () 
   expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$2\)/);
   expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$3\)/);
   expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$4\)/);
+  expect(sql).toMatch(/LOWER\(platform\) = LOWER\(\$5\)/);
   expect(sql).not.toContain('search_group_0');
-  expect(params).toEqual(['stable', 'Switch', 'Xbox', 'PS5']);
+  expect(params).toEqual(['stable', 'Switch', 'Switch2', 'Xbox', 'PS5']);
+});
+
+test('Switch 2 search uses only its own firmware lane, while Nintendo includes both generations', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+
+  await updatesService.getUpdates({ search: 'Nintendo Switch 2 firmware' });
+  const [switch2Sql, switch2Params] = mockQuery.mock.calls[0];
+  expect(switch2Sql).toMatch(/LOWER\(platform\) = LOWER\(\$1\)/);
+  expect(switch2Params).toEqual(['Switch2']);
+
+  mockQuery.mockClear();
+  await updatesService.getUpdates({ search: 'Nintendo' });
+  const [nintendoSql, nintendoParams] = mockQuery.mock.calls[0];
+  expect(nintendoSql).toMatch(/LOWER\(platform\) = LOWER\(\$1\) OR LOWER\(platform\) = LOWER\(\$2\)/);
+  expect(nintendoParams).toEqual(['Switch', 'Switch2']);
 });
 
 test('category searches select explicit ecosystem lanes instead of incidental prose mentions', async () => {
@@ -808,7 +833,7 @@ test('category searches select explicit ecosystem lanes instead of incidental pr
   }));
   expect(updatesService.__test.parseSearchIntent('handheld updates')).toEqual(expect.objectContaining({
     categoryLabel: 'Handheld systems',
-    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }],
+    lanes: [{ platform: 'Steam', sourceKind: 'steamos-news' }, { platform: 'Switch' }, { platform: 'Switch2' }],
   }));
 
   mockIsAvailable.mockReturnValue(true);

@@ -2158,6 +2158,34 @@ async function detectSwitch() {
   }
 }
 
+/**
+ * Switch 2 has a separate Nintendo firmware ledger. Never infer that a
+ * first-generation Switch release applies to this console just because both
+ * lines sometimes share a version number and similar release notes.
+ */
+async function detectSwitch2(fetchPage = fetchHtml) {
+  const sourceUrl = 'https://en-americas-support.nintendo.com/app/answers/detail/a_id/68473';
+  try {
+    const parsed = parseSwitchReleasePage(await fetchPage(sourceUrl));
+    if (!parsed?.changelog.length) return null;
+    return {
+      platform: 'Switch2',
+      name: `Nintendo Switch 2 System Update ${parsed.version}`,
+      version: parsed.version,
+      releasedAt: parsed.releasedAt,
+      affects: 'Nintendo Switch 2 / system firmware / GameChat / online services / game compatibility',
+      changelog: parsed.changelog,
+      evidence: sourceEvidence('Nintendo Switch 2 Support', sourceUrl,
+        `${parsed.heading}. ${parsed.changelog[0]}`,
+        { dateBasis: 'released', publishedAt: parsed.releasedAt, releaseType: 'official-release' }),
+      sourceUrl,
+    };
+  } catch (err) {
+    logger.warn('[scraper] Switch 2 detection failed', { error: err.message });
+    return null;
+  }
+}
+
 
 /**
  * Discord — official Patch Notes index and article.
@@ -3193,6 +3221,7 @@ const DETECTORS = {
   PS5:     detectPs5,
   Intel:   detectIntel,
   Switch:  detectSwitch,
+  Switch2: detectSwitch2,
   Discord: detectDiscord,
   BattleNet: detectBattleNet,
   GOG:      detectGog,
@@ -3317,5 +3346,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, parseWindowsHistoryCandidates, parseWindowsApplicableVersions, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
+  __test: { detectSwitch2, parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, parseWindowsHistoryCandidates, parseWindowsApplicableVersions, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
 };

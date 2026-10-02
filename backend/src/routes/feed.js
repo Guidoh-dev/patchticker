@@ -16,6 +16,7 @@ const db          = require('../config/db');
 const logger      = require('../utils/logger');
 const liveFeed    = require('../services/liveFeedService');
 const { z }       = require('zod');
+const { PLATFORM_KEYS } = require('../config/platformRegistry');
 
 const router = express.Router();
 
@@ -50,7 +51,7 @@ const postQuotaLimiter = rateLimit({
 
 const PostSchema = z.object({
   body:     z.string().min(1).max(280).trim(),
-  platform: z.enum(['AMD','NVIDIA','Apple','PS5','Windows','Steam','macOS','Chrome','Firefox','Edge','Intel','Xbox','Switch','Discord','BattleNet','GOG']).optional(),
+  platform: z.enum(PLATFORM_KEYS).optional(),
 });
 
 function feedUserLabel(userId) {

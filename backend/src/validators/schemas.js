@@ -62,6 +62,7 @@
 'use strict';
 
 const { z } = require('zod');
+const { PLATFORM_KEYS } = require('../config/platformRegistry');
 
 // ══════════════════════════════════════════════════════════════════════════════
 // REUSABLE INJECTION-DETECTION REFINEMENTS
@@ -167,7 +168,7 @@ function rejectPrototypePollution(schema) {
  * Valid platform display names.
  * Case-sensitive exact match. "nvidia" ≠ "NVIDIA".
  */
-const PlatformEnum = z.enum(['Apple', 'NVIDIA', 'AMD', 'PS5', 'Windows', 'Steam', 'macOS', 'Chrome', 'Firefox', 'Edge', 'Intel', 'Xbox', 'Switch', 'Discord', 'BattleNet', 'GOG']);
+const PlatformEnum = z.enum(PLATFORM_KEYS);
 
 /** Update health status values. */
 const StatusEnum = z.enum(['stable', 'caution', 'avoid']);
