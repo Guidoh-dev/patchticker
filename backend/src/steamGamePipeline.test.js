@@ -261,6 +261,25 @@ describe('material Steam game update pipeline', () => {
     expect(notes.changelog.join(' ')).not.toMatch(/missing HUD\b(?!AutoAim)/);
   });
 
+  test('flattened numbered resource notes surface progression and gameplay before cosmetics', () => {
+    const notes = __test.releaseNotesFromPost({ contents:
+      'Dear Pathfinders,Polaris Institute released a resource update. Please restart your client. '
+      + 'Experience Improvements1. Updated the item acquisition notification icon for Irisalis.2. Improved the outfit showcase panel. '
+      + 'Bug Fixes\\1. Fixed an issue where joining a friend early in the game could block progression.'
+      + '2. Added Erlath, an enemy with group support abilities.'
+      + '3. Increased Stellarys Starine drop rate on Chaos difficulty.'
+      + '4. Fixed a rare game freeze when bringing Prismana Fulmintis along.'
+      + '5. Added Erlath, an enemy with group support abilities. Defeat it first when encountered.',
+    });
+    expect(notes.changelog[0]).toContain('Pathfinders, Polaris');
+    expect(notes.plain).toMatch(/Irisalis\.\n2\. Improved/);
+    expect(notes.changelog).toContain('Added Erlath, an enemy with group support abilities.');
+    expect(notes.changelog).toContain('Fixed an issue where joining a friend early in the game could block progression.');
+    expect(notes.changelog.findIndex(item => item.includes('block progression')))
+      .toBeLessThan(notes.changelog.findIndex(item => item.includes('notification icon')));
+    expect(notes.changelog.filter(item => item.startsWith('Added Erlath'))).toHaveLength(1);
+  });
+
   test('separates common publisher headings flattened into their first item', () => {
     const plain = __test.stripSteamMarkup('Seasons system and Season OneWith this release, seasons begin. Seasonal characterAdded a separate profile. Global modifiers:Apply to all seasonal players. Personal season modifiersPlayers can opt in. Streamer Mode & PrivacyPlayers are anonymized.');
     expect(plain).toContain('Season One\nWith this release');

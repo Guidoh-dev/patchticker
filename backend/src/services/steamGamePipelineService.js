@@ -87,11 +87,19 @@ function stripSteamMarkup(value) {
     // before extracting sentences and changelog items.
     .replace(/\b(CHANGES AND UPDATES|BUG FIXES|KNOWN ISSUES|PERFORMANCE AND STABILITY|PERFORMANCE & STABILITY|GAMEPLAY|GENERAL|VISUALS|AUDIO|INTRO)(?=[A-Z][a-z])/g, '\n$1\n')
     .replace(/\b(Changes and Updates|Bug Fixes|Known Issues|Performance and Stability|Performance & Stability|Gameplay|General|Visuals|Audio|Intro)(?=[A-Z][a-z])/g, '\n$1\n')
+    .replace(/\b(Aircraft|Locations and Missions|Interface|Graphics|Sound)(?=[A-Z](?:[a-z]|\s))/g, '\n$1\n')
     .replace(/\b(Seasons? system(?: and Season One)?|Seasonal character|Global season modifiers|Global modifiers|Personal season modifiers|Streamer Mode & Privacy)(?:\s*:)?(?=[A-Z][a-z])/g, '\n$1\n')
     // Do not split camel-cased engine identifiers such as HUDAutoAim. Only
     // known section headings warrant an inferred boundary here.
     .replace(/\b(MATCHMAKING TESTS)(?=[A-Z][a-z])/g, '$1\n')
-    .replace(/([.!?])(?=[A-Z][a-z])/g, '$1\n')
+    // Some publisher feeds flatten ordered lists into "Irisalis.2. Fixed..."
+    // or "Bug Fixes\\1. Fixed...". Restore only numbered-action boundaries;
+    // version strings like v2.72 must remain intact.
+    .replace(/\\(?=\d{1,2}\.\s*[A-Z])/g, '\n')
+    .replace(/(?<=[A-Za-z.!?])(?<!\d\.)(?=\d{1,2}\.\s*[A-Z])/g, '\n')
+    .replace(/([.!?])(?=[A-Z][a-z]|[A-Z][\d-]|A bug\b)/g, '$1\n')
+    .replace(/,([A-Z][a-z])/g, ', $1')
+    .replace(/\s*[—–]\s*[A-Za-z][A-Za-z &]{2,60}(?:Operations )?Team\s*$/i, '')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s*\n+/g, '\n')
     .trim();
@@ -114,14 +122,29 @@ function uniqueText(items, max = 12) {
   const seen = new Set();
   const out = [];
   for (const item of items) {
-    const clean = normaliseReleaseText(stripSteamMarkup(item).replace(/^[-•]\s*/, '').replace(/\n+/g, ' '));
+    const clean = normaliseReleaseText(stripSteamMarkup(item)
+      .replace(/^(?:[-•]\s*|\d{1,2}\.(?:\s+|(?=[A-Z])))/, '').replace(/\n+/g, ' '));
     const key = clean.toLowerCase();
-    if (clean.length < 18 || seen.has(key)) continue;
+    if (clean.length < 18 || seen.has(key)
+      || out.some(existing => existing.length >= 35 && clean.length >= 35
+        && (existing.toLowerCase().startsWith(key) || key.startsWith(existing.toLowerCase())))
+      || /^(?:Aircraft|Locations and Missions|Interface|Graphics|Sound|General|Bug Fixes|Experience Improvements)$/i.test(clean)) continue;
     seen.add(key);
     out.push(clean.slice(0, 520));
     if (out.length >= max) break;
   }
   return out;
+}
+
+function materialNoteWeight(value) {
+  const text = String(value || '');
+  let weight = 0;
+  if (/\b(?:crash|freeze|stutter|soft[ -]?lock|block(?:ed|ing)? progression|prevent(?:ed|ing)? progress|failed? to launch|could not (?:start|load|finish))\b/i.test(text)) weight += 8;
+  if (/\b(?:new|added|changed|increased|decreased|reworked|adjusted|fixed|improved|reduced|featuring)\b/i.test(text)
+    && /\b(?:maps?|modes?|enemies|enemy|quests?|missions?|abilities|ability|weapons?|balance|drop rate|progression|control effects|damage|combat|ranked|spawn|matchmaking|gameplay)\b/i.test(text)) weight += 7;
+  else if (/\b(?:maps?|modes?|enemies|enemy|quests?|missions?|abilities|ability|weapons?|balance|drop rate|progression|control effects|damage|combat|ranked|spawn|matchmaking|gameplay)\b/i.test(text)) weight += 3;
+  if (/\b(?:cosmetics?|outfits?|shop|notification icon|textures?|appearance set|accessories?|models?|visuals?|prompts?|panels?|shortcuts?|buttons?)\b/i.test(text)) weight -= 4;
+  return weight;
 }
 
 function flattenedActionItems(plain) {
@@ -149,14 +172,28 @@ function releaseNotesFromPost(post) {
   ];
   const plain = stripSteamMarkup(raw);
   const lines = plain.split('\n')
-    .map(line => line.replace(/^[-•]\s*/, '').trim())
+    .map(line => line.replace(/^(?:[-•]\s*|\d{1,2}\.(?:\s+|(?=[A-Z])))/, '').trim())
     .filter(line => line.length <= 520);
   // Valve's bounded `maxlength` response sometimes flattens publisher markup
   // into one long string. Sentence extraction preserves a useful, readable
   // breakdown instead of publishing a single 520-character blob.
   const sentences = extractSteamSentences(plain);
   const actionItems = listItems.length ? [] : flattenedActionItems(plain);
-  const changelog = uniqueText([...headings, ...listItems, ...sentences.slice(0, 3), ...actionItems, ...sentences.slice(3), ...lines], 12);
+  const summarySentences = sentences.slice(0, 2);
+  if (/\bmajor changes include\b/i.test(sentences[2] || '')) summarySentences.push(sentences[2]);
+  const candidates = uniqueText([...headings, ...listItems, ...sentences, ...actionItems, ...lines], 100);
+  const ranked = listItems.length ? [] : candidates
+    .map((text, index) => ({ text, index, weight: materialNoteWeight(text) }))
+    .filter(item => item.weight > 0)
+    .sort((a, b) => b.weight - a.weight || a.index - b.index)
+    .map(item => item.text);
+  const changelog = uniqueText([
+    ...headings,
+    ...listItems,
+    ...(!listItems.length ? summarySentences : []),
+    ...ranked,
+    ...candidates,
+  ], 12);
   return {
     raw,
     plain,
