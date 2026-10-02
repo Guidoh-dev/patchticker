@@ -1,7 +1,10 @@
 'use strict';
 
+const { getPlatform } = require('../config/platformRegistry');
+
 const SITE = 'https://patchticker.app';
 const VERSION_ONLY = new Set(['official-version', 'official-artifact']);
+const DETAILED_SINGLE_NOTE_SOURCES = new Set(['official-release', 'official-release-notes', 'official-security-advisory']);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 function safeUrl(value) {
   try { const url = new URL(String(value || '')); return ['http:', 'https:'].includes(url.protocol) ? url.href : null; }
@@ -15,7 +18,20 @@ function isoDate(value) {
 const notes = update => (Array.isArray(update?.changelog) ? update.changelog : []).filter(item => typeof item === 'string' && item.trim()).slice(0, 30);
 const releasePath = update => '/releases/' + encodeURIComponent(update.id);
 const platformPath = platform => '/platforms/' + encodeURIComponent(platform);
-const isIndexable = update => !!update && !VERSION_ONLY.has(update.sourceKind) && !!safeUrl(update.sourceUrl) && !!isoDate(update.releasedAt) && notes(update).length >= 2;
+const platformLabel = key => getPlatform(key)?.label || key;
+function hasSubstantiveSingleNote(update, entries) {
+  if (entries.length !== 1 || !DETAILED_SINGLE_NOTE_SOURCES.has(update.sourceKind)) return false;
+  if (update.dateBasis === 'catalog-updated' || (Array.isArray(update.evidence) && update.evidence.some(item => item?.detailsUnavailable === true))) return false;
+  const note = entries[0].trim();
+  if (note.length < 80) return false;
+  return (/\b(?:fixed|resolved|addressed)\b/i.test(note) && /\b(?:issue|bug|crash|error|regression|vulnerabilit\w*|security flaw)\b/i.test(note))
+    || /\bCVE-\d{4}-\d{4,}\b/i.test(note);
+}
+function isIndexable(update) {
+  if (!update || VERSION_ONLY.has(update.sourceKind) || !safeUrl(update.sourceUrl) || !isoDate(update.releasedAt)) return false;
+  const entries = notes(update);
+  return entries.length >= 2 || hasSubstantiveSingleNote(update, entries);
+}
 const section = (title, content) => '<section class="discovery-section"><h2>' + esc(title) + '</h2>' + content + '</section>';
 const list = (items, empty) => items.length ? '<ul class="discovery-notes">' + items.map(item => '<li>' + esc(item) + '</li>').join('') + '</ul>' : '<p>' + esc(empty) + '</p>';
 function shell({ title, description, path, body, noindex = false, type = 'website' }) {
@@ -37,7 +53,7 @@ function shell({ title, description, path, body, noindex = false, type = 'websit
 function card(update) {
   const date = isoDate(update.releasedAt);
   const path = esc(releasePath(update));
-  return '<article class="discovery-card"><div class="discovery-card-meta"><span>' + esc(update.platform) + '</span>' +
+  return '<article class="discovery-card"><div class="discovery-card-meta"><span>' + esc(platformLabel(update.platform)) + '</span>' +
     (date ? '<time datetime="' + date + '">' + date + '</time>' : '') + '</div><h3><a href="' + path + '">' +
     esc(update.name) + '</a></h3>' + (update.verdict ? '<p>' + esc(update.verdict) + '</p>' : '') +
     '<a class="discovery-card-more" href="' + path + '">Read release details →</a></article>';
@@ -90,7 +106,7 @@ function renderRelease(update) {
       esc(item.source || 'Source') + ' ↗</a>' + (item.text ? ' — ' + esc(item.text) : '') + '</li>').join('');
   const fact = (label, value) => '<div><dt>' + esc(label) + '</dt><dd>' + value + '</dd></div>';
   const facts = '<dl class="discovery-facts">' +
-    fact('Platform', '<a href="' + esc(platformPath(update.platform)) + '">' + esc(update.platform) + '</a>') +
+    fact('Platform', '<a href="' + esc(platformPath(update.platform)) + '">' + esc(platformLabel(update.platform)) + '</a>') +
     fact('Version', esc(update.version || 'Not stated')) +
     fact(dateLabel, date ? '<time datetime="' + date + '">' + date + '</time>' : 'Date unverified') +
     fact('PatchTicker assessment', score) + '</dl>';
@@ -105,7 +121,7 @@ function renderRelease(update) {
     description: String(update.verdict || update.name + (limitedCatalog ? ' verified package details.' : noindex ? ' verified version details.' : ' release notes and install guidance.')).slice(0, 240),
     path: releasePath(update), noindex, type: 'article',
     body: '<div class="discovery-hero"><p class="discovery-kicker"><a href="/releases">All releases</a> / <a href="' +
-      esc(platformPath(update.platform)) + '">' + esc(update.platform) + '</a></p><h1>' + esc(update.name) + '</h1>' +
+      esc(platformPath(update.platform)) + '">' + esc(platformLabel(update.platform)) + '</a></p><h1>' + esc(update.name) + '</h1>' +
       '<p class="discovery-verdict">' + esc(update.verdict || 'Review the release notes before updating.') + '</p>' +
       '<div class="discovery-actions"><a class="discovery-cta" href="/#/updates/' + encodeURIComponent(update.id) +
       '">Open interactive update page →</a>' + sourceLink + '</div></div>' + facts +

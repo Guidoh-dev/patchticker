@@ -42,6 +42,36 @@ test('version-only detections are noindex, ungraded, and omitted from sitemap', 
   expect(sitemap).not.toContain('#/');
 });
 
+test('a specific one-note vendor fix is discoverable without inventing extra release notes', () => {
+  const switch2 = {
+    ...update, id: 'switch2-23-0-1', platform: 'Switch2', name: 'Nintendo Switch 2 System Update 23.0.1',
+    version: '23.0.1', releasedAt: '2026-09-30T00:00:00Z', sourceKind: 'official-release',
+    sourceUrl: 'https://en-americas-support.nintendo.com/app/answers/detail/a_id/68473',
+    changelog: ['Fixed an issue from system version 23.0.0 where software occasionally took a long time to start, pause, or close.'],
+    score: 7,
+  };
+  expect(isIndexable(switch2)).toBe(true);
+  const html = renderRelease(switch2);
+  expect(html).toContain('content="index,follow"');
+  expect(html).toContain('7.0/10');
+  expect(html).toContain('>Switch 2</a>');
+  expect(html).not.toContain('>Switch2</a>');
+  const sitemap = renderSitemap([switch2], PLATFORMS);
+  expect(sitemap).toContain('https://patchticker.app/releases/switch2-23-0-1');
+  expect(sitemap).toContain('https://patchticker.app/platforms/Switch2');
+});
+
+test('a detailed single CVE remains discoverable while generic single notes stay noindex', () => {
+  const security = { ...update, platform: 'macOS', sourceKind: 'official-security-advisory',
+    changelog: ['Screen Sharing: An attacker on the network may be able to authenticate to Screen Sharing without valid credentials (CVE-2026-65400)'] };
+  const generic = { ...update, changelog: ['Microsoft Edge was released to the Stable channel with Chromium security updates.'] };
+  const catalog = { ...security, dateBasis: 'catalog-updated' };
+  expect(isIndexable(security)).toBe(true);
+  expect(isIndexable(generic)).toBe(false);
+  expect(isIndexable(catalog)).toBe(false);
+  expect(renderRelease(generic)).toContain('content="noindex,follow"');
+});
+
 test('a catalog-only build never presents the catalog timestamp as a verified release date', () => {
   const catalogOnly = {
     ...update, id: 'intel-9033', platform: 'Intel', name: 'Intel Arc Graphics Driver 9033',
