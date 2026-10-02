@@ -280,6 +280,15 @@ describe('material Steam game update pipeline', () => {
     expect(notes.changelog.filter(item => item.startsWith('Added Erlath'))).toHaveLength(1);
   });
 
+  test('release headings separate a publisher’s patch-notes label from its version', () => {
+    expect(__test.releaseTitle('Aniimo', 'Patch Notes-v1.0.3629693.0'))
+      .toBe('Aniimo: Patch Notes v1.0.3629693.0');
+    expect(__test.releaseTitle('Aniimo', 'Aniimo Patch Notes-v1.0.3629693.0'))
+      .toBe('Aniimo Patch Notes v1.0.3629693.0');
+    expect(__test.releaseTitle('War Thunder', 'Update 2.59.0.43'))
+      .toBe('War Thunder: Update 2.59.0.43');
+  });
+
   test('separates common publisher headings flattened into their first item', () => {
     const plain = __test.stripSteamMarkup('Seasons system and Season OneWith this release, seasons begin. Seasonal characterAdded a separate profile. Global modifiers:Apply to all seasonal players. Personal season modifiersPlayers can opt in. Streamer Mode & PrivacyPlayers are anonymized.');
     expect(plain).toContain('Season One\nWith this release');

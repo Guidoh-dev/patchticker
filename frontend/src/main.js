@@ -24,7 +24,7 @@ import {
   openAnalyticsPreferences, syncAnalyticsIdentity,
 } from './analytics.js';
 import { STEAM_GAME_CANDIDATES, STEAM_GAME_CANDIDATE_META } from './steamGameCandidates.js';
-import { SETUP_LENSES, filterUpdatesBySetup, filterSearchResultsByProvenance } from './filterLogic.js';
+import { SETUP_LENSES, filterUpdatesBySetup, filterSearchResultsByProvenance, untrackedProductForSearch } from './filterLogic.js';
 import { compatibilityProfileFromUpdate, evaluateCompatibility } from './compatibility.js';
 import { preferredReleaseAt, selectUpdateBrief } from './updateBrief.js';
 import { releaseLaneKey } from './releaseLanes.js';
@@ -3512,14 +3512,19 @@ async function renderDashboard({ focusId = null } = {}) {
         ? (search
           ? (() => {
             const emptyIntent = resolveSearchIntentForPlatform(searchIntentForQuery(search), platform);
+            const untrackedProduct = untrackedProductForSearch(search);
             const browsePlatform = platform || emptyIntent.platform || suggestedPlatformForSearch(search);
-            const emptyTitle = emptyIntent.productId && emptyIntent.sourceLabel
+            const emptyTitle = untrackedProduct
+              ? `${untrackedProduct.name} is not tracked yet.`
+              : emptyIntent.productId && emptyIntent.sourceLabel
               ? `No current verified ${emptyIntent.sourceLabel} release.`
               : `No verified updates found for “${search}”.`;
-            const emptyDetail = emptyIntent.productId
+            const emptyDetail = untrackedProduct
+              ? 'PatchTicker’s Switch releases cover the original Switch family, not Switch 2. Check Nintendo’s separate Switch 2 history for its current firmware.'
+              : emptyIntent.productId
               ? `PatchTicker found the exact Steam product (App ${emptyIntent.productId}), but no qualifying official release is inside the 240-day display window.`
-              : 'That usually means no matching official release is inside PatchTicker’s 240-day window—not that a patch exists without details.';
-            return `<div class="empty-state empty-state--search"><strong>${H(emptyTitle)}</strong><span>${H(emptyDetail)}</span><div class="empty-search-actions">${browsePlatform ? `<button class="link-btn" type="button" data-empty-platform="${H(browsePlatform)}">Browse ${H(platformLabel(browsePlatform))} releases</button>` : ''}<button class="link-btn" id="clear-inline" type="button">Clear filters</button></div></div>`;
+              : 'No matching source-verified release was found. The product may be untracked, outside the 240-day display window, or excluded by your filters.';
+            return `<div class="empty-state empty-state--search"><strong>${H(emptyTitle)}</strong><span>${H(emptyDetail)}</span><div class="empty-search-actions">${untrackedProduct ? `<a class="link-btn" href="${H(untrackedProduct.sourceUrl)}" target="_blank" rel="noopener noreferrer">Nintendo’s official Switch 2 history ↗</a>` : browsePlatform ? `<button class="link-btn" type="button" data-empty-platform="${H(browsePlatform)}">Browse ${H(platformLabel(browsePlatform))} releases</button>` : ''}<button class="link-btn" id="clear-inline" type="button">Clear filters</button></div></div>`;
           })()
           : '<p class="empty-state">No updates match your filters. <button class="link-btn" id="clear-inline">Clear filters</button></p>')
         : '<p class="empty-state">No updates found.</p>';

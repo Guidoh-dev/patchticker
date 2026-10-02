@@ -238,7 +238,7 @@ test('typed dashboard searches query the full database with race protection', ()
   assert.match(mainSource, /fetchUpdates\(\{[\s\S]*?platform: _filterState\.platform,[\s\S]*?status: _filterState\.status,[\s\S]*?search: query,[\s\S]*?sort: _filterState\.sort,[\s\S]*?signal: controller\.signal/);
   assert.match(mainSource, /Searching every verified release/);
   assert.match(mainSource, /Database search ·/);
-  assert.match(mainSource, /PatchTicker’s 240-day window/);
+  assert.match(mainSource, /240-day display window/);
   assert.match(cssSource, /\.dash-search-status\.is-loading\s*\{[^}]*var\(--cyan\)/s);
   assert.match(cssSource, /\.empty-state--search\s*\{[^}]*display:\s*grid/s);
 });
@@ -372,7 +372,9 @@ test('search results expose staged platform facets, verification timing, and hon
   assert.match(mainSource, /function suggestedPlatformForSearch\(query\)/);
   assert.match(mainSource, /const browsePlatform = platform \|\| emptyIntent\.platform \|\| suggestedPlatformForSearch\(search\)/);
   assert.match(mainSource, /PatchTicker found the exact Steam product \(App \$\{emptyIntent\.productId\}\)/);
-  assert.match(mainSource, /no matching official release is inside PatchTicker’s 240-day window/);
+  assert.match(mainSource, /product may be untracked, outside the 240-day display window/);
+  assert.match(mainSource, /Switch releases cover the original Switch family, not Switch 2/);
+  assert.match(mainSource, /Nintendo’s official Switch 2 history/);
   assert.match(mainSource, /data-empty-platform="\$\{H\(browsePlatform\)\}"/);
   assert.match(mainSource, /setDraftFilters\(\{ platform: nextPlatform \}\)/);
   assert.match(mainSource, /Press Apply to update results/);

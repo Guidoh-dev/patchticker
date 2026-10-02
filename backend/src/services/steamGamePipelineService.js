@@ -470,7 +470,12 @@ function releaseTitle(gameName, postTitle) {
   // Card/detail headings are single-line data even when a publisher decorates
   // its Steam title with BBCode or hard line breaks. Preserve those boundaries
   // in the changelog parser, but collapse them for the release identity.
-  const cleanTitle = stripSteamMarkup(postTitle || 'Major update').replace(/\s+/g, ' ').trim();
+  const cleanTitle = stripSteamMarkup(postTitle || 'Major update')
+    .replace(/\s+/g, ' ')
+    // Publishers sometimes join the label and version as "Patch Notes-v1.0".
+    // This is typography only: retain the exact version and source wording.
+    .replace(/\b(Patch Notes?)\s*[-–—]\s*(?=v?\d)/i, '$1 ')
+    .trim();
   const comparable = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
   return comparable(cleanTitle).startsWith(comparable(gameName))
     ? cleanTitle
@@ -767,6 +772,7 @@ module.exports = {
     explicitPackageSizeBytes,
     knownIssuesFromNotes,
     releaseNotesFromPost,
+    releaseTitle,
     extractSteamSentences,
     parseDotaPatchData,
     enrichOfficialGameNotes,
