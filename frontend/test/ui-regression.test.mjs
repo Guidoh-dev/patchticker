@@ -719,6 +719,16 @@ test('detail pages distinguish vendor release, first-seen, and recheck timing', 
   assert.match(cssSource, /@media \(max-width: 560px\)[\s\S]*\.detail-source-timeline\s*\{[\s\S]*grid-template-columns:\s*1fr/);
 });
 
+test('scheduled game patches separate notes publication from the verified live time', () => {
+  assert.match(mainSource, /releaseTimeBasis === 'publisher-scheduled-utc'/);
+  assert.match(mainSource, /if \(Array\.isArray\(update\?\.evidence\)[\s\S]*?return 'Patch live';/);
+  assert.match(mainSource, /label: 'Notes posted'/);
+  assert.match(mainSource, /label: 'Patch live'/);
+  assert.match(mainSource, /Publisher-stated UTC activation time/);
+  assert.match(cssSource, /\.detail-source-timeline--scheduled\s*\{[^}]*repeat\(4, minmax\(0, 1fr\)\)/s);
+  assert.match(cssSource, /@media \(max-width: 560px\)[\s\S]*\.detail-source-timeline--scheduled\s*\{[^}]*grid-template-columns:\s*1fr/s);
+});
+
 test('feed distinguishes the latest release from archived platform history', () => {
   assert.match(mainSource, /function annotateReleasePositions\(updates = \[\]\)/);
   assert.match(mainSource, /releasePosition: latestByLane/);

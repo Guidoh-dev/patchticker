@@ -299,6 +299,48 @@ describe('material Steam game update pipeline', () => {
     }).eligible).toBe(true);
   });
 
+  test('holds explicitly scheduled game notes until the publisher says the patch is live', () => {
+    const post = {
+      gid: '1844751498220444',
+      date: Math.floor(Date.parse('2026-09-24T06:54:04Z') / 1000),
+      feedname: 'steam_community_announcements',
+      title: 'Marvel Rivals Version 20260924 Patch Notes',
+      contents: "We're thrilled to announce the upcoming patch drops on September 24th, 2026, at 09 : 00 : 00 (UTC)! "
+        + list(Array.from({ length: 12 }, (_, i) => `New gameplay map, hero, mission, and combat changes ${i}.`))
+        + ' detailed gameplay and mission changes '.repeat(110),
+    };
+    expect(__test.classifyMaterialUpdate(post).eligible).toBe(true);
+    expect(__test.scheduledReleaseAt(post).toISOString()).toBe('2026-09-24T09:00:00.000Z');
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-24T08:59:59Z'))).toBeNull();
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-24T09:00:00Z'))?.post.gid).toBe(post.gid);
+    expect(__test.selectBestMaterialPost([{ ...post, contents: post.contents.replace('24th', '25th') }], Date.parse('2026-09-24T10:00:00Z'))).toBeNull();
+    const saved = __test.toDatabaseUpdate(
+      { appId: 2767030, name: 'Marvel Rivals', averagePlayers: 90000 },
+      { ...post, url: 'https://store.steampowered.com/news/app/2767030/view/1844751498220444' },
+      __test.classifyMaterialUpdate(post),
+    );
+    // Release rows store calendar dates; evidence retains the precise UTC hour.
+    expect(new Date(saved.releasedAt).toISOString()).toBe('2026-09-24T00:00:00.000Z');
+    expect(saved.evidence[0]).toMatchObject({
+      publishedAt: '2026-09-24T06:54:04.000Z',
+      availableAt: '2026-09-24T09:00:00.000Z',
+      releaseTimeBasis: 'publisher-scheduled-utc',
+    });
+  });
+
+  test('date-only release headlines cannot enter the feed before their named date', () => {
+    const post = {
+      gid: 'next-day',
+      date: Math.floor(Date.parse('2026-09-23T18:00:00Z') / 1000),
+      feedname: 'steam_community_announcements',
+      title: 'Major Gameplay Update 20260924 Patch Notes',
+      contents: list(Array.from({ length: 12 }, (_, i) => `New gameplay map, hero, mission, and combat changes ${i}.`))
+        + ' detailed gameplay and mission changes '.repeat(110),
+    };
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-23T23:59:59Z'))).toBeNull();
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-24T00:00:00Z'))?.post.gid).toBe(post.gid);
+  });
+
   test('prefers the richer official notes posted near the marketing announcement', () => {
     const date = Math.floor(Date.now() / 1000);
     const selected = __test.selectBestMaterialPost([

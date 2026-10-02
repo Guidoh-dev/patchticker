@@ -2201,6 +2201,9 @@ function timeAgo(isoString, now = Date.now()) {
 
 function updateDateLabel(update) {
   if (Array.isArray(update?.evidence)
+    && update.evidence.some(item => item?.releaseTimeBasis === 'publisher-scheduled-utc'
+      && Number.isFinite(Date.parse(item?.availableAt || '')))) return 'Patch live';
+  if (Array.isArray(update?.evidence)
     && update.evidence.some(item => item?.detailsUnavailable === true && item?.dateBasis === 'catalog-updated')) return 'Catalog updated';
   if (update?.dateBasis === 'source-updated') return 'Source updated';
   if (update?.dateBasis === 'published') return 'Published';
@@ -2260,13 +2263,28 @@ function renderSourceTimeline(update) {
   const lastCheckedAt = credibleTimestamp(update?.lastCheckedAt || update?.updatedAt
     || (update?.evidence || []).find(item => item?.checkedAt)?.checkedAt
     || null);
+  const scheduledEvidence = (update?.evidence || []).find(item =>
+    item?.releaseTimeBasis === 'publisher-scheduled-utc' && credibleTimestamp(item.availableAt));
+  const availableAt = credibleTimestamp(scheduledEvidence?.availableAt);
+  const notesPublishedAt = credibleTimestamp(scheduledEvidence?.publishedAt);
   const points = [
-    {
+    availableAt && notesPublishedAt ? {
+      label: 'Notes posted',
+      value: formatVerifiedMoment(notesPublishedAt),
+      detail: 'Publisher announcement, before rollout',
+      datetime: notesPublishedAt,
+    } : {
       label: updateDateLabel(update),
       value: formatReleaseDate(update?.releasedAt),
       detail: updateDateLabel(update) === 'Catalog updated' ? 'Vendor catalog metadata, not a confirmed release date' : 'Vendor or publisher date',
       datetime: update?.releasedAt,
     },
+    ...(availableAt ? [{
+      label: 'Patch live',
+      value: formatVerifiedMoment(availableAt),
+      detail: 'Publisher-stated UTC activation time',
+      datetime: availableAt,
+    }] : []),
     {
       label: 'First tracked',
       value: formatVerifiedMoment(firstSeenAt),
@@ -2283,7 +2301,7 @@ function renderSourceTimeline(update) {
   return `
     <div class="detail-source-timeline-wrap" aria-label="Patch source timeline">
       <span class="detail-source-timeline-title">Source timeline</span>
-      <ol class="detail-source-timeline">
+      <ol class="detail-source-timeline${availableAt ? ' detail-source-timeline--scheduled' : ''}">
         ${points.map(point => `
           <li class="detail-source-timeline-step${point.datetime ? ' is-confirmed' : ''}">
             <i aria-hidden="true"></i>
@@ -2318,7 +2336,11 @@ function evidenceDateMeta(evidence, update = null) {
   const checkedAt = evidence?.checkedAt && Number.isFinite(Date.parse(evidence.checkedAt))
     ? `Verified ${timeAgo(evidence.checkedAt)}`
     : '';
-  return [sourceDate, checkedAt].filter(Boolean);
+  const availableAt = evidence?.releaseTimeBasis === 'publisher-scheduled-utc'
+    && evidence?.availableAt && Number.isFinite(Date.parse(evidence.availableAt))
+    ? `Patch live · ${formatVerifiedMoment(evidence.availableAt)}`
+    : '';
+  return [sourceDate, availableAt, checkedAt].filter(Boolean);
 }
 
 function securitySignalMeta(update) {

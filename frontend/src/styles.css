@@ -7578,6 +7578,12 @@ body { overflow-x: hidden; }
   padding: 0;
   list-style: none;
 }
+.detail-source-timeline--scheduled {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (min-width: 561px) and (max-width: 900px) {
+  .detail-source-timeline--scheduled { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .detail-source-timeline::before {
   content: '';
   position: absolute;
@@ -7750,6 +7756,7 @@ body { overflow-x: hidden; }
     gap: 12px;
     padding-left: 18px;
   }
+  .detail-source-timeline--scheduled { grid-template-columns: 1fr; }
   .detail-source-timeline::before {
     top: 5px;
     bottom: 5px;
