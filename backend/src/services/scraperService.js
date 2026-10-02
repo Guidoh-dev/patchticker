@@ -2331,7 +2331,13 @@ function parseChromeStableFeed(xml) {
       return;
     }
 
-    const releasedAt = toIsoDate(entry.find('published').first().text());
+    const publishedRaw = entry.find('published').first().text().trim();
+    const parsedPublished = toIsoDate(publishedRaw);
+    // Blogger includes a -07:00 timestamp for posts dated October 1; UTC
+    // conversion makes that October 2. Keep the publisher's calendar date.
+    const releasedAt = parsedPublished && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(publishedRaw)
+      ? publishedRaw.slice(0, 10)
+      : parsedPublished;
     const articleHtml = entry.find('content').first().text();
     const articleText = cleanText(cheerio.load(articleHtml).text(), 40_000);
     const versionMatch = articleText.match(/updated to\s+(\d+\.\d+\.\d+)\.(\d+)(?:\/\.(\d+))?/i);
@@ -2344,6 +2350,7 @@ function parseChromeStableFeed(xml) {
       ? `${versionBase}.${versionMatch[2]}/.${versionMatch[3]}`
       : `${versionBase}.${versionMatch[2]}`;
     const securityFixCount = Number(articleText.match(/includes\s+(\d+)\s+security fixes/i)?.[1] || 0);
+    const securityDetailsPending = /security (?:changes|details|fixes) will be updated shortly/i.test(articleText);
     const vulnerabilities = [...articleText.matchAll(
       /\b(Critical|High|Medium|Low)\s+(CVE-\d{4}-\d+):\s*(.*?)(?=\.\s*Reported by)/gi
     )].map(match => ({
@@ -2383,6 +2390,7 @@ function parseChromeStableFeed(xml) {
       changelog: unique([
         `Chrome Stable ${displayVersion} was published for Windows and macOS; Linux received ${versionBase}.${versionMatch[2]}.`,
         securityFixCount ? `Google documents ${securityFixCount} security fixes in this desktop Stable release.` : '',
+        securityDetailsPending ? 'Google says security details for this release will be updated shortly; no vulnerability count is published yet.' : '',
         ...vulnerabilities.slice(0, 6).map(item => `${item.severity[0].toUpperCase()}${item.severity.slice(1)} ${item.cve}: ${item.summary}.`),
       ], 360),
       knownIssues: [],
@@ -2390,25 +2398,30 @@ function parseChromeStableFeed(xml) {
       riskFactors: rolloutText ? [{ level: 'low', text: rolloutText }] : [],
       securityCriticality: {
         level: securityLevel,
-        label: securityFixCount
+        label: securityDetailsPending
+          ? 'Security details pending from Google'
+          : securityFixCount
           ? `${securityFixCount} security fixes${severitySummary ? ` (${severitySummary})` : ''}`
           : 'Google published this Stable release without a security-fix count in the checked post',
         cves: unique(vulnerabilities.map(item => item.cve), 32),
-        totalCves: securityFixCount || vulnerabilities.length,
+        totalCves: securityDetailsPending ? null : (securityFixCount || vulnerabilities.length),
         activelyExploited: /exploited in the wild/i.test(articleText),
       },
       verdict: securityLevel === 'critical' || securityLevel === 'high'
         ? 'Install promptly and restart Chrome to apply the documented security fixes.'
         : 'Install through Chrome’s normal Stable rollout, then restart the browser to finish applying the update.',
-      reasoning: securityFixCount
+      reasoning: securityDetailsPending
+        ? 'Google has published the desktop Stable build but says security details will be updated shortly. PatchTicker does not treat the unpublished count as zero or claim that this release has no security fixes.'
+        : securityFixCount
         ? `Google’s official Stable-channel post documents ${securityFixCount} security fixes${severitySummary ? `, including ${severitySummary} severity findings` : ''}. PatchTicker excludes Beta, Dev, Early Stable, Extended Stable, ChromeOS, and mobile posts from this lane.`
         : 'PatchTicker verified this as Google’s full desktop Stable-channel release and excluded preview, extended, mobile, and ChromeOS channels.',
-      evidence: sourceEvidence('Google Chrome Releases', sourceUrl, `Desktop Stable ${displayVersion}; ${securityFixCount || vulnerabilities.length} documented security fixes.`, {
+      evidence: sourceEvidence('Google Chrome Releases', sourceUrl, `Desktop Stable ${displayVersion}; ${securityDetailsPending ? 'security details pending' : securityFixCount ? `${securityFixCount} documented security fixes` : 'security-fix count not stated'}.`, {
         dateBasis: 'published',
         releaseType: securityFixCount || vulnerabilities.length ? 'official-security-release' : 'official-release',
         publishedAt: releasedAt,
         releaseChannel: 'stable',
-        securityFixCount,
+        securityFixCount: securityDetailsPending ? null : securityFixCount,
+        securityDetailsPending,
         severityCounts,
       }),
       sourceUrl,

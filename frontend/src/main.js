@@ -4500,7 +4500,9 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
   // ── Security Criticality ──────────────────────────────────────────────────
   const sec = u.securityCriticality || { level: 'none', label: 'No Data', cves: [] };
   const secLevel = ['critical', 'high', 'medium', 'low'].includes(sec.level) ? sec.level : 'none';
-  const secIcon = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢', none: '⚪' }[secLevel];
+  const securityDetailsPending = Array.isArray(u.evidence) && u.evidence.some(item => item?.securityDetailsPending === true);
+  const secDisplayLevel = securityDetailsPending ? 'PENDING' : secLevel.toUpperCase();
+  const secIcon = securityDetailsPending ? '◌' : { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢', none: '⚪' }[secLevel];
   const secCves = Array.isArray(sec.cves) ? sec.cves : [];
   const secCveTotal = Math.max(secCves.length, Number(sec.totalCves) || 0);
   const visibleCves = secCves.slice(0, 12);
@@ -5005,7 +5007,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
             <div class="detail-security-card detail-security-card--${H(secLevel)}">
               <div class="detail-security-header">
                 <span class="detail-security-icon">${secIcon}</span>
-                <span class="detail-security-level">${H(secLevel.toUpperCase())}</span>
+                <span class="detail-security-level">${H(secDisplayLevel)}</span>
                 <span class="detail-security-label">${H(sec.label)}</span>
               </div>
               ${cveHTML ? `<div class="detail-cve-list">${cveHTML}${remainingCves ? `<span class="detail-cve-more">+${H(String(remainingCves))} more in the official advisory</span>` : ''}</div>` : ''}

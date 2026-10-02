@@ -248,6 +248,19 @@ describe('material Steam game update pipeline', () => {
     expect(notes.changelog).toContain('Snow Day maps can now use Soccar.');
   });
 
+  test('recovers publisher actions from flattened Steam news without breaking camel-cased identifiers', () => {
+    const contents = 'An update to Team Fortress 2 has been released. The major changes include: New event! '
+      + 'The event includes new maps and missions. '.repeat(20)
+      + 'Featuring five new community maps and a new mode '
+      + 'Added a new event case and community cosmetics '
+      + 'Fixed client crash related to missing HUDAutoAim element (community fix from flower) '
+      + 'Fixed TFBot crash related to moving control points (community fix from BetaM)';
+    const notes = __test.releaseNotesFromPost({ contents });
+    expect(notes.changelog).toContain('Fixed client crash related to missing HUDAutoAim element (community fix from flower)');
+    expect(notes.changelog).toContain('Fixed TFBot crash related to moving control points (community fix from BetaM)');
+    expect(notes.changelog.join(' ')).not.toMatch(/missing HUD\b(?!AutoAim)/);
+  });
+
   test('separates common publisher headings flattened into their first item', () => {
     const plain = __test.stripSteamMarkup('Seasons system and Season OneWith this release, seasons begin. Seasonal characterAdded a separate profile. Global modifiers:Apply to all seasonal players. Personal season modifiersPlayers can opt in. Streamer Mode & PrivacyPlayers are anonymized.');
     expect(plain).toContain('Season One\nWith this release');

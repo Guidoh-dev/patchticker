@@ -88,7 +88,9 @@ function stripSteamMarkup(value) {
     .replace(/\b(CHANGES AND UPDATES|BUG FIXES|KNOWN ISSUES|PERFORMANCE AND STABILITY|PERFORMANCE & STABILITY|GAMEPLAY|GENERAL|VISUALS|AUDIO|INTRO)(?=[A-Z][a-z])/g, '\n$1\n')
     .replace(/\b(Changes and Updates|Bug Fixes|Known Issues|Performance and Stability|Performance & Stability|Gameplay|General|Visuals|Audio|Intro)(?=[A-Z][a-z])/g, '\n$1\n')
     .replace(/\b(Seasons? system(?: and Season One)?|Seasonal character|Global season modifiers|Global modifiers|Personal season modifiers|Streamer Mode & Privacy)(?:\s*:)?(?=[A-Z][a-z])/g, '\n$1\n')
-    .replace(/\b([A-Z][A-Z0-9 &/:'’()-]{2,}?)(?=[A-Z][a-z])/g, '$1\n')
+    // Do not split camel-cased engine identifiers such as HUDAutoAim. Only
+    // known section headings warrant an inferred boundary here.
+    .replace(/\b(MATCHMAKING TESTS)(?=[A-Z][a-z])/g, '$1\n')
     .replace(/([.!?])(?=[A-Z][a-z])/g, '$1\n')
     .replace(/[ \t]+/g, ' ')
     .replace(/\n\s*\n+/g, '\n')
@@ -122,6 +124,18 @@ function uniqueText(items, max = 12) {
   return out;
 }
 
+function flattenedActionItems(plain) {
+  // Valve's news API sometimes removes every bullet and line break. Recover
+  // only clear publisher-authored action boundaries; never publish a clipped
+  // 520-character tail as though it were a complete patch note.
+  return plain.split('\n').filter(line => line.length >= 520).flatMap(line => {
+    const starts = [...line.matchAll(/\b(?:Featuring|Added|Fixed|Updated|Removed|Reduced|Increased|Replaced|Improved|Adjusted)\s+/g)]
+      .map(match => match.index);
+    return starts.map((start, index) => line.slice(start, starts[index + 1] ?? line.length).trim())
+      .filter(item => item.length >= 25 && item.length <= 420 && !/\b(?:and|or|the|a|to|for|with)$/i.test(item));
+  });
+}
+
 function releaseNotesFromPost(post) {
   const raw = String(post?.contents || '');
   const $ = cheerio.load(`<body>${raw}</body>`);
@@ -141,7 +155,8 @@ function releaseNotesFromPost(post) {
   // into one long string. Sentence extraction preserves a useful, readable
   // breakdown instead of publishing a single 520-character blob.
   const sentences = extractSteamSentences(plain);
-  const changelog = uniqueText([...headings, ...listItems, ...sentences, ...lines], 12);
+  const actionItems = listItems.length ? [] : flattenedActionItems(plain);
+  const changelog = uniqueText([...headings, ...listItems, ...sentences.slice(0, 3), ...actionItems, ...sentences.slice(3), ...lines], 12);
   return {
     raw,
     plain,

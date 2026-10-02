@@ -376,6 +376,27 @@ describe('scraper accuracy guards', () => {
     ]);
   });
 
+  test('Chrome pending security details are not presented as zero fixes', () => {
+    const parsed = __test.parseChromeStableFeed(`
+      <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+        <published>2026-10-01T17:30:00-07:00</published>
+        <category term="Desktop Update"/><category term="Stable updates"/>
+        <title>Stable Channel Update for Desktop</title>
+        <link rel="alternate" href="https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop.html"/>
+        <content type="html"><![CDATA[
+          <p>The Stable channel has been updated to 154.0.8037.97/.98 for Windows and Mac and 154.0.8037.97 for Linux.</p>
+          <p>Security changes will be updated shortly</p>
+        ]]></content>
+      </entry></feed>
+    `);
+    expect(parsed.version).toBe('154.0.8037.98');
+    expect(parsed.releasedAt).toBe('2026-10-01');
+    expect(parsed.securityCriticality).toMatchObject({ label: 'Security details pending from Google', totalCves: null });
+    expect(parsed.evidence[0]).toMatchObject({ securityFixCount: null, securityDetailsPending: true });
+    expect(parsed.evidence[0].text).not.toMatch(/0 documented security fixes/);
+    expect(parsed.reasoning).toMatch(/security details will be updated shortly/);
+  });
+
   test('Firefox parser requires matching Release notes and advisory while preserving CVE severity', () => {
     const releaseHtml = `
       <span class="c-release-version">156.0</span>
