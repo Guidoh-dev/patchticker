@@ -171,6 +171,12 @@ function hasFullReleaseNotes(input) {
 function hasDocumentedSecurityEvidence(input) {
   const criticality = input.securityCriticality || {};
   if (list(criticality.cves).length > 0) return true;
+  if (Number(criticality.totalCves) > 0 || list(input.evidence).some(item => Number(item?.securityFixCount) > 0)) return true;
+  // A security *index* is not itself evidence that this particular release
+  // fixes a vulnerability. Apple can explicitly list a version with no
+  // published CVE entries; rewarding that row as a security patch would
+  // bypass the missing-issue-confidence cap and overstate install safety.
+  if (/no published CVE entries|no security (?:fixes|patches|classification)/i.test(String(criticality.label || ''))) return false;
   const sourceText = [input.sourceKind, ...list(input.evidence).flatMap(item => [item?.releaseType, item?.source, item?.text])]
     .filter(Boolean)
     .join(' ');

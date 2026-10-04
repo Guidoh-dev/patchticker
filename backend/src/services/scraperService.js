@@ -866,6 +866,46 @@ const APPLE_MACOS_COMPATIBILITY_URLS = Object.freeze({
   27: 'https://support.apple.com/en-us/127255',
 });
 
+// The security ledger verifies release identity and date, but an entry with
+// no published CVEs is not a changelog. Version-specific Apple OS pages can
+// supply actual fixes. Keep these URLs explicit so a redesigned or newer
+// major-version page cannot silently attach its notes to the wrong release.
+const APPLE_OS_RELEASE_NOTES = Object.freeze({
+  ios: Object.freeze({
+    27: Object.freeze([
+      { url: 'https://support.apple.com/en-us/149076', title: 'About iOS 27 Updates', heading: 'iOS', label: 'iPhone fix' },
+      { url: 'https://support.apple.com/en-us/149075', title: 'About iPadOS 27 Updates', heading: 'iPadOS', label: 'iPadOS' },
+    ]),
+  }),
+  macos: Object.freeze({
+    27: Object.freeze([
+      { url: 'https://support.apple.com/en-us/127257', title: "What's new in the updates for macOS 27 Golden Gate", heading: 'macOS', label: 'macOS' },
+      { url: 'https://support.apple.com/en-us/148830', title: "What's new for enterprise in macOS Golden Gate 27", heading: 'macOS Golden Gate', label: 'Mac enterprise fix' },
+    ]),
+  }),
+});
+
+function parseAppleOsVersionNotes(html, { title, heading, version }) {
+  const $ = cheerio.load(String(html || ''));
+  if (cleanText($('h1').first().text(), 180) !== title) return null;
+  const section = $('h2').filter((_, element) => cleanText($(element).text(), 120) === `${heading} ${version}`).first();
+  if (!section.length) return null;
+  const bullets = [];
+  let summary = '';
+  let node = section.next();
+  let guard = 0;
+  while (node.length && guard++ < 8 && !/^h[1-3]$/i.test(node[0]?.tagName || '')) {
+    if (node.is('p') && !summary) summary = cleanText(node.text(), 320);
+    if (node.is('ul,ol')) node.children('li').each((_, item) => {
+      const note = cleanText($(item).text(), 420);
+      if (note) bullets.push(note);
+    });
+    node = node.next();
+  }
+  if (!summary && !bullets.length) return null;
+  return { summary, bullets: unique(bullets, 420).slice(0, 8) };
+}
+
 function appleMacAliases(label) {
   const normalized = cleanText(label, 180)
     .replace(/[®™]/g, '')
@@ -1899,9 +1939,9 @@ async function detectAmd() {
 /**
  * Apple iOS — Apple Security Updates page
  */
-async function parseAppleSecurityRelease(kind) {
+async function parseAppleSecurityRelease(kind, fetchPage = fetchHtml) {
   const url = 'https://support.apple.com/en-us/100100';
-  const html = await fetchHtml(url);
+  const html = await fetchPage(url);
   const rows = parseAppleSecurityIndex(html);
   const match = rows.find(r => kind === 'ios'
     ? /iOS|iPadOS/i.test(r.product)
@@ -1910,7 +1950,7 @@ async function parseAppleSecurityRelease(kind) {
   const version = firstVersion(match.product) || match.product;
   const sourceUrl = match.link ? (match.link.startsWith('http') ? match.link : `https://support.apple.com${match.link}`) : url;
   const releasedAt = toIsoDate(match.date);
-  const advisory = sourceUrl !== url ? parseAppleSecurityAdvisory(await fetchHtml(sourceUrl)) : null;
+  const advisory = sourceUrl !== url ? parseAppleSecurityAdvisory(await fetchPage(sourceUrl)) : null;
   const noPublishedCves = /no published CVE entries/i.test(match.note || '');
   if ((!advisory && !noPublishedCves) || (advisory && advisory.releasedAt !== releasedAt)) {
     throw new Error(`Apple ${kind} advisory did not match the security release index`);
@@ -1923,14 +1963,36 @@ async function parseAppleSecurityRelease(kind) {
     activelyExploited: false,
   };
   const entries = advisory?.entries || [];
+  const major = Number(version.match(/^\d+/)?.[0]);
+  const releaseNoteSources = APPLE_OS_RELEASE_NOTES[kind]?.[major] || [];
+  const releaseNotes = [];
+  const releaseNoteEvidence = [];
+  for (const spec of releaseNoteSources) {
+    try {
+      const parsed = parseAppleOsVersionNotes(await fetchPage(spec.url), { ...spec, version });
+      if (!parsed) throw new Error(`Apple OS notes did not identify ${spec.heading} ${version}`);
+      const lines = parsed.bullets.length ? parsed.bullets : [parsed.summary];
+      releaseNotes.push(...lines.map(line => `${spec.label}: ${line}`));
+      releaseNoteEvidence.push(...sourceEvidence(
+        'Apple OS Update Notes', spec.url,
+        parsed.bullets.length
+          ? `${spec.heading} ${version}: ${parsed.bullets.length} specific fix note${parsed.bullets.length === 1 ? '' : 's'} verified.`
+          : `${spec.heading} ${version}: Apple provides a general bug-fix summary without itemized fixes.`,
+        { dateBasis: 'checked', releaseType: 'official-release-notes', officialVersion: version, product: spec.heading }
+      ));
+    } catch (error) {
+      // The security ledger remains the release/date authority. Never fill a
+      // missing OS note with changes from the next or previous version.
+      logger.warn('[scraper] Apple OS note enrichment failed', { kind, url: spec.url, version, error: error.message });
+    }
+  }
   let compatibility = null;
   let compatibilityUrl = null;
   if (kind === 'macos') {
-    const major = Number(match.product.match(/\b(\d{1,2})(?:\.\d+)*\b/)?.[1]);
     compatibilityUrl = APPLE_MACOS_COMPATIBILITY_URLS[major] || null;
     if (compatibilityUrl) {
       try {
-        compatibility = parseAppleMacCompatibility(await fetchHtml(compatibilityUrl), major, compatibilityUrl);
+        compatibility = parseAppleMacCompatibility(await fetchPage(compatibilityUrl), major, compatibilityUrl);
         if (!compatibility) throw new Error(`Apple compatibility page did not match macOS ${major}`);
       } catch (error) {
         // The security update remains valid when Apple's separate model page
@@ -1949,29 +2011,40 @@ async function parseAppleSecurityRelease(kind) {
     : noPublishedCves
       ? 'no published CVE entries'
       : `${entries.length} documented security component${entries.length === 1 ? '' : 's'}`;
+  const documentedChanges = unique([...(advisory?.changelog || []), ...releaseNotes], 420).slice(0, 12);
+  const noteAttribution = !releaseNoteEvidence.length
+    ? ' PatchTicker does not infer undocumented fixes.'
+    : kind === 'ios'
+      ? ' Version-matched iPhone and iPad notes supply their respective fixes without treating an iPhone-only issue as an iPad issue.'
+      : ' Version-matched Mac and enterprise notes supply the listed fixes without reusing changes from macOS 27.';
   return {
     platform: kind === 'ios' ? 'Apple' : 'macOS',
     name: match.product.slice(0, 100),
     version,
+    sourceKind: advisory ? 'official-security-advisory' : releaseNoteEvidence.length ? 'official-release-notes' : 'official-security-index',
     releasedAt,
     affects: kind === 'ios'
       ? 'iPhone / iPad / WebKit / system security / app compatibility'
       : 'Mac / macOS / Safari-WebKit / system security / device stability',
-    changelog: advisory?.changelog || [
+    changelog: documentedChanges.length
+      ? documentedChanges
+      : [
       `${match.product} is listed by Apple as released on ${match.date}.`,
       match.note,
     ].filter(Boolean),
     knownIssues: [],
     securityCriticality: security,
-    riskFactors: [{ level: 'low', text: 'Security updates are usually recommended quickly, but older devices and managed fleets should verify app compatibility first.' }],
+    riskFactors: [],
     verdict: security.activelyExploited
       ? 'Install promptly after confirming device compatibility; Apple identifies at least one issue in this release as exploited in the wild.'
       : noPublishedCves
-        ? 'Install after confirming device compatibility; Apple lists this release without published CVE entries.'
+        ? releaseNoteEvidence.length
+          ? 'Install after confirming device compatibility; Apple documents OS bug fixes and reports no published CVE entries.'
+          : 'Install after confirming device compatibility; Apple lists this release without published CVE entries.'
         : `Install promptly after confirming device compatibility; Apple documents ${cveSummary} in this release.`,
     reasoning: advisory
-      ? `PatchTicker matched Apple’s release index to the full security advisory and prioritized the highest-impact entries. The advisory documents ${cveSummary}; the update brief links each displayed risk back to Apple’s published CVE record.`
-      : `PatchTicker verified this release and date in Apple’s security releases index. Apple states that the update has ${cveSummary}, so PatchTicker does not infer undocumented security fixes.`,
+      ? `PatchTicker matched Apple’s release index to the full security advisory and prioritized the highest-impact entries. The advisory documents ${cveSummary}; the update brief links each displayed risk back to Apple’s published CVE record.${releaseNoteEvidence.length ? ' Additional OS notes were matched to this exact version.' : ''}`
+      : `PatchTicker verified this release and date in Apple’s security releases index. Apple states that the update has ${cveSummary}.${noteAttribution}`,
     evidence: [
       ...sourceEvidence(
         advisory ? 'Apple Security Advisory' : 'Apple Security Releases',
@@ -1984,6 +2057,7 @@ async function parseAppleSecurityRelease(kind) {
           cveCount: security.totalCves,
         }
       ),
+      ...releaseNoteEvidence,
       ...(compatibility ? sourceEvidence(
         'Apple macOS Compatibility',
         compatibilityUrl,
@@ -3346,5 +3420,5 @@ module.exports = {
   detectAll,
   detectAllDetailed,
   DETECTORS,
-  __test: { detectSwitch2, parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, parseWindowsHistoryCandidates, parseWindowsApplicableVersions, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
+  __test: { detectSwitch2, parseSwitchReleasePage, parseNintendoSecurityNoticeIndex, parsePs5SupportPage, parsePs5SystemSoftwareInfo, artifactSizeBytes, parseGogRemoteConfig, parseBattleNetVersionManifest, parseBattleNetBuildConfig, parseDiscordPatchIndex, parseDiscordPatchPage, parseChromeStableFeed, parseFirefoxStableRelease, firefoxAdvisoryUrl, parseEdgeStableRelease, parseAppleSecurityIndex, parseAppleSecurityAdvisory, parseAppleOsVersionNotes, parseAppleSecurityRelease, parseAppleMacCompatibility, parseSteamReleaseNotes, parsePlainSteamReleaseNotes, steamClientReleaseIdentity, steamDeckReleaseFromPost, parseXboxContentApi, parseAmdDriverPage, parseAmdReleaseNotes, nvidiaImpactMetadata, parseNvidiaReleaseNotes, parseNvidiaPdfReleaseDetails, parseNvidiaCompatibility, parseIntelPackageSize, parseIntelReleaseNotes, intelDriverDisplayName, intelCatalogWhqlStatus, reconcileIntelReleaseDates, parseIntelCompatibility, parseIntelDownloadCompatibility, mergeCompatibilityProfiles, microsoftSecurityCriticality, normalizeWindowsDetailNotes, parseWindowsKnownIssues, parseWindowsHistoryCandidates, parseWindowsApplicableVersions, safeDecode, sourceKindFromEvidence, validateDetectedUpdate },
 };

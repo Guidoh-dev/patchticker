@@ -237,6 +237,26 @@ describe('deterministic update scoring', () => {
     expect(grounded).toBeGreaterThan(ungrounded);
   });
 
+  test('a no-CVE Apple security-index listing does not become a security-scored patch', () => {
+    const input = {
+      sourceKind: 'official-release-notes',
+      changelog: [
+        'iPhone fix: iPhone 18 Pro may restart when Face ID fails to authenticate.',
+        'iPhone fix: Opening Notification Center and Control Center may make the touchscreen unresponsive.',
+        'iPadOS: This update provides bug fixes for your iPad.',
+      ],
+      evidence: [
+        { source: 'Apple Security Releases', url: 'https://support.apple.com/en-us/100100', releaseType: 'official-security-index', text: 'This update has no published CVE entries.' },
+        { source: 'Apple OS Update Notes', url: 'https://support.apple.com/en-us/149076', releaseType: 'official-release-notes' },
+      ],
+      securityCriticality: { level: 'none', label: 'Apple reports no published CVE entries for this release', cves: [], totalCves: 0 },
+    };
+    const result = deriveDeterministicScoreBreakdown(input);
+    expect(result.signals.securityLevel).toBe('none');
+    expect(result.components.security).toBe(0);
+    expect(result.score).toBeLessThanOrEqual(8.3);
+  });
+
   test('uses documented change surface instead of collapsing official releases to one default', () => {
     const fixture = (count, length, sourceKind = 'official-release-notes') => ({
       sourceKind,

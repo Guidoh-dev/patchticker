@@ -762,6 +762,68 @@ describe('scraper accuracy guards', () => {
     }]);
   });
 
+  test('Apple OS notes parser takes only the exact version section and preserves device-specific fixes', () => {
+    const spec = { title: 'About iOS 27 Updates', heading: 'iOS', version: '27.0.1' };
+    const html = `<main><h1>About iOS 27 Updates</h1>
+      <h2>iOS 27.0.1</h2><p>This update provides bug fixes for your iPhone.</p>
+      <ul><li>iPhone 18 Pro may unexpectedly restart when Face ID fails to authenticate</li>
+      <li>Opening Control Center may cause the touchscreen to become unresponsive</li></ul>
+      <h2>iOS 27</h2><p>Siri AI and new parental controls.</p>
+      <ul><li>A major new feature that is not part of 27.0.1.</li></ul></main>`;
+    const parsed = __test.parseAppleOsVersionNotes(html, spec);
+    expect(parsed.bullets).toEqual([
+      'iPhone 18 Pro may unexpectedly restart when Face ID fails to authenticate',
+      'Opening Control Center may cause the touchscreen to become unresponsive',
+    ]);
+    expect(parsed.summary).toBe('This update provides bug fixes for your iPhone.');
+    expect(__test.parseAppleOsVersionNotes(html, { ...spec, version: '27.0.2' })).toBeNull();
+    expect(__test.parseAppleOsVersionNotes(html, { ...spec, title: 'About iPadOS 27 Updates' })).toBeNull();
+  });
+
+  test('Apple macOS enterprise fixes are not confused with the following major release', () => {
+    const parsed = __test.parseAppleOsVersionNotes(`<main>
+      <h1>What's new for enterprise in macOS Golden Gate 27</h1>
+      <h2>macOS Golden Gate 27.0.1</h2>
+      <ul><li>Resolved an issue where Platform SSO did not display username and password fields at the Lock Screen.</li></ul>
+      <h2>macOS Golden Gate 27</h2><ul><li>New device management features.</li></ul>
+    </main>`, { title: "What's new for enterprise in macOS Golden Gate 27", heading: 'macOS Golden Gate', version: '27.0.1' });
+    expect(parsed.bullets).toEqual([
+      'Resolved an issue where Platform SSO did not display username and password fields at the Lock Screen.',
+    ]);
+  });
+
+  test('Apple release enrichment keeps iPhone-only changes separate from iPad and does not invent CVEs', async () => {
+    const pages = {
+      'https://support.apple.com/en-us/100100': `<table><tr>
+        <td><p>iOS 27.0.1 and iPadOS 27.0.1</p><div class="note"><p>This update has no published CVE entries.</p></div></td>
+        <td><p>iPhone 11 and later, iPad</p></td><td><p>28 Sep 2026</p></td>
+      </tr></table>`,
+      'https://support.apple.com/en-us/149076': `<main><h1>About iOS 27 Updates</h1>
+        <h2>iOS 27.0.1</h2><p>This update provides bug fixes for your iPhone.</p>
+        <ul><li>iPhone 18 Pro may restart after Face ID failure.</li></ul>
+        <h2>iOS 27</h2><p>New features that do not belong to 27.0.1.</p></main>`,
+      'https://support.apple.com/en-us/149075': `<main><h1>About iPadOS 27 Updates</h1>
+        <h2>iPadOS 27.0.1</h2><p>This update provides bug fixes for your iPad.</p>
+        <h2>iPadOS 27</h2><p>New features that do not belong to 27.0.1.</p></main>`,
+    };
+    const result = await __test.parseAppleSecurityRelease('ios', async url => {
+      if (!(url in pages)) throw new Error(`Unexpected Apple URL: ${url}`);
+      return pages[url];
+    });
+    expect(result.version).toBe('27.0.1');
+    expect(result.sourceKind).toBe('official-release-notes');
+    expect(result.securityCriticality.totalCves).toBe(0);
+    expect(result.changelog).toEqual([
+      'iPhone fix: iPhone 18 Pro may restart after Face ID failure.',
+      'iPadOS: This update provides bug fixes for your iPad.',
+    ]);
+    expect(result.changelog.join(' ')).not.toContain('New features');
+    expect(result.evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ url: 'https://support.apple.com/en-us/149076' }),
+      expect.objectContaining({ url: 'https://support.apple.com/en-us/149075', text: expect.stringContaining('general bug-fix summary') }),
+    ]));
+  });
+
   test('Apple macOS compatibility parser preserves exact models and the documented Apple-silicon scope', () => {
     const parsed = __test.parseAppleMacCompatibility(`
       <main id="sections">
