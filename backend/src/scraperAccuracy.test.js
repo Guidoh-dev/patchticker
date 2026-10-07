@@ -529,6 +529,33 @@ describe('scraper accuracy guards', () => {
     )).toBeNull();
   });
 
+  test('Firefox point release remains current when version metadata date lags exact notes and advisory', () => {
+    const releaseHtml = `<span class="c-release-version">157.0.1</span>
+      <p class="c-release-date">October 6, 2026</p>
+      <div class="c-release-first-title">Version 157.0.1, first offered to Release channel users on October 6, 2026</div>
+      <div id="fixed"><li class="release-note"><div class="release-note-content">Fixed downloads failing on macOS when Firefox asks where to save files.</div></li>
+      <li class="release-note"><div class="release-note-content"><a href="https://www.mozilla.org/security/advisories/mfsa2026-104/">Security fixes</a>.</div></li></div>`;
+    const advisoryHtml = `<div class="advisory"><h2>Security Vulnerabilities fixed in Firefox 157.0.1</h2>
+      <dl class="summary"><dt>Announced</dt><dd>October 6, 2026</dd><dt>Products</dt><dd>Firefox</dd><dt>Fixed in</dt><dd>Firefox 157.0.1</dd></dl>
+      <section class="cve"><h4>#CVE-2026-106016: Mitigation bypass in File Handling</h4><span class="level moderate">moderate</span></section></div>`;
+    const metadata = { LATEST_FIREFOX_VERSION: '157.0.1', LAST_RELEASE_DATE: '2026-09-29' };
+    const urls = {
+      releaseUrl: 'https://www.firefox.com/en-US/firefox/157.0.1/releasenotes/',
+      advisoryUrl: 'https://www.mozilla.org/security/advisories/mfsa2026-104/',
+    };
+    const parsed = __test.parseFirefoxStableRelease(metadata, releaseHtml, advisoryHtml, urls);
+    expect(parsed).toMatchObject({ version: '157.0.1', releasedAt: '2026-10-06',
+      securityCriticality: { totalCves: 1, cves: ['CVE-2026-106016'] } });
+    expect(parsed.changelog.join(' ')).toContain('2026-10-06');
+    expect(parsed.reasoning).toContain('version-service date lags');
+    expect(parsed.evidence[0].dateBasis).toBe('checked');
+    expect(parsed.evidence[1].publishedAt).toBe('2026-10-06');
+    expect(__test.parseFirefoxStableRelease(metadata, releaseHtml,
+      advisoryHtml.replaceAll('157.0.1', '157.0'), urls)).toBeNull();
+    expect(__test.parseFirefoxStableRelease(metadata, releaseHtml,
+      advisoryHtml.replaceAll('October 6, 2026', 'September 29, 2026'), urls)).toBeNull();
+  });
+
   test('Intel catalog labels render one WHQL badge without changing release identity', () => {
     expect(__test.intelDriverDisplayName('32.0.101.9033 WHQL Certified', true))
       .toBe('Intel Arc Graphics Driver 32.0.101.9033 WHQL');

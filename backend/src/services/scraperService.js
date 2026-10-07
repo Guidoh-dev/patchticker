@@ -2648,8 +2648,14 @@ function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, u
     && !urls.advisoryUrl) {
     return parseFirefoxPointRelease(expectedVersion, expectedDate, release$, actualDate, releaseUrl, versionsUrl);
   }
+  // Mozilla may advance LATEST_FIREFOX_VERSION before LAST_RELEASE_DATE. For
+  // point releases, accept the date printed on the exact notes only when the
+  // linked advisory independently names the same version and date below.
+  const isPointRelease = /^\d+\.\d+\.\d+$/.test(expectedVersion);
+  const metadataLagDays = (Date.parse(actualDate) - Date.parse(expectedDate)) / 86_400_000;
   if (actualVersion !== expectedVersion
-    || actualDate !== expectedDate
+    || (!isPointRelease && actualDate !== expectedDate)
+    || (isPointRelease && !(metadataLagDays >= -14 && metadataLagDays <= 14))
     || !new RegExp(`Version\\s+${expectedVersion.replace(/\./g, '\\.')}.*Release channel`, 'i').test(releaseChannelText)) return null;
 
   const advisoryUrl = String(urls.advisoryUrl || firefoxAdvisoryUrl(releaseHtml, releaseUrl) || '');
@@ -2670,9 +2676,10 @@ function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, u
   const fixedIn = cleanText(advisorySummary.find('dt').filter((_, el) => cleanText(advisory$(el).text(), 40) === 'Fixed in').next('dd').text(), 120);
   const products = cleanText(advisorySummary.find('dt').filter((_, el) => cleanText(advisory$(el).text(), 40) === 'Products').next('dd').text(), 120);
   const majorVersion = expectedVersion.split('.')[0];
-  if (!new RegExp(`Security Vulnerabilities fixed in Firefox\\s+${majorVersion}\\b`, 'i').test(advisoryHeading)
-    || advisoryDate !== expectedDate
-    || !new RegExp(`Firefox\\s+${majorVersion}\\b`, 'i').test(fixedIn)
+  const advisoryVersion = isPointRelease ? expectedVersion : majorVersion;
+  if (!new RegExp(`Security Vulnerabilities fixed in Firefox\\s+${advisoryVersion.replace(/\./g, '\\.')}\\b`, 'i').test(advisoryHeading)
+    || advisoryDate !== actualDate
+    || !new RegExp(`Firefox\\s+${advisoryVersion.replace(/\./g, '\\.')}\\b`, 'i').test(fixedIn)
     || !/^Firefox$/i.test(products)) return null;
 
   const severityMap = { critical: 'critical', high: 'high', moderate: 'medium', medium: 'medium', low: 'low' };
@@ -2717,7 +2724,7 @@ function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, u
   for (const [sectionId, label, limit] of [['new', 'New', 3], ['fixed', 'Fixed', 5], ['changed', 'Changed', 3]]) {
     release$(`#${sectionId} li.release-note .release-note-content`).slice(0, limit).each((_, element) => {
       const text = cleanText(release$(element).text(), 320);
-      if (text && !/^Various security fixes\.?$/i.test(text)) releaseNotes.push(`${label}: ${text}`);
+      if (text && !/^Various security fixes\.?$/i.test(text)) releaseNotes.push(`${label}: ${label === 'Fixed' ? text.replace(/^Fixed\s+/i, '') : text}`);
     });
   }
   const activelyExploited = /(?:known to be|actively|currently) exploited(?: in the wild)?|active exploitation/i.test(cleanText(advisory$('.advisory').text(), 100_000));
@@ -2726,22 +2733,22 @@ function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, u
     platform: 'Firefox',
     name: `Mozilla Firefox ${expectedVersion}`,
     version: expectedVersion,
-    releasedAt: expectedDate,
+    releasedAt: actualDate,
     affects: 'Mozilla Firefox Release channel / Windows / macOS / Linux / browser security / extensions and web compatibility',
     changelog: unique([
-      `Firefox ${expectedVersion} was first offered to Release channel users on ${expectedDate}.`,
-      `Mozilla documents ${vulnerabilities.length} CVEs in the matching security advisory (${severitySummary}).`,
+      `Firefox ${expectedVersion} was first offered to Release channel users on ${actualDate}.`,
+      `Mozilla documents ${vulnerabilities.length} CVE${vulnerabilities.length === 1 ? '' : 's'} in the matching security advisory (${severitySummary}).`,
       ...releaseNotes,
     ], 360).slice(0, 12),
     knownIssues: [],
     knownIssuesAuthoritative: false,
     riskFactors: [{
       level: securityLevel === 'critical' || securityLevel === 'high' ? 'high' : 'medium',
-      text: `${vulnerabilities.length} documented security vulnerabilities are fixed in this release; the highest Mozilla impact rating is ${securityLevel}.`,
+      text: `${vulnerabilities.length} documented security vulnerabilit${vulnerabilities.length === 1 ? 'y is' : 'ies are'} fixed in this release; the highest Mozilla impact rating is ${securityLevel}.`,
     }],
     securityCriticality: {
       level: securityLevel,
-      label: `${vulnerabilities.length} Mozilla-documented CVEs (${severitySummary})`,
+      label: `${vulnerabilities.length} Mozilla-documented CVE${vulnerabilities.length === 1 ? '' : 's'} (${severitySummary})`,
       cves: unique(vulnerabilities.map(item => item.cve), 32),
       totalCves: vulnerabilities.length,
       activelyExploited,
@@ -2749,11 +2756,11 @@ function parseFirefoxStableRelease(versionMetadata, releaseHtml, advisoryHtml, u
     verdict: securityLevel === 'critical' || securityLevel === 'high'
       ? 'Install promptly and restart Firefox to apply Mozilla’s documented security fixes.'
       : 'Install through Firefox’s normal Release channel, then restart the browser to finish applying the update.',
-    reasoning: `Mozilla’s current-version endpoint, Release-channel notes, and security advisory agree on Firefox ${expectedVersion} dated ${expectedDate}. The advisory documents ${vulnerabilities.length} CVEs (${severitySummary}); Beta, Nightly, ESR, Android, and iOS release lanes are not admitted by this detector.`,
+    reasoning: `Mozilla’s current-version endpoint, Release-channel notes, and security advisory agree on Firefox ${expectedVersion}. The exact notes and advisory date the update ${actualDate}${expectedDate !== actualDate ? '; Mozilla’s version-service date lags this point release' : ''}. The advisory documents ${vulnerabilities.length} CVE${vulnerabilities.length === 1 ? '' : 's'} (${severitySummary}); Beta, Nightly, ESR, Android, and iOS release lanes are not admitted by this detector.`,
     evidence: [
-      ...sourceEvidence('Mozilla Firefox Version Service', versionsUrl, `Current Firefox Release version ${expectedVersion}; release date ${expectedDate}.`, { dateBasis: 'released', releaseType: 'official-version', publishedAt: expectedDate, releaseChannel: 'stable' }),
-      ...sourceEvidence('Firefox Release Notes', releaseUrl, `Firefox ${expectedVersion} Release channel notes dated ${expectedDate}; ${releaseNotes.length} bounded feature and fix notes parsed.`, { dateBasis: 'released', releaseType: 'official-release-notes', publishedAt: expectedDate, releaseChannel: 'stable' }),
-      ...sourceEvidence('Mozilla Security Advisory', advisoryUrl, `Firefox ${majorVersion} advisory documents ${vulnerabilities.length} CVEs (${severitySummary}).`, { dateBasis: 'announced', releaseType: 'official-security-advisory', publishedAt: expectedDate, severityCounts, securityFixCount: vulnerabilities.length }),
+      ...sourceEvidence('Mozilla Firefox Version Service', versionsUrl, `Current Firefox Release version ${expectedVersion}; version-service metadata date ${expectedDate}.`, { dateBasis: 'checked', releaseType: 'official-version', releaseChannel: 'stable' }),
+      ...sourceEvidence('Firefox Release Notes', releaseUrl, `Firefox ${expectedVersion} Release channel notes dated ${actualDate}; ${releaseNotes.length} bounded feature and fix notes parsed.`, { dateBasis: 'released', releaseType: 'official-release-notes', publishedAt: actualDate, releaseChannel: 'stable' }),
+      ...sourceEvidence('Mozilla Security Advisory', advisoryUrl, `Firefox ${advisoryVersion} advisory documents ${vulnerabilities.length} CVE${vulnerabilities.length === 1 ? '' : 's'} (${severitySummary}).`, { dateBasis: 'announced', releaseType: 'official-security-advisory', publishedAt: actualDate, severityCounts, securityFixCount: vulnerabilities.length }),
     ],
     sourceUrl: releaseUrl,
   };

@@ -41,4 +41,17 @@ h3{margin:.7rem 0;font-size:1.22rem;line-height:1.35}
 .discovery-notes li,.discovery-sources li{margin:.75rem 0}
 .discovery-section>p{max-width:900px;color:var(--muted)}
 .discovery-footer{border-top:1px solid var(--border);border-bottom:0;color:var(--muted);font-size:.9rem}
+.discovery-brief-hero{background:radial-gradient(circle at 88% 18%,rgba(22,201,110,.13),transparent 42%)}
+.discovery-brief-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.discovery-decision{min-width:0;padding:1.35rem;border:1px solid var(--border);border-top:3px solid var(--green);border-radius:.65rem;background:var(--surface)}
+.discovery-decision--caution{border-top-color:#fbbf24}.discovery-decision--avoid{border-top-color:#f87171}
+.discovery-decision h3 a{text-decoration:none}.discovery-decision>p:not(.discovery-decision-rating){color:var(--muted)}
+.discovery-decision-rating{display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem;padding:.65rem 0;border-block:1px solid var(--border);font:600 .8rem/1.4 "JetBrains Mono",monospace;text-transform:uppercase}
+.discovery-decision--stable .discovery-decision-rating strong{color:var(--green)}.discovery-decision--caution .discovery-decision-rating strong{color:#fbbf24}.discovery-decision--avoid .discovery-decision-rating strong{color:#f87171}
+.discovery-brief-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem}
+.discovery-brief-links a{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.2rem 1rem;padding:.8rem 1rem;border:1px solid var(--border);border-radius:.4rem;text-decoration:none}
+.discovery-brief-links a:hover{border-color:var(--green)}.discovery-brief-links span{grid-column:1/-1;color:var(--green);font:700 .72rem/1.4 "JetBrains Mono",monospace;text-transform:uppercase}
+.discovery-brief-links time{color:var(--muted);font-size:.75rem}.discovery-brief-links strong{min-width:0}
+@media(max-width:900px){.discovery-brief-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.discovery-brief-grid,.discovery-brief-links{grid-template-columns:1fr}.discovery-card-meta{flex-wrap:wrap}.discovery-brief-links a{grid-template-columns:1fr}.discovery-brief-links time{grid-column:1}}
 @media(max-width:700px){.discovery-header{align-items:flex-start;flex-direction:column}.discovery-header nav{gap:.8rem}main{width:calc(100% - 1.5rem)}.discovery-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.discovery-facts div:nth-child(2){border-right:0}.discovery-facts div:nth-child(-n+2){border-bottom:1px solid var(--border)}}

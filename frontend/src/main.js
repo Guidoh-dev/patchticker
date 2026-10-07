@@ -266,6 +266,7 @@ function renderNav(user) {
         </span>
       </div>
       <div class="nav-right">
+        <a class="nav-link" href="/briefing">Briefing</a>
         ${user ? `<a class="nav-link nav-link--updates" href="#/updates">Updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>${adminLink}` : `<a class="nav-link nav-link--updates" href="#/updates">Updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>`}
         <button class="nav-theme-toggle" id="nav-theme-toggle" type="button" aria-label="Switch to ${theme === 'dark' ? 'light' : 'dark'} theme" title="Switch appearance">${theme === 'dark' ? '☀' : '☾'}</button>
         ${rightLinks}
@@ -1167,26 +1168,25 @@ function renderLanding() {
       <section class="landing-hero">
         <div class="landing-copy">
           <div class="landing-intro">
-            <p class="landing-kicker">Update safety research</p>
-            <h1 class="landing-title">Know before you update.</h1>
-            <p class="landing-subtitle">PatchTicker helps you decide whether the latest driver, OS patch, firmware release, or launcher update is worth installing today — before your setup becomes the test environment.</p>
+            <p class="landing-kicker">Know before you update</p>
+            <h1 class="landing-title">Is this update worth installing?</h1>
+            <p class="landing-subtitle">The answer should take seconds, not ten tabs. Compare documented fixes, known issues, and source-based guidance for the exact patch in front of you.</p>
             <div class="landing-actions">
-              ${user
-                ? '<a class="btn btn--primary" href="#/updates">Open update feed</a><a class="btn btn--outline" href="#/account">Manage watchlist</a>'
-                : '<a class="btn btn--primary" href="#/register">Create free account</a><a class="btn btn--outline" href="#/updates">Browse live updates</a>'}
+              <a class="btn btn--primary" href="/briefing">Read the current brief</a>
+              <a class="btn btn--outline" href="#/updates">Search your update</a>
             </div>
           </div>
           <div class="landing-proof">
             <span id="landing-live-coverage">Checking live coverage</span>
-            <span>Release-note research</span>
-            <span>Live community voting</span>
-            <span>More platforms coming soon</span>
+            <span>Official sources linked</span>
+            <span>Ratings are source-based, not lab tests</span>
+            <span>No account needed to browse</span>
           </div>
           <div class="landing-scroll-map" aria-label="PatchTicker workflow">
-            <span>Watch the tape</span>
-            <span>Choose setup</span>
-            <span>Compare risk</span>
-            <span>Open patch notes</span>
+            <span>Find your patch</span>
+            <span>Read the changes</span>
+            <span>Check your device</span>
+            <span>Decide with context</span>
           </div>
         </div>
 
@@ -1214,30 +1214,18 @@ function renderLanding() {
         </div>
       </section>
 
-      <section class="landing-grid landing-grid--bento">
-        <article class="landing-bento-large">
-          <span class="landing-bento-tag">Live desk</span>
-          <h2>One screen for updates that usually live across ten tabs.</h2>
-          <p>Windows, NVIDIA, AMD, Apple, Switch, consoles, Steam, Discord, GOG, Battle.net, and Intel all land in one decision feed.</p>
-        </article>
-        <article>
-          <span class="landing-bento-tag">Risk view</span>
-          <h2>Stable / Caution / Avoid.</h2>
-          <p>Visitors get a clear action before reading full notes.</p>
-        </article>
-        <article>
-          <span class="landing-bento-tag">Your setup</span>
-          <h2>Filter by what you run.</h2>
-          <p>Drivers, launchers, OS releases, handhelds, and games stay separated.</p>
-        </article>
+      <section class="landing-briefing" aria-labelledby="landing-briefing-title">
+        <div class="landing-briefing-head"><div><p class="landing-kicker">THE DECISION DESK</p><h2 id="landing-briefing-title">Patches worth a closer look</h2><p>Real releases. Vendor sources one click away. No empty community ratings.</p></div><a href="/briefing">See the full brief →</a></div>
+        <div class="landing-decision-grid" id="landing-decision-grid" aria-live="polite"><p class="landing-decision-loading">Checking the latest verified releases…</p></div>
+        <p class="landing-briefing-caveat">A source-based score is a research starting point, not proof a patch works on your hardware.</p>
       </section>
 
       <section class="landing-band">
         <div>
           <p class="landing-kicker">Built for everyday install decisions</p>
-          <h2>Stable / Caution / Avoid gives you a fast answer when an update is waiting.</h2>
+          <h2>Want the next update without checking back?</h2>
         </div>
-        <a class="btn btn--primary" href="#/pricing">See pricing</a>
+        <a class="btn btn--primary" href="/releases.xml">Follow the free RSS feed</a>
       </section>
     </main>
     ${renderFooter()}
@@ -1260,6 +1248,29 @@ async function hydrateLandingSignals() {
       coverage.textContent = `${summary.platformsTracked ?? 0} live source lane${summary.platformsTracked === 1 ? '' : 's'}`;
     }
     if (!latest) throw new Error('No verified updates available');
+
+    const decisionGrid = document.getElementById('landing-decision-grid');
+    if (decisionGrid) {
+      const seen = new Set();
+      const candidates = updates.filter(update => {
+        const releaseTime = Date.parse(preferredReleaseAt(update));
+        if (seen.has(update.platform) || validScoreOrNull(update.score) === null ||
+            !['stable', 'caution', 'avoid'].includes(update.status) ||
+            ['official-version', 'official-artifact'].includes(update.sourceKind) ||
+            !Number.isFinite(releaseTime) || releaseTime > Date.now() + 24 * 60 * 60 * 1000 ||
+            Date.now() - releaseTime > 30 * 24 * 60 * 60 * 1000 ||
+            !(update.changelog || []).length || !(update.evidence || []).some(item => item?.url)) return false;
+        seen.add(update.platform);
+        return true;
+      });
+      const picks = ['stable', 'caution', 'avoid'].map(status => candidates.find(update => update.status === status)).filter(Boolean);
+      decisionGrid.innerHTML = picks.map(update => `
+        <a class="landing-decision landing-decision--${update.status}" href="#/updates/${encodeURIComponent(update.id)}">
+          <span class="landing-decision-top"><span>${H(platformLabel(update.platform))}</span><span>${H(updateDateLabel(update))} ${H(formatReleaseDate(preferredReleaseAt(update)))}</span></span>
+          <strong>${H(update.name)}</strong>
+          <span class="landing-decision-read"><b>${H(update.status.toUpperCase())} · ${H(scoreDisplay(validScoreOrNull(update.score)))}/10</b><span>Open verified notes →</span></span>
+        </a>`).join('') || '<p class="landing-decision-loading">No scored, source-backed releases are available right now. Browse the full feed for unscored version checks.</p>';
+    }
 
     const score = validScoreOrNull(latest.score);
     const scoreBucket = score === null ? null : Math.round(score);
@@ -1309,6 +1320,8 @@ async function hydrateLandingSignals() {
     if (state) state.textContent = 'RECONNECTING';
     if (name) name.textContent = 'Live patch desk temporarily unavailable';
     if (verdict) verdict.textContent = 'No sample score is shown while verified source data is unavailable.';
+    const decisionGrid = document.getElementById('landing-decision-grid');
+    if (decisionGrid) decisionGrid.innerHTML = '<p class="landing-decision-loading">The source desk is reconnecting. Open the release archive for the last verified notes.</p><a href="/releases">Open release notes →</a>';
   }
 }
 
@@ -5977,6 +5990,8 @@ function renderFooter() {
           <a href="#/" class="site-footer-link">Home</a>
           <a href="#/updates" class="site-footer-link">Updates</a>
           <a href="/releases" class="site-footer-link">Release notes</a>
+          <a href="/briefing" class="site-footer-link">Current brief</a>
+          <a href="/releases.xml" class="site-footer-link">RSS</a>
           <a href="#/pricing" class="site-footer-link">Pricing</a>
           <a href="#/about" class="site-footer-link">About</a>
           <a href="#/privacy" class="site-footer-link">Privacy Policy</a>

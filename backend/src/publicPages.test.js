@@ -3,7 +3,7 @@
 const express = require('express');
 const request = require('supertest');
 const { createPublicPagesRouter } = require('./routes/publicPages');
-const { isIndexable, renderRelease, renderSitemap } = require('./services/publicPagesService');
+const { isIndexable, briefingPicks, renderBriefing, renderRss, renderRelease, renderSitemap } = require('./services/publicPagesService');
 const { PLATFORMS } = require('./config/platformRegistry');
 
 const update = {
@@ -29,6 +29,18 @@ test('public pages escape release text and source URLs', () => {
   expect(html).toContain('A &amp; B');
 });
 
+test('release pages explain the score using escaped evidence, not just a vendor-note copy', () => {
+  const html = renderRelease({ ...update, reasoning: 'Confirmed fixes & one issue <unverified>',
+    riskFactors: [{ text: 'Display flicker on selected models' }],
+    securityCriticality: { cves: ['CVE-2026-12345', '<script>'] } });
+  expect(html).toContain('Why this assessment');
+  expect(html).toContain('Confirmed fixes &amp; one issue &lt;unverified&gt;');
+  expect(html).toContain('Display flicker on selected models');
+  expect(html).toContain('CVE-2026-12345');
+  expect(html).not.toContain('<script>');
+  expect(html).toContain('Check compatibility and user feedback');
+});
+
 test('version-only detections are noindex, ungraded, and omitted from sitemap', () => {
   expect(isIndexable(update)).toBe(true);
   expect(isIndexable(versionOnly)).toBe(false);
@@ -38,8 +50,32 @@ test('version-only detections are noindex, ungraded, and omitted from sitemap', 
   expect(html).not.toContain('5.9/10');
   const sitemap = renderSitemap([update, versionOnly], PLATFORMS);
   expect(sitemap).toContain('https://patchticker.app/releases/nvidia-599-10');
+  expect(sitemap).toContain('https://patchticker.app/briefing');
   expect(sitemap).not.toContain('https://patchticker.app/releases/gog-2-1');
   expect(sitemap).not.toContain('#/');
+});
+
+test('the current brief selects distinct platforms and never promotes version-only records', () => {
+  const fresh = { ...update, releasedAt: new Date().toISOString(), status: 'stable' };
+  const cautious = { ...fresh, id: 'amd-1', platform: 'AMD', status: 'caution', score: 6.1, name: 'AMD driver 1' };
+  const duplicate = { ...fresh, id: 'nvidia-older', releasedAt: new Date(Date.now() - 86400000).toISOString() };
+  const picks = briefingPicks([fresh, cautious, duplicate, { ...versionOnly, releasedAt: fresh.releasedAt }]);
+  expect(picks.map(item => item.id)).toEqual(['nvidia-599-10', 'amd-1']);
+  const html = renderBriefing([fresh, cautious, duplicate, versionOnly]);
+  expect(html).toContain('What is worth updating right now?');
+  expect(html).toContain('6.1/10 source-based');
+  expect(html).not.toContain('GOG Galaxy 2.1');
+  expect(html).toContain('/releases.xml');
+});
+
+test('RSS is well-escaped, source-qualified, and can be narrowed to one platform', () => {
+  const malicious = { ...update, name: 'Driver <next> & safer', verdict: 'Fix & test before installing' };
+  const xml = renderRss([malicious, versionOnly]);
+  expect(xml).toContain('<rss version="2.0">');
+  expect(xml).toContain('Driver &lt;next&gt; &amp; safer');
+  expect(xml).not.toContain('<next>');
+  expect(xml).not.toContain('GOG Galaxy 2.1');
+  expect(renderRss([malicious], 'AMD')).not.toContain('<item>');
 });
 
 test('a specific one-note vendor fix is discoverable without inventing extra release notes', () => {
@@ -124,6 +160,16 @@ test('release routes, platform pages, and sitemap serve crawlable HTML', async (
   expect(index.text).toContain('<h1>');
   expect(index.text).toContain('/releases/nvidia-599-10');
   expect(index.text).not.toContain('/releases/gog-2-1');
+  const briefing = await request(app).get('/briefing').expect(200);
+  expect(briefing.text).toContain('<link rel="canonical" href="https://patchticker.app/briefing">');
+  const rss = await request(app).get('/releases.xml').expect(200);
+  expect(rss.headers['content-type']).toMatch(/application\/rss\+xml/);
+  expect(rss.text).toContain('/releases/nvidia-599-10');
+  await request(app).get('/releases.xml?platform=unknown').expect(404);
+  const platformFeed = await request(app).get('/releases.xml?platform=NVIDIA').expect(200);
+  expect(platformFeed.text).toContain('/releases/nvidia-599-10');
+  expect((await request(app).get('/platforms/NVIDIA').expect(200)).text)
+    .toContain('href="https://patchticker.app/releases.xml?platform=NVIDIA"');
   const detail = await request(app).get('/releases/nvidia-599-10').expect(200);
   expect(detail.text).toContain('<link rel="canonical" href="https://patchticker.app/releases/nvidia-599-10">');
   expect(detail.text).toContain('Fixed game crashes.');

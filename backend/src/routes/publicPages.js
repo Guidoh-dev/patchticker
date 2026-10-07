@@ -3,7 +3,7 @@
 const express = require('express');
 const { PLATFORMS, getPlatform } = require('../config/platformRegistry');
 const { getUpdates, getUpdateById } = require('../services/updatesService');
-const { renderIndex, renderPlatform, renderRelease, renderSitemap } = require('../services/publicPagesService');
+const { renderBriefing, renderRss, renderIndex, renderPlatform, renderRelease, renderSitemap } = require('../services/publicPagesService');
 const logger = require('../utils/logger');
 const db = require('../config/db');
 
@@ -37,6 +37,19 @@ function createPublicPagesRouter({ listUpdates = getUpdates, findUpdate = getUpd
     const updates = await publicUpdates();
     if (!updates.length) return unavailable(res);
     html(res, renderIndex(updates, PLATFORMS));
+  }));
+  router.get('/briefing', handle(async (_req, res) => {
+    const updates = await publicUpdates();
+    if (!updates.length) return unavailable(res);
+    html(res, renderBriefing(updates));
+  }));
+  router.get('/releases.xml', handle(async (req, res) => {
+    const platform = req.query.platform === undefined ? null : getPlatform(req.query.platform);
+    if (req.query.platform !== undefined && !platform) return res.status(404).type('text').send('Platform not found');
+    const updates = await publicUpdates();
+    if (!updates.length) return unavailable(res);
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
+      .type('application/rss+xml').send(renderRss(updates, platform?.key || null));
   }));
   router.get('/platforms/:platform', handle(async (req, res) => {
     const platform = getPlatform(req.params.platform);

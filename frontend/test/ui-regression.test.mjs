@@ -942,6 +942,19 @@ test('landing page hydrates from verified updates instead of fabricated ratings'
   assert.match(cssSource, /@media \(max-width: 980px\)[\s\S]*?\.landing-copy\s*\{\s*display:\s*contents;[\s\S]*?\.landing-panel\s*\{\s*order:\s*1;[\s\S]*?\.landing-proof\s*\{\s*order:\s*2;/);
 });
 
+test('first-time visitors get a source-backed decision path before an account pitch', async () => {
+  const html = await readFile(resolve(root, 'index.html'), 'utf8');
+  assert.match(html, /class="preboot-landing"[\s\S]*?href="\/briefing"[\s\S]*?href="\/releases"/);
+  assert.match(html, /type="application\/rss\+xml"/);
+  assert.match(mainSource, /href="\/briefing">Read the current brief/);
+  assert.match(mainSource, /id="landing-decision-grid"/);
+  assert.match(mainSource, /\['stable', 'caution', 'avoid'\]\.map\(status => candidates\.find/);
+  assert.match(mainSource, /\(update\.evidence \|\| \[\]\)\.some\(item => item\?\.url\)/);
+  assert.match(mainSource, /A source-based score is a research starting point, not proof/);
+  assert.match(cssSource, /\.landing-decision-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
+  assert.match(cssSource, /@media \(max-width: 600px\) \{ \.landing-decision-grid \{ grid-template-columns: 1fr;/);
+});
+
 test('returning visitors receive a truthful live briefing from persisted update history', () => {
   assert.match(mainSource, /UPDATE_VISIT_STORAGE_KEY = 'patchticker\.updates\.lastSeenAt'/);
   assert.match(mainSource, /function updateReturnBrief\(updates = \[\]\)/);
