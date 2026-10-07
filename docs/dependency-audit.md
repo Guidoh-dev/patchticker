@@ -21,9 +21,10 @@ the reports. OSV scanner failures also fail CI.
   `sprintf-js` advisory lists **no patched version**:
   https://github.com/advisories/GHSA-hp3w-g68c-fv3c . No override to an
   incompatible YAML major version was shipped without upstream support.
-- Production-only audit: **0 findings**. Render's build now prunes development
-  packages after building the frontend. This reduces runtime package exposure;
-  it does not prove that every possible deployment or build-time use is safe.
+- Production-only audit: **0 findings**. The Render Blueprint now specifies a
+  post-build prune of development packages; the active Render service's build
+  command still needs to be checked in its dashboard after a Blueprint sync.
+  A clean production-only audit does not prove build-time use is safe.
 
 The full audit remains **red by design** while the unpatched development-tool
 chain is present. Do not mark it clean, suppress its exit code, or infer from a
