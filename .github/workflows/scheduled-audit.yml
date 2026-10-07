@@ -41,61 +41,29 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install backend dependencies
-        working-directory: backend
+      - name: Install from the root workspace lockfile
         run: npm ci --ignore-scripts
 
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
-
-      # Run audit and capture exit code without failing the job immediately
-      - name: Run backend npm audit
-        id: backend_audit
-        working-directory: backend
-        run: |
-          npm audit --audit-level=moderate --json > /tmp/backend-audit.json 2>&1
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
-        continue-on-error: true
-
-      - name: Run frontend npm audit
-        id: frontend_audit
-        working-directory: frontend
-        run: |
-          npm audit --audit-level=moderate --json > /tmp/frontend-audit.json 2>&1
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
+      # Continue only long enough to publish evidence and create an issue;
+      # the final step restores the audit failure to the job status.
+      - name: Collect root lockfile audit (full and production-only)
+        id: collect
+        run: node scripts/collect-dependency-audit.js --report-dir /tmp/patchticker-audit
         continue-on-error: true
 
       # Parse audit JSON and build a human-readable summary for the issue body
       - name: Parse audit results
         id: parse
         run: |
-          BACKEND_CODE=${{ steps.backend_audit.outputs.exit_code }}
-          FRONTEND_CODE=${{ steps.frontend_audit.outputs.exit_code }}
-
-          if [ "$BACKEND_CODE" = "0" ] && [ "$FRONTEND_CODE" = "0" ]; then
-            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
-            echo "summary=No vulnerabilities found." >> $GITHUB_OUTPUT
-          else
-            echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
-
-            # Extract vulnerability counts from JSON
-            BACKEND_TOTAL=$(cat /tmp/backend-audit.json | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)
-          v=d.get('metadata',{}).get('vulnerabilities',{})
-          print(v.get('moderate',0)+v.get('high',0)+v.get('critical',0))
-          " 2>/dev/null || echo "?")
-
-            FRONTEND_TOTAL=$(cat /tmp/frontend-audit.json | python3 -c "
-          import json,sys
-          d=json.load(sys.stdin)
-          v=d.get('metadata',{}).get('vulnerabilities',{})
-          print(v.get('moderate',0)+v.get('high',0)+v.get('critical',0))
-          " 2>/dev/null || echo "?")
-
-            echo "summary=Backend: $BACKEND_TOTAL moderate+ vulnerabilities. Frontend: $FRONTEND_TOTAL moderate+ vulnerabilities." >> $GITHUB_OUTPUT
-          fi
+          node - <<'NODE' >> "$GITHUB_OUTPUT"
+          const audit = require('/tmp/patchticker-audit/summary.json');
+          if ([audit.all, audit.production].some(item => item.state === 'error')) {
+            throw new Error('Dependency scanner failed; see audit artifact and workflow logs');
+          }
+          const count = item => item.counts.moderate + item.counts.high + item.counts.critical;
+          console.log(`has_vulnerabilities=${audit.all.state === 'vulnerable' || audit.production.state === 'vulnerable'}`);
+          console.log(`summary=Root lockfile: ${count(audit.all)} moderate+ findings; production-only: ${count(audit.production)} moderate+ findings.`);
+          NODE
 
       # Run OSV scanner as a second scan source
       - name: Run OSV Scanner
@@ -103,23 +71,23 @@ jobs:
         with:
           scan-args: |-
             --lockfile=package-lock.json
-        continue-on-error: true
 
       # Upload audit artefacts regardless of pass/fail
       - name: Upload audit reports
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: weekly-audit-${{ github.run_id }}
           path: |
-            /tmp/backend-audit.json
-            /tmp/frontend-audit.json
+            /tmp/patchticker-audit/
+          if-no-files-found: error
           retention-days: 90
 
       # Create a GitHub Issue only when vulnerabilities are found.
       # The issue is labelled 'security' and assigned to help with triage.
       # Uses the built-in GITHUB_TOKEN — no additional secrets needed.
       - name: Create vulnerability issue
-        if: steps.parse.outputs.has_vulnerabilities == 'true'
+        if: always() && steps.parse.outputs.has_vulnerabilities == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -133,21 +101,20 @@ jobs:
               `**Summary:** ${summary}`,
               ``,
               `### What to do`,
-              `1. Review the audit reports in the [workflow run](${runUrl})`,
-              `2. Run \`npm audit --audit-level=moderate\` locally in \`backend/\` and \`frontend/\``,
-              `3. Run \`npm audit fix\` where safe to do so`,
+              `1. Review the full and production-only reports in the [workflow run](${runUrl})`,
+              `2. Run \`npm run audit\` from the repository root`,
+              `3. Run \`npm run audit:fix\` where safe to do so`,
               `4. For breaking-change fixes, review changelog and update manually`,
               `5. Check [npm advisories](https://www.npmjs.com/advisories) for context`,
               ``,
               `### Quick commands`,
               `\`\`\`bash`,
               `# Check details`,
-              `cd backend && npm audit`,
-              `cd frontend && npm audit`,
+              `npm run audit`,
+              `npm run audit:production`,
               ``,
               `# Fix automatically (non-breaking only)`,
-              `cd backend && npm audit fix`,
-              `cd frontend && npm audit fix`,
+              `npm run audit:fix`,
               `\`\`\``,
               ``,
               `---`,
@@ -176,3 +143,7 @@ jobs:
                 labels: ['security', 'automated', 'dependencies'],
               });
             }
+
+      - name: Fail on vulnerability findings or scanner errors
+        if: always()
+        run: test '${{ steps.collect.outcome }}' = 'success'

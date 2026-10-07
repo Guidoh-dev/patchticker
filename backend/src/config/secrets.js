@@ -401,10 +401,8 @@ if (AUTO_ROTATE_MS > 0 && AUTO_ROTATE_MS >= 60 * 1000) {
 // On Windows: SIGUSR2 is not supported. Use the HTTP /api/admin/rotate-secrets
 // endpoint (requires admin auth) or restart the process instead.
 
-// Nodemon reserves SIGUSR2 for development restarts. Registering our handler in
-// development prevents the normal process exit and can trigger repeated secret
-// reloads instead of a clean restart. Keep the signal production-only unless
-// a non-nodemon environment explicitly opts in.
+// Keep this signal production-only by default so local file-watch restarts do
+// not accidentally reload secrets. Development can explicitly opt in.
 const sigusr2RotationEnabled = isProd || process.env.SECRET_SIGUSR2_ENABLED === 'true';
 if (!isTest && sigusr2RotationEnabled && process.platform !== 'win32') {
   process.on('SIGUSR2', () => {

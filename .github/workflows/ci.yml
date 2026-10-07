@@ -74,41 +74,25 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
-      - name: Install backend dependencies
-        working-directory: backend
+      - name: Install from the root workspace lockfile
         run: npm ci --ignore-scripts
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: npm ci
 
       # --audit-level=moderate: fails the job on any moderate, high, or critical
       # vulnerability. Low severity issues are reported but don't fail.
       # Change to --audit-level=low to be stricter.
-      - name: Audit backend dependencies
-        working-directory: backend
-        run: npm audit --audit-level=moderate
+      - name: Audit root lockfile (full and production-only)
+        run: npm run audit
 
-      - name: Audit frontend dependencies
-        working-directory: frontend
-        run: npm audit --audit-level=moderate
-
-      # Save audit reports as artefacts so security team can review details
-      # even when CI passes (for context) or when triage is needed.
-      - name: Save audit reports
-        if: always()
-        run: |
-          npm audit --json --prefix backend > backend-audit.json 2>/dev/null || true
-          npm audit --json --prefix frontend > frontend-audit.json 2>/dev/null || true
+      # The collector writes reports before returning a finding or scanner
+      # error. Do not swallow its exit code: an invalid audit is not clean.
 
       - name: Upload audit reports
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: npm-audit-reports-${{ github.sha }}
-          path: |
-            backend-audit.json
-            frontend-audit.json
+          path: audit-reports/
+          if-no-files-found: error
           retention-days: 90
 
   # ── 2. Lint ───────────────────────────────────────────────────────────────
@@ -128,7 +112,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: backend
         run: npm ci --ignore-scripts
 
       - name: Run ESLint
@@ -145,7 +128,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ['20', '22']
+        node-version: ['22', '24']
 
     steps:
       - name: Checkout
@@ -159,7 +142,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: backend
         # --ignore-scripts: prevents postinstall scripts from running.
         # Safe for our deps; argon2 uses node-gyp but prebuilt binaries are available.
         run: npm ci --ignore-scripts
@@ -209,14 +191,6 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Install backend dependencies (for lockfile)
-        working-directory: backend
-        run: npm ci --ignore-scripts
-
-      - name: Install frontend dependencies (for lockfile)
-        working-directory: frontend
-        run: npm ci
-
       # OSV Scanner checks package-lock.json against the Open Source
       # Vulnerabilities database — catches CVEs that npm audit misses.
       - name: Run OSV Scanner
@@ -226,17 +200,15 @@ jobs:
             --lockfile=package-lock.json
             --format=sarif
             --output-file=osv-results.sarif
-        continue-on-error: true
 
       # Upload SARIF to GitHub Security tab — visible in the repository's
       # "Security" → "Code scanning alerts" view.
       - name: Upload OSV SARIF results
-        if: always()
+        if: always() && hashFiles('osv-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: osv-results.sarif
           category: osv-scanner
-        continue-on-error: true
 
       # Also save raw results as an artefact for offline review
       - name: Upload OSV raw results

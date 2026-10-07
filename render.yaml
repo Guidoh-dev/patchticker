@@ -8,7 +8,9 @@ services:
     plan: starter
     region: ohio
     branch: main
-    buildCommand: npm ci --include=dev && npm run build
+    # Vite needs dev tooling at build time; discard it before the web process
+    # starts so audit-only test/watch packages are not installed at runtime.
+    buildCommand: npm ci --include=dev && npm run build && npm prune --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeployTrigger: commit

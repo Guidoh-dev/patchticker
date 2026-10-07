@@ -12,7 +12,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.mjs",
-    "audit:check": "npm audit --audit-level=moderate"
+    "audit:check": "node ../scripts/collect-dependency-audit.js"
   },
   "dependencies": {
     "posthog-js": "^1.415.6"

@@ -16,7 +16,7 @@
 # Related packages are grouped into a single PR to reduce review noise:
 #   security-patches: all patch-level security fixes → one PR
 #   logging:          winston + morgan + daily-rotate → one PR
-#   test-tooling:     jest + nodemon → one PR
+#   test-tooling:     jest + supertest + eslint → one PR
 #   build-tooling:    vite → one PR
 #
 # NON-GROUPED packages get individual PRs so each can be reviewed in isolation:
@@ -71,7 +71,6 @@ updates:
       test-tooling:
         patterns:
           - "jest"
-          - "nodemon"
           - "supertest"
           - "eslint"
 
