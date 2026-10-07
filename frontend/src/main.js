@@ -259,7 +259,8 @@ function renderNav(user) {
     <nav class="nav">
       <div class="nav-identity">
         <a class="nav-brand" href="#/">
-          <span class="brand-pulse">Patch</span>Ticker
+          <img class="brand-mark" src="/patchticker-mark.svg" width="28" height="28" alt="" aria-hidden="true" />
+          <span class="brand-wordmark"><span class="brand-pulse">Patch</span>Ticker</span>
         </a>
         <span class="nav-system-status">
           <i aria-hidden="true"></i><span>System</span><strong>Live</strong>
@@ -571,7 +572,7 @@ function refreshMotionEffects(root = document) {
 function renderLoading() {
   setHTML(`
     <div class="loading-screen">
-      <div class="loading-logo"><span class="brand-pulse">Patch</span>Ticker</div>
+      <div class="loading-logo"><img class="brand-mark" src="/patchticker-mark.svg" width="36" height="36" alt="" aria-hidden="true" /><span class="brand-wordmark"><span class="brand-pulse">Patch</span>Ticker</span></div>
       <div class="loading-text">Initialising session...</div>
     </div>
   `);
@@ -585,7 +586,7 @@ function renderLogin() {
     <div class="auth-container">
       <div class="auth-card">
         <div class="auth-header">
-          <div class="auth-logo"><span class="brand-pulse">Patch</span>Ticker</div>
+          <div class="auth-logo"><img class="brand-mark" src="/patchticker-mark.svg" width="28" height="28" alt="" aria-hidden="true" /><span class="brand-wordmark"><span class="brand-pulse">Patch</span>Ticker</span></div>
           <h1 class="auth-title">Sign in to PatchTicker</h1>
           <p class="auth-subtitle">Track software updates. Catch regressions early.</p>
         </div>
@@ -647,7 +648,7 @@ function renderRegister() {
     <div class="auth-container">
       <div class="auth-card">
         <div class="auth-header">
-          <div class="auth-logo"><span class="brand-pulse">Patch</span>Ticker</div>
+          <div class="auth-logo"><img class="brand-mark" src="/patchticker-mark.svg" width="28" height="28" alt="" aria-hidden="true" /><span class="brand-wordmark"><span class="brand-pulse">Patch</span>Ticker</span></div>
           <h1 class="auth-title">Create your account</h1>
           <p class="auth-subtitle">Start free. Upgrade when you want real-time alerts and API access.</p>
         </div>
@@ -825,7 +826,7 @@ function renderForgotPassword() {
     <div class="auth-container">
       <div class="auth-card">
         <div class="auth-header">
-          <div class="auth-logo"><span class="brand-pulse">Patch</span>Ticker</div>
+          <div class="auth-logo"><img class="brand-mark" src="/patchticker-mark.svg" width="28" height="28" alt="" aria-hidden="true" /><span class="brand-wordmark"><span class="brand-pulse">Patch</span>Ticker</span></div>
           <h1 class="auth-title">Forgot your password?</h1>
           <p class="auth-subtitle">We'll send a reset link to your email.</p>
         </div>
@@ -879,7 +880,7 @@ function renderResetPassword(params) {
     <div class="auth-container">
       <div class="auth-card">
         <div class="auth-header">
-          <div class="auth-logo"><span class="brand-pulse">Patch</span>Ticker</div>
+          <div class="auth-logo"><img class="brand-mark" src="/patchticker-mark.svg" width="28" height="28" alt="" aria-hidden="true" /><span class="brand-wordmark"><span class="brand-pulse">Patch</span>Ticker</span></div>
           <h1 class="auth-title">Set new password</h1>
           <p class="auth-subtitle">Choose a strong password for your account.</p>
         </div>
@@ -950,7 +951,7 @@ async function renderVerifyEmail(params) {
     <div class="auth-container">
       <div class="auth-card">
         <div class="auth-header">
-          <div class="auth-logo"><span class="brand-pulse">Patch</span>Ticker</div>
+          <div class="auth-logo"><img class="brand-mark" src="/patchticker-mark.svg" width="28" height="28" alt="" aria-hidden="true" /><span class="brand-wordmark"><span class="brand-pulse">Patch</span>Ticker</span></div>
           <h1 class="auth-title">Verifying email…</h1>
         </div>
         <div id="verify-status">${spinner()}</div>
@@ -5983,7 +5984,7 @@ function renderFooter() {
     <footer class="site-footer">
       <div class="site-footer-inner">
         <div class="site-footer-identity">
-          <span class="site-footer-brand"><span class="brand-pulse">Patch</span>Ticker</span>
+          <span class="site-footer-brand"><img class="brand-mark" src="/patchticker-mark.svg" width="22" height="22" alt="" aria-hidden="true" /><span class="brand-wordmark"><span class="brand-pulse">Patch</span>Ticker</span></span>
           <span class="site-footer-status"><i aria-hidden="true"></i> Source monitor online</span>
         </div>
         <nav class="site-footer-nav">

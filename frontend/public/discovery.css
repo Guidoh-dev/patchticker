@@ -9,8 +9,9 @@ a:focus-visible{outline:2px solid var(--green);outline-offset:4px}
 .discovery-header{position:relative;background:#101012}
 .discovery-header nav,.discovery-footer{display:flex;flex-wrap:wrap;gap:1.2rem}
 .discovery-header nav a,.discovery-footer a{text-decoration:none}
-.discovery-brand{font-size:1.4rem;font-weight:800;letter-spacing:-.04em;text-decoration:none}
-.discovery-brand span{color:var(--green)}
+.discovery-brand{display:inline-flex;align-items:center;gap:.45rem;font-size:1.4rem;font-weight:800;letter-spacing:-.04em;text-decoration:none;white-space:nowrap}
+.discovery-brand-mark{display:block;flex:none;width:28px;height:28px}
+.discovery-brand-wordmark>span{color:var(--green)}
 main{width:min(1220px,calc(100% - 2rem));margin:auto;padding-bottom:4rem}
 .discovery-hero{padding:clamp(2rem,6vw,5rem) 0 2.5rem;border-bottom:1px solid var(--border)}
 .discovery-kicker,.discovery-card-meta,.discovery-facts dt{font:700 .8rem/1.5 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--green)}

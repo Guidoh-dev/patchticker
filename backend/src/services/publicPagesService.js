@@ -40,6 +40,8 @@ function shell({ title, description, path, body, noindex = false, type = 'websit
   const desc = esc(description);
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<title>' + fullTitle + '</title><meta name="description" content="' + desc + '">' +
+    '<link rel="icon" type="image/png" sizes="48x48" href="/patchticker-mark-48.png">' +
+    '<link rel="apple-touch-icon" sizes="180x180" href="/patchticker-mark-180.png">' +
     '<meta name="robots" content="' + (noindex ? 'noindex,follow' : 'index,follow') + '">' +
     '<link rel="canonical" href="' + url + '"><meta property="og:type" content="' + esc(type) + '">' +
     '<meta property="og:title" content="' + fullTitle + '"><meta property="og:description" content="' + desc + '">' +
@@ -47,7 +49,7 @@ function shell({ title, description, path, body, noindex = false, type = 'websit
     '<meta name="twitter:card" content="summary_large_image">' +
     '<link rel="alternate" type="application/rss+xml" title="PatchTicker release feed" href="' + esc(SITE + rssPath) + '">' +
     '<link rel="stylesheet" href="/discovery.css"></head><body>' +
-    '<header class="discovery-header"><a class="discovery-brand" href="/"><span>Patch</span>Ticker</a>' +
+    '<header class="discovery-header"><a class="discovery-brand" href="/"><img class="discovery-brand-mark" src="/patchticker-mark.svg" width="28" height="28" alt="" aria-hidden="true"><span class="discovery-brand-wordmark"><span>Patch</span>Ticker</span></a>' +
     '<nav aria-label="Main navigation"><a href="/briefing">Update brief</a><a href="/releases">Release notes</a><a href="/#/updates">Live dashboard</a><a href="/#/pricing">Pricing</a></nav></header>' +
     '<main id="main">' + body + '</main><footer class="discovery-footer"><span>PatchTicker · Know before you update.</span>' +
     '<a href="/releases.xml">RSS feed</a><a href="/#/about">About</a><a href="/#/privacy">Privacy</a><a href="/#/terms">Terms</a></footer></body></html>';

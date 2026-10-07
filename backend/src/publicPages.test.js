@@ -29,6 +29,13 @@ test('public pages escape release text and source URLs', () => {
   expect(html).toContain('A &amp; B');
 });
 
+test('crawlable release pages expose the same PatchTicker mark and favicon as the SPA', () => {
+  const html = renderRelease(update);
+  expect(html).toContain('rel="icon" type="image/png" sizes="48x48" href="/patchticker-mark-48.png"');
+  expect(html).toContain('class="discovery-brand-mark" src="/patchticker-mark.svg"');
+  expect(html).toContain('<span class="discovery-brand-wordmark"><span>Patch</span>Ticker</span>');
+});
+
 test('release pages explain the score using escaped evidence, not just a vendor-note copy', () => {
   const html = renderRelease({ ...update, reasoning: 'Confirmed fixes & one issue <unverified>',
     riskFactors: [{ text: 'Display flicker on selected models' }],

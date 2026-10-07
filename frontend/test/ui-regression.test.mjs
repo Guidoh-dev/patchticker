@@ -15,6 +15,20 @@ const steamCandidatesSource = await readFile(resolve(root, 'src/steamGameCandida
 const compatibilitySource = await readFile(resolve(root, 'src/compatibility.js'), 'utf8');
 const updateBriefSource = await readFile(resolve(root, 'src/updateBrief.js'), 'utf8');
 
+test('PatchTicker mark appears beside the wordmark and provides a crawlable square favicon', async () => {
+  const html = await readFile(resolve(root, 'index.html'), 'utf8');
+  const svg = await readFile(resolve(root, 'public/patchticker-mark.svg'), 'utf8');
+  const favicon = await readFile(resolve(root, 'public/patchticker-mark-48.png'));
+  assert.match(html, /rel="icon"[^>]*sizes="48x48"[^>]*href="\/patchticker-mark-48\.png"/);
+  assert.match(html, /rel="apple-touch-icon"[^>]*href="\/patchticker-mark-180\.png"/);
+  assert.match(mainSource, /class="nav-brand"[\s\S]*?class="brand-mark" src="\/patchticker-mark\.svg"[\s\S]*?class="brand-wordmark"/);
+  assert.match(mainSource, /class="site-footer-brand"[\s\S]*?class="brand-mark" src="\/patchticker-mark\.svg"/);
+  assert.match(svg, /viewBox="0 0 64 64"/);
+  assert.equal(favicon.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.equal(favicon.readUInt32BE(16), 48);
+  assert.equal(favicon.readUInt32BE(20), 48);
+});
+
 test('source-updated driver metadata is not presented as a confirmed release date', () => {
   assert.match(mainSource, /\$\{H\(updateDateLabel\(latest\)\)\} \$\{H\(timeAgo\(preferredReleaseAt\(latest\)\)\)\}/);
   assert.match(mainSource, /\$\{H\(updateDateLabel\(current\)\)\} \$\{H\(formatReleaseDate\(current\.releasedAt\)\)\}/);
