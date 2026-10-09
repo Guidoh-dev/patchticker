@@ -2809,9 +2809,6 @@ function edgeSecurityReleaseRecord(release, security$, securityUrl, options = {}
   const cveListPending = /CVE'?s will be added as soon as available/i.test(release.text || '');
   const generalReleaseNotesPending = options.generalReleaseNotesPending === true;
   const securityLevel = activelyExploited ? 'high' : 'medium';
-  const pendingCveText = cveListPending
-    ? 'Microsoft says the CVE list for this Stable release will be added when available.'
-    : '';
 
   return {
     platform: 'Edge',
@@ -2826,12 +2823,16 @@ function edgeSecurityReleaseRecord(release, security$, securityUrl, options = {}
     knownIssues: [],
     knownIssuesSnapshotComplete: true,
     knownIssuesAuthoritative: false,
-    riskFactors: pendingCveText ? [{ level: 'low', text: pendingCveText }] : [],
+    // Pending CVE identifiers limit detail; they are not a vendor-reported
+    // regression in the build and must not lower install confidence.
+    riskFactors: [],
     securityCriticality: {
       level: securityLevel,
       label: cves.length
         ? `${cves.length} documented Edge security fix${cves.length === 1 ? '' : 'es'}`
-        : 'Chromium security updates included; CVE list pending',
+        : cveListPending
+          ? 'Chromium security updates included; CVE list pending'
+          : 'Chromium security updates included; no CVEs listed in this notice',
       cves,
       totalCves: cves.length,
       activelyExploited,
@@ -3033,7 +3034,6 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
     knownIssuesAuthoritative: false,
     riskFactors: [
       ...(pendingText ? [{ level: 'medium', text: pendingText }] : []),
-      ...(cveListPending ? [{ level: 'low', text: 'Microsoft says the CVE list for this Stable release will be added when available.' }] : []),
     ],
     securityCriticality: {
       level: securityLevel,
@@ -3041,7 +3041,9 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
         ? 'Newer Chromium security fix pending from Microsoft'
         : cves.length
           ? `${cves.length} documented Edge security fix${cves.length === 1 ? '' : 'es'}`
-          : 'Chromium security updates included; CVE list pending',
+          : cveListPending
+            ? 'Chromium security updates included; CVE list pending'
+            : 'Chromium security updates included; no CVEs listed in this notice',
       cves,
       totalCves: cves.length,
       activelyExploited,

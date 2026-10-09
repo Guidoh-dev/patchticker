@@ -650,6 +650,8 @@ describe('scraper accuracy guards', () => {
     ]));
     expect(parsed.changelog.join(' ')).not.toMatch(/Fixes in this release of Microsoft Edge|New and updated policies in Microsoft Edge/);
     expect(parsed.changelog.join(' ')).not.toMatch(/Nested rollout context/);
+    expect(parsed.riskFactors).toEqual([]);
+    expect(parsed.evidence[1].cveListPending).toBe(true);
     expect(parsed.evidence[0].text).toMatch(/1 feature update, 1 fix, 1 policy change, and 1 announcement parsed/);
   });
 
@@ -676,6 +678,7 @@ describe('scraper accuracy guards', () => {
     expect(parsed.knownIssuesSnapshotComplete).toBe(true);
     expect(parsed.knownIssuesAuthoritative).toBe(false);
     expect(parsed.securityCriticality.pendingVendorFix).toBe(false);
+    expect(parsed.securityCriticality.label).toMatch(/no CVEs listed in this notice/i);
   });
 
   test('Edge parser accepts a newer exact desktop Stable security release without borrowing older feature notes', () => {
@@ -719,7 +722,8 @@ describe('scraper accuracy guards', () => {
     expect(parsed.changelog).toHaveLength(1);
     expect(parsed.changelog[0]).toMatch(/153\.0\.4234\.48.*security updates/i);
     expect(parsed.changelog.join(' ')).not.toMatch(/Older WebView2/i);
-    expect(parsed.riskFactors[0].text).toMatch(/CVE list.*added/i);
+    expect(parsed.riskFactors).toEqual([]);
+    expect(parsed.evidence[0].cveListPending).toBe(true);
     expect(parsed.reasoning).toMatch(/feature-notes page has not yet published a matching entry/i);
     expect(parsed.evidence).toEqual([
       expect.objectContaining({
