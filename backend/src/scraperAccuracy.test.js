@@ -612,7 +612,8 @@ describe('scraper accuracy guards', () => {
     expect(parsed.knownIssuesSnapshotComplete).toBe(true);
     expect(parsed.knownIssuesAuthoritative).toBe(false);
     expect(parsed.verdict).toMatch(/install.*if you are behind.*automatic updates.*pending/i);
-    expect(parsed.changelog.join(' ')).toMatch(/Policy Updates.*Deprecating the unload.*Tracking prevention/i);
+    expect(parsed.changelog.join(' ')).toMatch(/Deprecating the unload.*Tracking prevention/i);
+    expect(parsed.changelog.join(' ')).not.toMatch(/New and updated policies in Microsoft Edge/i);
     expect(parsed.changelog.join(' ')).not.toMatch(/Extended release fixes/i);
     expect(parsed.evidence).toHaveLength(2);
 
@@ -620,6 +621,36 @@ describe('scraper accuracy guards', () => {
       stableUrl: 'https://evil.example/edge',
       securityUrl: 'https://learn.microsoft.com/en-us/deployedge/microsoft-edge-relnotes-security',
     })).toBeNull();
+  });
+
+  test('Edge Stable extracts concrete fixes, policy changes, and plural Announcements instead of summary placeholders', () => {
+    const stableHtml = `
+      <div class="content">
+        <h2>Version 155.0.4283.45: October 08, 2026 (Stable) - Main Release</h2>
+        <h3>Release Summary</h3><table><tbody>
+          <tr><td>Fixes</td><td>Fixes in this release of Microsoft Edge.</td></tr>
+          <tr><td>Policy Updates</td><td>New and updated policies in Microsoft Edge.</td></tr>
+        </tbody></table>
+        <h3>Announcements</h3><ul><li>Deprecating the 'unload' event; Edge 155 reaches 100% of page loads.
+          <ul><li>Nested rollout context should not appear as a second announcement.</li></ul></li></ul>
+        <h3>Feature Updates</h3><ul><li>Tab organization now suggests groupings and names.</li></ul>
+        <h3>Fixes</h3><ul><li>Fixed recommended default search provider policies becoming invalid after Edge ran for a short time.</li></ul>
+        <h3>Policy Updates</h3><h4>Deprecated policies</h4><ul><li>OneAuthAuthenticationEnforced is deprecated.</li></ul>
+      </div>`;
+    const securityHtml = `<div class="content"><h2>October 08, 2026</h2>
+      <p>Microsoft released Microsoft Edge for Stable (Version 155.0.4283.45) with Chromium security updates.</p>
+      <p>CVE's will be added as soon as available.</p></div>`;
+    const parsed = __test.parseEdgeStableRelease(stableHtml, securityHtml);
+    expect(parsed).toMatchObject({ version: '155.0.4283.45', releasedAt: '2026-10-08' });
+    expect(parsed.changelog).toEqual(expect.arrayContaining([
+      expect.stringContaining("Announcement: Deprecating the 'unload' event"),
+      expect.stringContaining('Feature update: Tab organization now suggests'),
+      expect.stringContaining('Fix: Fixed recommended default search provider policies'),
+      expect.stringContaining('Policy update: OneAuthAuthenticationEnforced is deprecated'),
+    ]));
+    expect(parsed.changelog.join(' ')).not.toMatch(/Fixes in this release of Microsoft Edge|New and updated policies in Microsoft Edge/);
+    expect(parsed.changelog.join(' ')).not.toMatch(/Nested rollout context/);
+    expect(parsed.evidence[0].text).toMatch(/1 feature update, 1 fix, 1 policy change, and 1 announcement parsed/);
   });
 
   test('Edge parser marks an empty pending-notice snapshot as replaceable without claiming no issues exist', () => {

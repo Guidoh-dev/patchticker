@@ -2897,25 +2897,34 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
     const cells = stable$(row).find('td');
     const category = cleanText(cells.eq(0).text(), 80);
     const description = cleanText(cells.eq(1).text(), 300);
-    if (category && description && !/^(?:security|announcements|feature updates)$/i.test(category)) {
-      summaryRows.push(`${category}: ${description}`);
+    if (category && description && !/^(?:security|announcements|feature updates)$/i.test(category)
+      && !/^(?:fixes in this release of microsoft edge|new and updated policies in microsoft edge)\.?$/i.test(description)) {
+      summaryRows.push({ category, description });
     }
   });
 
   function edgeSectionBullets(label, limit) {
-    const heading = releaseNodes.filter('h3').filter((_, element) => cleanText(stable$(element).text(), 80).toLowerCase() === label.toLowerCase()).first();
+    const heading = releaseNodes.filter('h3').filter((_, element) => label.test(cleanText(stable$(element).text(), 80))).first();
     if (!heading.length) {
       return [];
     }
-    return unique(heading.nextUntil('h2,h3').find('li').map((_, item) => boundedText(stable$(item).text(), 320)).get(), 320).slice(0, limit);
+    const items = heading.nextUntil('h2,h3').find('li')
+      .filter((_, item) => stable$(item).parents('li').length === 0)
+      .map((_, item) => {
+        const primary = stable$(item).clone();
+        primary.find('ul,ol').remove();
+        const full = cleanText(primary.text(), 3000);
+        if (full.length <= 520) return full;
+        const lastSentence = full.slice(0, 520).lastIndexOf('. ');
+        return lastSentence >= 200 ? full.slice(0, lastSentence + 1) : boundedText(full, 520);
+      }).get();
+    return unique(items, 520).slice(0, limit);
   }
 
-  const announcements = edgeSectionBullets('Announcement', 2);
-  const featureUpdates = edgeSectionBullets('Feature updates', 5);
-  if (!summaryRows.length && !announcements.length && !featureUpdates.length) {
-    return null;
-  }
-
+  const announcements = edgeSectionBullets(/^Announcements?$/i, 3);
+  const featureUpdates = edgeSectionBullets(/^Feature Updates$/i, 5);
+  const fixes = edgeSectionBullets(/^Fixes$/i, 4);
+  const policyUpdates = edgeSectionBullets(/^Policy Updates$/i, 4);
   const security$ = cheerio.load(String(securityHtml || ''));
   let matchingSecuritySection = null;
   let matchingSecurityText = '';
@@ -2995,6 +3004,7 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
     ? `On ${pendingNotice.date}, Microsoft said it was aware of newer Chromium security fixes and was still preparing an Edge security update.`
     : '';
   const securityLevel = activelyExploited ? 'high' : 'medium';
+  const countLabel = (count, singular) => `${count} ${singular}${count === 1 ? '' : 's'}`;
 
   return {
     platform: 'Edge',
@@ -3004,10 +3014,14 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
     affects: 'Microsoft Edge Stable / Windows / macOS / Linux / browser security / enterprise policy / WebView2 compatibility',
     changelog: unique([
       `Microsoft Edge ${version} was released to the Stable channel on ${releasedAt}.`,
-      ...summaryRows,
+      ...summaryRows.filter(row =>
+        !((/^Fixes$/i.test(row.category) && fixes.length) || (/^Policy Updates$/i.test(row.category) && policyUpdates.length))
+      ).map(row => `${row.category}: ${row.description}`),
       ...announcements.map(note => `Announcement: ${note}`),
       ...featureUpdates.map(note => `Feature update: ${note}`),
-    ], 360).slice(0, 12),
+      ...fixes.map(note => `Fix: ${note}`),
+      ...policyUpdates.map(note => `Policy update: ${note}`),
+    ], 520).slice(0, 16),
     knownIssues: pendingText ? [pendingText] : [],
     // This list is a complete snapshot of the specific newer Chromium-fix
     // notices parsed above.  It is safe to replace a previously stored notice
@@ -3042,7 +3056,7 @@ function parseEdgeStableRelease(stableHtml, securityHtml, urls = {}) {
       ? `Microsoft’s Stable notes and security notes agree on Edge ${version} dated ${releasedAt}. The release includes documented feature and policy changes, but Microsoft posted a newer ${pendingNotice.date} notice saying another Chromium security fix was still being prepared; PatchTicker therefore keeps that caveat visible instead of treating this build as fully current.`
       : `Microsoft’s Stable notes and security notes agree on Edge ${version} dated ${releasedAt}. Extended Stable, Beta, Dev, Canary, Android, and iOS entries are excluded from this lane.`,
     evidence: [
-      ...sourceEvidence('Microsoft Edge Stable Release Notes', stableUrl, `Edge Stable ${version}, released ${releasedAt}; ${featureUpdates.length} feature updates and ${announcements.length} announcements parsed.`, { dateBasis: 'released', releaseType: 'official-release-notes', publishedAt: releasedAt, releaseChannel: 'stable' }),
+      ...sourceEvidence('Microsoft Edge Stable Release Notes', stableUrl, `Edge Stable ${version}, released ${releasedAt}; ${countLabel(featureUpdates.length, 'feature update')}, ${countLabel(fixes.length, 'fix')}, ${countLabel(policyUpdates.length, 'policy change')}, and ${countLabel(announcements.length, 'announcement')} parsed.`, { dateBasis: 'released', releaseType: 'official-release-notes', publishedAt: releasedAt, releaseChannel: 'stable' }),
       ...sourceEvidence('Microsoft Edge Security Release Notes', securityUrl, `Edge Stable ${version} incorporates Chromium security updates.${pendingText ? ` Microsoft posted a newer pending-fix notice on ${pendingNotice.date}.` : ''}`, { dateBasis: 'released', releaseType: 'official-security-release', publishedAt: releasedAt, releaseChannel: 'stable', securityFixCount: cves.length, cveListPending, pendingVendorFix: Boolean(pendingText), pendingNoticeAt: pendingNotice?.date || null }),
     ],
     sourceUrl: stableUrl,
