@@ -2022,7 +2022,7 @@ async function getUpdateById(id) {
            AND released_at < $2::date + INTERVAL '1 day'
            AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
          ORDER BY created_at DESC LIMIT 20`,
-        [update.productId, String(update.releasedAt).slice(0, 10)]
+        [update.productId, new Date(update.releasedAt).toISOString().slice(0, 10)]
       );
       const numbered = peers.rows.map(rowToUpdate)
         .find(candidate => isUpdateDisplayable(candidate)

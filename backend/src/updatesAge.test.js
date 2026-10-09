@@ -1314,12 +1314,17 @@ test('a same-day game launch article does not become a second scored installable
   const feed = await updatesService.getUpdates();
   expect(feed.map(update => update.id)).toEqual([notes.id]);
 
+  // node-postgres hydrates DATE columns into Date objects; slicing their
+  // String() representation produces "Wed Aug 12" instead of an ISO day.
+  const marketingRow = { ...row(marketing), released_at: new Date('2026-08-12T00:00:00Z') };
+  const notesRow = { ...row(notes), released_at: new Date('2026-08-12T00:00:00Z') };
   mockQuery.mockReset()
-    .mockResolvedValueOnce({ rows: [row(marketing)] })
-    .mockResolvedValueOnce({ rows: [row(marketing), row(notes)] })
+    .mockResolvedValueOnce({ rows: [marketingRow] })
+    .mockResolvedValueOnce({ rows: [marketingRow, notesRow] })
     .mockResolvedValueOnce({ rows: [] });
   const detail = await updatesService.getUpdateById(marketing.id);
   expect(detail?.id).toBe(notes.id);
+  expect(mockQuery.mock.calls[1][0]).toContain('released_at >= $2::date');
   expect(mockQuery.mock.calls[1][1]).toEqual(['553850', '2026-08-12']);
 });
 
