@@ -241,6 +241,10 @@ const CATEGORY_SEARCH_INTENTS = [
 
 const STEAM_GAME_SEARCH_ALIASES = new Map([
   ['cs2', '730'],
+  // "Apex" alone normally names the game, not a controller model mentioned
+  // incidentally in another platform's release notes. More specific queries
+  // such as "OneXPlayer Apex" still use ordinary cross-platform search.
+  ['apex', '1172470'],
   ['counter strike', '730'],
   ['counter strike 2', '730'],
   ['gta v enhanced', '3240220'],
@@ -350,7 +354,10 @@ function exactSteamGameForSearch(rawSearch) {
     || null;
 }
 
-function steamGameIntent(rawSearch) {
+function steamGameIntent(rawSearch, fullQuery = rawSearch) {
+  // Do not turn a hardware/compatibility query into a game-only filter merely
+  // because generic search stopwords leave an exact game nickname behind.
+  if (/\b(?:drivers?|gpu|graphics|radeon|geforce|controller|handheld|firmware|compatibility)\b/i.test(String(fullQuery || ''))) return null;
   const game = exactSteamGameForSearch(rawSearch);
   if (!game) return null;
   return {
@@ -417,7 +424,7 @@ function parseSearchIntent(rawSearch) {
         .find(candidate => intentQuery === candidate || intentQuery.startsWith(`${candidate} `));
       if (!alias) continue;
       const remainder = intentQuery.slice(alias.length).trim();
-      const gameIntent = intent.sourceKind === 'steam-game-news' ? steamGameIntent(remainder) : null;
+      const gameIntent = intent.sourceKind === 'steam-game-news' ? steamGameIntent(remainder, framedQuery) : null;
       return withStatus(gameIntent || {
         platform: intent.platform,
         sourceKind: intent.sourceKind,
@@ -451,7 +458,7 @@ function parseSearchIntent(rawSearch) {
     if (platformAlias) {
       const [alias, platform] = platformAlias;
       const remainder = intentQuery.slice(alias.length).trim();
-      const gameIntent = platform === 'Steam' ? steamGameIntent(remainder) : null;
+      const gameIntent = platform === 'Steam' ? steamGameIntent(remainder, framedQuery) : null;
       return withStatus(gameIntent || {
         platform,
         sourceKind: null,
@@ -460,7 +467,7 @@ function parseSearchIntent(rawSearch) {
       });
     }
 
-    const gameIntent = steamGameIntent(intentQuery);
+    const gameIntent = steamGameIntent(intentQuery, framedQuery);
     if (gameIntent) return withStatus(gameIntent);
   }
 
@@ -468,7 +475,10 @@ function parseSearchIntent(rawSearch) {
     platform: null,
     sourceKind: null,
     sourceLabel: null,
-    semanticQuery: stripIntentStopwords(framedQuery),
+    // Keep hardware nouns in otherwise broad queries: "Apex driver" must
+    // require a driver match rather than becoming the game-only "Apex" query.
+    semanticQuery: /\b(?:drivers?|gpu|graphics|controller|firmware)\b/.test(framedQuery)
+      ? framedQuery : stripIntentStopwords(framedQuery),
   });
 }
 

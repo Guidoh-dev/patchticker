@@ -477,6 +477,29 @@ test('search shorthand expands to authoritative product-name aliases', () => {
   expect(updatesService.__test.expandSearchTerms('switch oled')).toEqual(['switch oled']);
 });
 
+test('bare Apex search resolves to the tracked game, not an incidental OneXPlayer Apex mention', () => {
+  expect(updatesService.__test.parseSearchIntent('apex')).toMatchObject({
+    platform: 'Steam', sourceKind: 'steam-game-news', productId: '1172470', semanticQuery: '',
+  });
+  expect(updatesService.__test.parseSearchIntent('OneXPlayer Apex')).toMatchObject({
+    platform: null, semanticQuery: 'onexplayer apex',
+  });
+  expect(updatesService.__test.parseSearchIntent('OneXPlayer Apex')).not.toHaveProperty('productId');
+  expect(updatesService.__test.parseSearchIntent('apex driver')).toMatchObject({
+    platform: null, semanticQuery: 'apex driver',
+  });
+});
+
+test('bare Apex database search binds the Steam App ID before scanning release prose', async () => {
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [] });
+  await updatesService.getUpdates({ search: 'apex', sort: 'relevance' });
+  const [sql, params] = mockQuery.mock.calls[0];
+  expect(sql).toContain('product_id = $3');
+  expect(sql).not.toContain('search_group_0');
+  expect(params).toEqual(['Steam', 'steam-game-news', '1172470']);
+});
+
 test('common platform-name mistakes are corrected without fuzzy matching release data', () => {
   expect(updatesService.__test.correctSearchQuery('nvida')).toBe('nvidia');
   expect(updatesService.__test.correctSearchQuery('nivdia latest driver')).toBe('nvidia latest driver');
