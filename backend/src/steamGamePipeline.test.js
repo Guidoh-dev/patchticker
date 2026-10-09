@@ -443,6 +443,26 @@ describe('material Steam game update pipeline', () => {
     expect(selected.post.gid).toBe('2');
   });
 
+  test('numbered game notes beat a same-day out-now promotion even when the promotion is longer', () => {
+    const now = Date.parse('2026-10-09T00:00:00Z');
+    const date = Math.floor(Date.parse('2026-10-08T12:00:00Z') / 1000);
+    const posts = [
+      {
+        gid: 'promotion', date, feedname: 'steam_community_announcements',
+        title: 'HELLDIVERS 2 Devoid of Liberty Update Out Now',
+        contents: `${list(Array.from({ length: 16 }, (_, i) => `New gameplay mission and enemy type ${i}.`))}${' gameplay and new missions '.repeat(230)}`,
+      },
+      {
+        gid: 'numbered-notes', date: date - 3600, feedname: 'steam_community_announcements',
+        title: 'Devoid of Liberty: 7.0.0',
+        contents: `${list(['New gameplay mission in the Void.', 'Changed enemy balance and player progression.'])}${' gameplay, enemy, and mission adjustments '.repeat(100)}`,
+      },
+    ];
+    expect(posts.every(post => __test.classifyMaterialUpdate(post).eligible)).toBe(true);
+    expect(__test.selectBestMaterialPost(posts, now, 30, { appId: 553850, name: 'HELLDIVERS™ 2' })?.post.gid)
+      .toBe('numbered-notes');
+  });
+
   test('derives display versions from the release title rather than unrelated body dates', () => {
     const releasedAt = new Date('2026-08-13T01:00:00.000Z');
     expect(__test.displayVersion({ title: 'NARAKA Update – August 13th, 2026', contents: 'Previously scheduled for 2026.08.12.' }, releasedAt)).toBe('2026.08.13');

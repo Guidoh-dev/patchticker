@@ -11,7 +11,7 @@ const { getFreshnessSlaHours } = require('../config/platformRegistry');
 const { currentSteamGameRoster } = require('./steamGameEligibilityService');
 const { publicWindowsGuidance, publicWindowsReleaseIdentity } = require('../utils/windowsReleaseGuidance');
 const { isExplicitlySmallReleaseTitle } = require('../utils/steamReleasePolicy');
-const { isEditorialReportTitle, scheduledSteamReleaseAt, scheduledSteamReleaseDay } = require('../utils/steamAnnouncementPolicy');
+const { isEditorialReportTitle, scheduledSteamReleaseAt, scheduledSteamReleaseDay, steamCampaignIdentity } = require('../utils/steamAnnouncementPolicy');
 
 const MAX_UPDATE_AGE_DAYS = 240;
 const MAX_PUBLIC_FUTURE_SKEW_HOURS = 24;
@@ -875,6 +875,11 @@ function isHigherQualityRelease(candidate, current) {
   return false;
 }
 
+function steamCampaignIdentityForUpdate(update) {
+  if (update?.sourceKind !== 'steam-game-news' || !update?.productId) return null;
+  return steamCampaignIdentity({ title: update.name, appId: update.productId, releasedAt: update.releasedAt });
+}
+
 function dedupeArticleReleases(updates = []) {
   const winnerBySource = new Map();
   for (const update of updates) {
@@ -886,9 +891,17 @@ function dedupeArticleReleases(updates = []) {
         || (Date.parse(update.releasedAt) === Date.parse(current.releasedAt) && isHigherQualityRelease(update, current))
       : isHigherQualityRelease(update, current))) winnerBySource.set(key, update);
   }
-  return updates.filter(update => {
+  const byArticle = updates.filter(update => {
     const key = canonicalArticleSourceKey(update);
     return !key || winnerBySource.get(key) === update;
+  });
+  const numberedCampaigns = new Set(byArticle
+    .map(steamCampaignIdentityForUpdate)
+    .filter(identity => identity?.numberedNotes)
+    .map(identity => identity.key));
+  return byArticle.filter(update => {
+    const identity = steamCampaignIdentityForUpdate(update);
+    return !identity?.marketing || !numberedCampaigns.has(identity.key);
   });
 }
 
@@ -1996,6 +2009,31 @@ async function getUpdateById(id) {
 
   if (!update || !isUpdateDisplayable(update)) return null;
 
+  // Preserve old announcement permalinks, but resolve a campaign promo to
+  // the numbered notes when both describe the same installable build.
+  const campaign = dbReadSucceeded ? steamCampaignIdentityForUpdate(update) : null;
+  if (campaign?.marketing && db.isAvailable()) {
+    try {
+      const peers = await db.query(
+        `SELECT * FROM software_updates
+         WHERE source_kind = 'steam-game-news'
+           AND product_id = $1
+           AND released_at >= $2::date
+           AND released_at < $2::date + INTERVAL '1 day'
+           AND ${PUBLIC_STEAM_GAME_ELIGIBILITY_SQL}
+         ORDER BY created_at DESC LIMIT 20`,
+        [update.productId, String(update.releasedAt).slice(0, 10)]
+      );
+      const numbered = peers.rows.map(rowToUpdate)
+        .find(candidate => isUpdateDisplayable(candidate)
+          && steamCampaignIdentityForUpdate(candidate)?.key === campaign.key
+          && steamCampaignIdentityForUpdate(candidate)?.numberedNotes);
+      if (numbered) update = numbered;
+    } catch (err) {
+      logger.warn('[updates] Steam campaign canonical lookup failed', { id, error: err.message });
+    }
+  }
+
   // Old Intel catalog rows can remain bookmarked after the corresponding
   // WHQL release notes arrive. Resolve them to the current, better-evidenced
   // record so direct links no longer repeat obsolete "notes unavailable" copy.
@@ -2073,11 +2111,13 @@ async function getUpdateById(id) {
         [update.id, update.platform, update.productId, update.sourceKind, 4]
       );
       const currentCanonicalKey = canonicalArticleSourceKey(update);
+      const currentCampaign = steamCampaignIdentityForUpdate(update);
       related = dedupeArticleReleases(rows.rows.map(row => ({
         ...rowToUpdate(row),
         relationType: row.relation_type || 'same-platform',
       })).filter(candidate => isUpdateDisplayable(candidate)
-        && (!currentCanonicalKey || canonicalArticleSourceKey(candidate) !== currentCanonicalKey)));
+        && (!currentCanonicalKey || canonicalArticleSourceKey(candidate) !== currentCanonicalKey)
+        && (!currentCampaign || steamCampaignIdentityForUpdate(candidate)?.key !== currentCampaign.key)));
     } catch (err) {
       logger.warn('[updates] Related releases unavailable', { id, error: err.message });
     }
@@ -2142,7 +2182,7 @@ async function getUpdateHistory(platform, limit = 20) {
   if (!db.isAvailable()) return [];
   try {
     const rows = await db.query(
-      `SELECT id, platform, name, version, display_version, source_kind, affects, released_at, status, score, bug_count, changelog,
+      `SELECT id, platform, name, version, display_version, source_kind, product_id, affects, released_at, status, score, bug_count, changelog,
               ai_generated, evidence, created_at, updated_at
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
@@ -2168,6 +2208,7 @@ async function getUpdateHistory(platform, limit = 20) {
         displayVersion: r.display_version || null,
         internalVersion: r.version,
         sourceKind,
+        productId:   r.product_id || null,
         releasedAt:  publicReleaseDate(r.released_at, evidence),
         status:      score === null ? null : statusForScore(score),
         score,
@@ -2201,6 +2242,7 @@ module.exports = {
     rowToUpdate,
     canUseStaticUpdates,
     canonicalArticleSourceKey,
+    steamCampaignIdentityForUpdate,
     dedupeArticleReleases,
     releaseInformationQuality,
     analysisMethodForEvidence,

@@ -1289,6 +1289,40 @@ test('article-level duplicates keep the release with stronger structured evidenc
   expect(updatesService.__test.dedupeArticleReleases([canonical, legacy])).toEqual([canonical]);
 });
 
+test('a same-day game launch article does not become a second scored installable patch', async () => {
+  jest.setSystemTime(new Date('2026-10-08T12:00:00Z'));
+  const base = {
+    platform: 'Steam', sourceKind: 'steam-game-news', productId: '553850',
+    releasedAt: '2026-08-12', evidence: [{ releaseType: 'official-game-update' }],
+  };
+  const marketing = { ...base, id: 'steam-553850-promo', name: 'HELLDIVERS 2 Devoid of Liberty Update Out Now', version: '2026.08.12' };
+  const notes = { ...base, id: 'steam-553850-notes', name: 'HELLDIVERS™ 2: Devoid of Liberty: 7.0.0', version: '7.0.0' };
+  const unrelated = { ...base, id: 'steam-553850-other', name: 'HELLDIVERS™ 2: Machinery of Oppression: 6.3.1', version: '6.3.1' };
+  expect(updatesService.__test.dedupeArticleReleases([marketing, notes, unrelated])).toEqual([notes, unrelated]);
+  expect(updatesService.__test.dedupeArticleReleases([notes, marketing])).toEqual([notes]);
+  expect(updatesService.__test.dedupeArticleReleases([marketing])).toEqual([marketing]);
+  expect(updatesService.__test.dedupeArticleReleases([{ ...marketing, releasedAt: '2026-08-13' }, notes])).toHaveLength(2);
+
+  mockIsAvailable.mockReturnValue(true);
+  const row = update => ({
+    id: update.id, platform: update.platform, source_kind: update.sourceKind,
+    product_id: update.productId, name: update.name, version: update.version,
+    released_at: update.releasedAt, score: '7.0', changelog: ['A new mission was added.'],
+    known_issues: [], risk_factors: [], evidence: update.evidence,
+  });
+  mockQuery.mockResolvedValueOnce({ rows: [row(marketing), row(notes)] });
+  const feed = await updatesService.getUpdates();
+  expect(feed.map(update => update.id)).toEqual([notes.id]);
+
+  mockQuery.mockReset()
+    .mockResolvedValueOnce({ rows: [row(marketing)] })
+    .mockResolvedValueOnce({ rows: [row(marketing), row(notes)] })
+    .mockResolvedValueOnce({ rows: [] });
+  const detail = await updatesService.getUpdateById(marketing.id);
+  expect(detail?.id).toBe(notes.id);
+  expect(mockQuery.mock.calls[1][1]).toEqual(['553850', '2026-08-12']);
+});
+
 test('rolling support pages do not collapse distinct console releases', () => {
   const sourceUrl = 'https://support.xbox.com/en-US/help/hardware-network/settings-updates/whats-new-xbox-one-system-updates';
   const releases = [

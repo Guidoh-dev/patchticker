@@ -9,6 +9,25 @@ function isEditorialReportTitle(value) {
     || /(?:^|:\s*)competitive integrity update\b/i.test(title);
 }
 
+// Identify two *different articles* about the same installable game release:
+// a same-day "Update Out Now" promotion and its numbered patch notes. Do not
+// collapse distinct numbered builds or a promotion with no matching notes.
+function steamCampaignIdentity({ title, appId, releasedAt } = {}) {
+  if (!appId) return null;
+  const rawTitle = String(title || '').trim();
+  const marketing = /\bupdate\s+(?:is\s+)?out\s+now$/i.test(rawTitle);
+  const numberedNotes = /\b\d+\.\d+\.\d+(?:\s+patch\s+notes)?$/i.test(rawTitle);
+  if (!marketing && !numberedNotes) return null;
+  const stem = rawTitle
+    .replace(/\bupdate\s+(?:is\s+)?out\s+now$/i, '')
+    .replace(/\b\d+\.\d+\.\d+(?:\s+patch\s+notes)?$/i, '')
+    .replace(/[™®]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const date = new Date(releasedAt);
+  if (!stem || !Number.isFinite(date.getTime())) return null;
+  return { key: `${appId}|${date.toISOString().slice(0, 10)}|${stem}`, marketing, numberedNotes };
+}
+
 const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December';
 const RELEASE_TIME_RE = new RegExp(
   `\\b(?:upcoming patch drops? on|this update begins on|(?:the )?(?:update|patch) (?:goes live|launches) on)\\s+` +
@@ -56,4 +75,4 @@ function scheduledSteamReleaseDay(value, publishedAt) {
     && leadDays >= -1 && leadDays <= 45 ? date : null;
 }
 
-module.exports = { isEditorialReportTitle, scheduledSteamReleaseAt, scheduledSteamReleaseDay };
+module.exports = { isEditorialReportTitle, scheduledSteamReleaseAt, scheduledSteamReleaseDay, steamCampaignIdentity };

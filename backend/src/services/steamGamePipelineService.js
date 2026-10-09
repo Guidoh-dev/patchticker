@@ -33,7 +33,7 @@ const {
 } = require('../utils/updateScore');
 const { normaliseReleaseText } = require('../utils/releaseText');
 const { isExplicitlySmallReleaseTitle } = require('../utils/steamReleasePolicy');
-const { isEditorialReportTitle, scheduledSteamReleaseAt, scheduledSteamReleaseDay } = require('../utils/steamAnnouncementPolicy');
+const { isEditorialReportTitle, scheduledSteamReleaseAt, scheduledSteamReleaseDay, steamCampaignIdentity } = require('../utils/steamAnnouncementPolicy');
 const {
   STRICT_STEAM_GAME_POLICY,
   STEAM_GAME_ELIGIBILITY_AUDIT,
@@ -563,7 +563,7 @@ function toDatabaseUpdate(game, post, classification) {
   };
 }
 
-function selectBestMaterialPost(posts, now = Date.now(), lookbackDays = DEFAULT_LOOKBACK_DAYS) {
+function selectBestMaterialPost(posts, now = Date.now(), lookbackDays = DEFAULT_LOOKBACK_DAYS, game = null) {
   const cutoff = now - (lookbackDays * 24 * 60 * 60 * 1000);
   const eligible = (posts || [])
     .map(post => ({ post, classification: classifyMaterialUpdate(post), releasedAt: postReleasedAt(post) }))
@@ -587,8 +587,17 @@ function selectBestMaterialPost(posts, now = Date.now(), lookbackDays = DEFAULT_
   // Publishers often post a marketing announcement and full notes a few hours
   // apart. Prefer the richer first-party notes within the same release window.
   const latestAt = eligible[0].releasedAt.getTime();
-  return eligible
-    .filter(item => latestAt - item.releasedAt.getTime() <= 36 * 60 * 60 * 1000)
+  const releaseWindow = eligible.filter(item => latestAt - item.releasedAt.getTime() <= 36 * 60 * 60 * 1000);
+  const campaignIdentity = item => game?.appId ? steamCampaignIdentity({
+    title: releaseTitle(game.name, item.post.title), appId: game.appId, releasedAt: item.releasedAt,
+  }) : null;
+  const numberedCampaigns = new Set(releaseWindow.map(campaignIdentity)
+    .filter(identity => identity?.numberedNotes).map(identity => identity.key));
+  return releaseWindow
+    .filter(item => {
+      const identity = campaignIdentity(item);
+      return !identity?.marketing || !numberedCampaigns.has(identity.key);
+    })
     .sort((a, b) => b.classification.scopeScore - a.classification.scopeScore || b.releasedAt - a.releasedAt)[0];
 }
 
@@ -712,7 +721,7 @@ async function run(options = {}) {
     const settled = await Promise.all(batch.map(async game => {
       try {
         const posts = await fetchGameNews(game, options);
-        const selected = selectBestMaterialPost(posts, options.now || Date.now(), lookbackDays);
+        const selected = selectBestMaterialPost(posts, options.now || Date.now(), lookbackDays, game);
         if (!selected) return { appId: game.appId, game: game.name, status: 'no_material_update' };
         const enrichedClassification = await enrichOfficialGameNotes(game, selected.post, selected.classification);
         const update = toDatabaseUpdate(game, selected.post, enrichedClassification);
