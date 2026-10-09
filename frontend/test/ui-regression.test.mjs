@@ -22,9 +22,9 @@ test('PatchTicker mark appears beside the wordmark and provides a crawlable squa
   assert.match(html, /rel="icon"[^>]*sizes="48x48"[^>]*href="\/patchticker-mark-48\.png"/);
   assert.match(html, /rel="icon"[^>]*sizes="512x512"[^>]*href="\/patchticker-mark-512\.png"/);
   assert.match(html, /rel="apple-touch-icon"[^>]*href="\/patchticker-mark-180\.png"/);
-  const organizationMarkup = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
-  assert.ok(organizationMarkup, 'homepage declares crawlable organization logo');
-  assert.deepEqual(JSON.parse(organizationMarkup), {
+  const structuredData = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+    .map(([, payload]) => JSON.parse(payload));
+  assert.deepEqual(structuredData.find(entry => entry['@type'] === 'Organization'), {
     '@context': 'https://schema.org',
     '@type': 'Organization',
     name: 'PatchTicker',
@@ -32,6 +32,13 @@ test('PatchTicker mark appears beside the wordmark and provides a crawlable squa
     url: 'https://patchticker.app/',
     logo: 'https://patchticker.app/patchticker-mark-512.png',
   });
+  assert.deepEqual(structuredData.find(entry => entry['@type'] === 'WebSite'), {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'PatchTicker',
+    url: 'https://patchticker.app/',
+  });
+  assert.match(html, /property="og:site_name"[^>]*content="PatchTicker"/);
   assert.match(mainSource, /class="nav-brand"[\s\S]*?class="brand-mark" src="\/patchticker-mark\.svg"[\s\S]*?class="brand-wordmark"/);
   assert.match(mainSource, /class="site-footer-brand"[\s\S]*?class="brand-mark" src="\/patchticker-mark\.svg"/);
   assert.match(svg, /viewBox="0 0 64 64"/);
