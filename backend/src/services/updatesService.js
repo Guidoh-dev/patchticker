@@ -11,6 +11,7 @@ const { getFreshnessSlaHours } = require('../config/platformRegistry');
 const { currentSteamGameRoster } = require('./steamGameEligibilityService');
 const { publicWindowsGuidance, publicWindowsReleaseIdentity } = require('../utils/windowsReleaseGuidance');
 const { isExplicitlySmallReleaseTitle } = require('../utils/steamReleasePolicy');
+const { isEditorialReportTitle, scheduledSteamReleaseAt, scheduledSteamReleaseDay } = require('../utils/steamAnnouncementPolicy');
 
 const MAX_UPDATE_AGE_DAYS = 240;
 const MAX_PUBLIC_FUTURE_SKEW_HOURS = 24;
@@ -740,8 +741,25 @@ function isUpdateDisplayable(update) {
   if (!isUpdateWithinDisplayWindow(update)) return false;
   // Previously persisted minor game posts must not remain public after the
   // ingestion classifier is corrected. Steam client and SteamOS are distinct.
-  if (update?.sourceKind === 'steam-game-news' && isExplicitlySmallReleaseTitle(update?.name)) return false;
+  if (update?.sourceKind === 'steam-game-news'
+    && (isExplicitlySmallReleaseTitle(update?.name) || isEditorialReportTitle(update?.name))) return false;
   const evidence = jsonArray(update?.evidence);
+  if (update?.sourceKind === 'steam-game-news') {
+    // Existing rows predate the stronger ingestion timing parser. Use stored
+    // first-party notes as a fallback until the next successful scan enriches
+    // evidence.availableAt; otherwise a midnight date can expose a patch that
+    // the publisher scheduled for later that day.
+    const documentedAt = evidence.map(item => Date.parse(item?.availableAt)).find(Number.isFinite);
+    const inferredAt = scheduledSteamReleaseAt(jsonArray(update?.changelog).join(' '));
+    const releaseDay = new Date(Date.parse(update.releasedAt)).toISOString().slice(0, 10);
+    const availableAt = documentedAt ?? (inferredAt?.toISOString().slice(0, 10) === releaseDay
+      ? inferredAt.getTime() : null);
+    if (Number.isFinite(availableAt) && availableAt > Date.now()) return false;
+    const publication = evidence.find(item => item?.publishedAt)?.publishedAt || update.releasedAt;
+    const rolloutDay = evidence.find(item => item?.releaseTimeBasis === 'publisher-scheduled-day')?.rolloutDate
+      || scheduledSteamReleaseDay(jsonArray(update?.changelog).join(' '), publication)?.toISOString().slice(0, 10);
+    if (rolloutDay && rolloutDay > new Date().toISOString().slice(0, 10)) return false;
+  }
   const steamMonthPlaceholder = update?.platform === 'Steam'
     && new RegExp(`^(?:${MONTH_NAMES})\\s+\\d{4}$`, 'i').test(String(update?.version || '').trim())
     && evidence.some(item =>
@@ -1532,6 +1550,33 @@ function hasScoreableReleaseEvidence(sourceKind, evidence) {
     && !evidence.some(item => item?.detailsUnavailable === true);
 }
 
+function withSteamScheduleEvidence(evidence, changelog, sourceKind, releasedAt) {
+  if (sourceKind !== 'steam-game-news'
+    || evidence.some(item => Number.isFinite(Date.parse(item?.availableAt)) || item?.rolloutDate)) return evidence;
+  const sourceIndex = evidence.findIndex(item => item?.releaseType === 'official-game-update');
+  if (sourceIndex < 0) return evidence;
+  const scheduled = scheduledSteamReleaseAt(changelog.join(' '));
+  const releasedDay = Number.isFinite(Date.parse(releasedAt))
+    ? new Date(releasedAt).toISOString().slice(0, 10) : null;
+  if (scheduled && scheduled.toISOString().slice(0, 10) === releasedDay) {
+    return evidence.map((item, index) => index === sourceIndex
+      ? { ...item, availableAt: scheduled.toISOString(), releaseTimeBasis: 'publisher-scheduled-utc' }
+      : item);
+  }
+  const rollout = scheduledSteamReleaseDay(changelog.join(' '), evidence[sourceIndex]?.publishedAt || releasedAt);
+  if (!rollout || (releasedDay && rollout.toISOString().slice(0, 10) < releasedDay)) return evidence;
+  return evidence.map((item, index) => index === sourceIndex
+    ? { ...item, rolloutDate: rollout.toISOString().slice(0, 10), releaseTimeBasis: 'publisher-scheduled-day' }
+    : item);
+}
+
+function publicReleaseDate(releasedAt, evidence) {
+  const rolloutDay = evidence.find(item => item?.releaseTimeBasis === 'publisher-scheduled-day')?.rolloutDate;
+  const originalDay = Number.isFinite(Date.parse(releasedAt))
+    ? new Date(releasedAt).toISOString().slice(0, 10) : null;
+  return rolloutDay && originalDay && rolloutDay > originalDay ? rolloutDay : releasedAt;
+}
+
 function rowToUpdate(row) {
   const changelog = normaliseReleaseTextArray(jsonArray(row.changelog));
   const knownIssues = normaliseReleaseTextArray(jsonArray(row.known_issues));
@@ -1539,10 +1584,12 @@ function rowToUpdate(row) {
     ...item,
     text: item?.text ? normaliseReleaseText(item.text) : item?.text,
   }));
-  const evidence = jsonArray(row.evidence).map(item => ({
+  const rawEvidence = jsonArray(row.evidence).map(item => ({
     ...item,
     text: item?.text ? normaliseReleaseText(item.text) : item?.text,
   }));
+  const sourceKind = row.source_kind || sourceKindFromEvidence(rawEvidence);
+  const evidence = withSteamScheduleEvidence(rawEvidence, changelog, sourceKind, row.released_at);
   const subreddits = jsonArray(row.subreddits);
   const officialEvidence = primaryOfficialEvidence(evidence);
   const lastOfficialCheck = latestOfficialCheck(evidence);
@@ -1572,7 +1619,6 @@ function rowToUpdate(row) {
   const whql = evidence.some(item => item?.whql === true)
     ? true
     : evidence.some(item => item?.whql === false) ? false : null;
-  const sourceKind = row.source_kind || sourceKindFromEvidence(evidence);
   const sourceOnly = !hasScoreableReleaseEvidence(sourceKind, evidence);
   // A build manifest proves version identity, not install safety. Keep the
   // deterministic internal score for pipeline bookkeeping, but do not publish
@@ -1600,7 +1646,7 @@ function rowToUpdate(row) {
     averagePlayersSnapshot,
     averagePlayersObservedAt,
     whql,
-    releasedAt:           row.released_at,
+    releasedAt:           publicReleaseDate(row.released_at, evidence),
     status:               score === null ? null : statusForScore(score),
     score,
     impactScore:          sourceOnly ? null : scoreOrNull(row.impact_score, { updateId: row.id, field: 'impact_score', allowNull: true }),
@@ -1833,7 +1879,7 @@ async function getUpdates({ platform, status, sort, search } = {}) {
         score_asc:  compareScores('asc'),
         relevance:  (a, b) => searchRelevanceScore(b, searchIntent.semanticQuery || search) - searchRelevanceScore(a, searchIntent.semanticQuery || search),
       };
-      if (sort && sorters[sort]) updates = updates.sort(sorters[sort]);
+      if (sorters[sort || 'date_desc']) updates = updates.sort(sorters[sort || 'date_desc']);
       return hydrateLiveRatings(updates);
     } catch (err) {
       logger.warn('[updates] DB query failed — applying configured outage policy', { error: err.message });
@@ -2086,7 +2132,7 @@ async function getUpdateHistory(platform, limit = 20) {
   if (!db.isAvailable()) return [];
   try {
     const rows = await db.query(
-      `SELECT id, platform, name, version, display_version, source_kind, affects, released_at, status, score, bug_count,
+      `SELECT id, platform, name, version, display_version, source_kind, affects, released_at, status, score, bug_count, changelog,
               ai_generated, evidence, created_at, updated_at
        FROM software_updates
        WHERE LOWER(platform) = LOWER($1)
@@ -2098,9 +2144,10 @@ async function getUpdateHistory(platform, limit = 20) {
       [platform, Math.min(limit, 50)]
     );
     const updates = rows.rows.map(r => {
-      const evidence = jsonArray(r.evidence);
+      const changelog = jsonArray(r.changelog);
+      const sourceKind = r.source_kind || sourceKindFromEvidence(jsonArray(r.evidence));
+      const evidence = withSteamScheduleEvidence(jsonArray(r.evidence), changelog, sourceKind, r.released_at);
       const officialEvidence = primaryOfficialEvidence(evidence);
-      const sourceKind = r.source_kind || sourceKindFromEvidence(evidence);
       const score = hasScoreableReleaseEvidence(sourceKind, evidence)
         ? scoreOrNull(r.score, { updateId: r.id, field: 'score' }) : null;
       return {
@@ -2111,18 +2158,21 @@ async function getUpdateHistory(platform, limit = 20) {
         displayVersion: r.display_version || null,
         internalVersion: r.version,
         sourceKind,
-        releasedAt:  r.released_at,
+        releasedAt:  publicReleaseDate(r.released_at, evidence),
         status:      score === null ? null : statusForScore(score),
         score,
         bugCount:    r.bug_count,
         aiGenerated: r.ai_generated,
         evidence,
+        changelog,
         dateBasis:   r.platform === 'PS5' && evidence.some(item => item?.releaseType === 'official-artifact')
           ? 'artifact-published' : officialEvidence?.dateBasis || 'released',
         lastCheckedAt: latestOfficialCheck(evidence) || r.updated_at || r.created_at || null,
       };
     }).filter(isUpdateDisplayable);
-    return dedupeArticleReleases(updates).slice(0, Math.min(limit, 50));
+    return dedupeArticleReleases(updates)
+      .sort((a, b) => Date.parse(b.releasedAt) - Date.parse(a.releasedAt))
+      .slice(0, Math.min(limit, 50));
   } catch (err) {
     logger.warn('[updates] getUpdateHistory failed', { platform, error: err.message });
     return [];

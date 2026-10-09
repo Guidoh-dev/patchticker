@@ -82,3 +82,15 @@ test('evidence from another date cannot override an explicit release date', () =
   };
   assert.equal(preferredReleaseAt(update), update.releasedAt);
 });
+
+test('a publisher-scheduled rollout uses its UTC start, not article time or release-day midnight', () => {
+  const update = {
+    releasedAt: '2026-10-09T00:00:00.000Z',
+    evidence: [{
+      publishedAt: '2026-10-08T09:51:06.000Z',
+      availableAt: '2026-10-09T09:00:00.000Z',
+      releaseTimeBasis: 'publisher-scheduled-utc',
+    }],
+  };
+  assert.equal(preferredReleaseAt(update), '2026-10-09T09:00:00.000Z');
+});

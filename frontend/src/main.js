@@ -2226,7 +2226,10 @@ function timeAgo(isoString, now = Date.now()) {
 function updateDateLabel(update) {
   if (Array.isArray(update?.evidence)
     && update.evidence.some(item => item?.releaseTimeBasis === 'publisher-scheduled-utc'
-      && Number.isFinite(Date.parse(item?.availableAt || '')))) return 'Patch live';
+      && Number.isFinite(Date.parse(item?.availableAt || '')))) return 'Rollout start';
+  if (Array.isArray(update?.evidence)
+    && update.evidence.some(item => item?.releaseTimeBasis === 'publisher-scheduled-day'
+      && /^\d{4}-\d{2}-\d{2}$/.test(item?.rolloutDate || ''))) return 'Rollout date';
   if (Array.isArray(update?.evidence)
     && update.evidence.some(item => item?.detailsUnavailable === true && item?.dateBasis === 'catalog-updated')) return 'Catalog updated';
   if (update?.dateBasis === 'source-updated') return 'Source updated';
@@ -2290,10 +2293,13 @@ function renderSourceTimeline(update) {
     || null);
   const scheduledEvidence = (update?.evidence || []).find(item =>
     item?.releaseTimeBasis === 'publisher-scheduled-utc' && credibleTimestamp(item.availableAt));
+  const dayOnlyEvidence = (update?.evidence || []).find(item =>
+    item?.releaseTimeBasis === 'publisher-scheduled-day' && credibleTimestamp(item.rolloutDate));
   const availableAt = credibleTimestamp(scheduledEvidence?.availableAt);
-  const notesPublishedAt = credibleTimestamp(scheduledEvidence?.publishedAt);
+  const rolloutDate = credibleTimestamp(dayOnlyEvidence?.rolloutDate);
+  const notesPublishedAt = credibleTimestamp((scheduledEvidence || dayOnlyEvidence)?.publishedAt);
   const points = [
-    availableAt && notesPublishedAt ? {
+    (availableAt || rolloutDate) && notesPublishedAt ? {
       label: 'Notes posted',
       value: formatVerifiedMoment(notesPublishedAt),
       detail: 'Publisher announcement, before rollout',
@@ -2303,14 +2309,21 @@ function renderSourceTimeline(update) {
       value: formatReleaseDate(update?.releasedAt),
       detail: updateDateLabel(update) === 'Catalog updated' ? 'Vendor catalog metadata, not a confirmed release date'
         : updateDateLabel(update) === 'Package updated' ? 'Vendor package metadata, not a confirmed public release date'
+        : updateDateLabel(update) === 'Rollout date' ? 'Publisher-stated day; exact activation hour unverified'
         : 'Vendor or publisher date',
       datetime: update?.releasedAt,
     },
     ...(availableAt ? [{
-      label: 'Patch live',
+      label: 'Rollout start',
       value: formatVerifiedMoment(availableAt),
-      detail: 'Publisher-stated UTC activation time',
+      detail: 'Publisher-stated UTC start; maintenance may continue',
       datetime: availableAt,
+    }] : []),
+    ...(rolloutDate ? [{
+      label: 'Rollout date',
+      value: formatReleaseDate(rolloutDate),
+      detail: 'Publisher-stated day; exact activation hour unverified',
+      datetime: rolloutDate,
     }] : []),
     {
       label: 'First tracked',
@@ -2328,7 +2341,7 @@ function renderSourceTimeline(update) {
   return `
     <div class="detail-source-timeline-wrap" aria-label="Patch source timeline">
       <span class="detail-source-timeline-title">Source timeline</span>
-      <ol class="detail-source-timeline${availableAt ? ' detail-source-timeline--scheduled' : ''}">
+      <ol class="detail-source-timeline${availableAt || rolloutDate ? ' detail-source-timeline--scheduled' : ''}">
         ${points.map(point => `
           <li class="detail-source-timeline-step${point.datetime ? ' is-confirmed' : ''}">
             <i aria-hidden="true"></i>
@@ -2365,9 +2378,13 @@ function evidenceDateMeta(evidence, update = null) {
     : '';
   const availableAt = evidence?.releaseTimeBasis === 'publisher-scheduled-utc'
     && evidence?.availableAt && Number.isFinite(Date.parse(evidence.availableAt))
-    ? `Patch live · ${formatVerifiedMoment(evidence.availableAt)}`
+    ? `Rollout start · ${formatVerifiedMoment(evidence.availableAt)}`
     : '';
-  return [sourceDate, availableAt, checkedAt].filter(Boolean);
+  const rolloutDay = evidence?.releaseTimeBasis === 'publisher-scheduled-day'
+    && /^\d{4}-\d{2}-\d{2}$/.test(evidence?.rolloutDate || '')
+    ? `Rollout date · ${formatReleaseDate(evidence.rolloutDate)} (hour unverified)`
+    : '';
+  return [sourceDate, availableAt, rolloutDay, checkedAt].filter(Boolean);
 }
 
 function securitySignalMeta(update) {

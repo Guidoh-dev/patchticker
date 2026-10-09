@@ -741,12 +741,20 @@ test('detail pages distinguish vendor release, first-seen, and recheck timing', 
 
 test('scheduled game patches separate notes publication from the verified live time', () => {
   assert.match(mainSource, /releaseTimeBasis === 'publisher-scheduled-utc'/);
-  assert.match(mainSource, /if \(Array\.isArray\(update\?\.evidence\)[\s\S]*?return 'Patch live';/);
+  assert.match(mainSource, /if \(Array\.isArray\(update\?\.evidence\)[\s\S]*?return 'Rollout start';/);
   assert.match(mainSource, /label: 'Notes posted'/);
-  assert.match(mainSource, /label: 'Patch live'/);
-  assert.match(mainSource, /Publisher-stated UTC activation time/);
+  assert.match(mainSource, /label: 'Rollout start'/);
+  assert.match(mainSource, /Publisher-stated UTC start; maintenance may continue/);
   assert.match(cssSource, /\.detail-source-timeline--scheduled\s*\{[^}]*repeat\(4, minmax\(0, 1fr\)\)/s);
   assert.match(cssSource, /@media \(max-width: 560px\)[\s\S]*\.detail-source-timeline--scheduled\s*\{[^}]*grid-template-columns:\s*1fr/s);
+});
+
+test('date-only Steam rollouts show their verified calendar day without inventing an hour', () => {
+  assert.match(mainSource, /releaseTimeBasis === 'publisher-scheduled-day'/);
+  assert.match(mainSource, /return 'Rollout date'/);
+  assert.match(mainSource, /exact activation hour unverified/);
+  assert.match(mainSource, /Rollout date · .*hour unverified/);
+  assert.match(mainSource, /dayOnlyEvidence[\s\S]*?label: 'Notes posted'[\s\S]*?label: 'Rollout date'/);
 });
 
 test('feed distinguishes the latest release from archived platform history', () => {

@@ -25,6 +25,11 @@ function normaliseReleaseText(value) {
     .replace(/([a-z]):(?=[A-Z])/g, '$1: ')
     .replace(/\b(modifiers)(?=Personal modifiers)/g, '$1. ')
     .replace(/\b(Privacy)(?=Players)/g, '$1: ')
+    // Older Valve news records already in the database may have lost the
+    // boundary between a first-party section heading and its first sentence.
+    .replace(/\b(All-New Content|New In Store|Fixes and Optimizations)(?=[A-Z][a-z])/g, '$1: ')
+    .replace(/\b(Alchemax Headquarters)(?=The Alchemax Headquarters map\b)/g, '$1: ')
+    .replace(/\b(Path to Doomsday - Avengers: Infinity War)(?=The Sorcerer Supreme\b)/g, '$1: ')
     .replace(/\s+/g, ' ')
     .replace(/^(Gameplay|General|Visuals|Audio|Seasons system and Season One|Seasonal character|Personal season modifiers|Global modifiers|Streamer Mode & Privacy)\s+(?=[A-Z])/, '$1: ')
     .trim();

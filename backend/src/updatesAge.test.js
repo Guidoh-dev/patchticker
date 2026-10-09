@@ -48,6 +48,71 @@ test('public reads reject implausibly future-dated releases', () => {
   expect(now).toBe(Date.now());
 });
 
+test('public feed and permalink suppress persisted editorial Steam reports and pre-live season notes', async () => {
+  jest.setSystemTime(new Date('2026-10-09T01:00:00Z'));
+  const source = 'https://steamstore-a.akamaihd.net/news/externalpost/steam_community_announcements/1846018067929018';
+  const report = {
+    id: 'steam-apex-report', platform: 'Steam', name: 'Apex Legends™: An Update from the Anti Cheat Team - 10/08/2026',
+    sourceKind: 'steam-game-news', version: '2026.10.08', releasedAt: '2026-10-08', evidence: [],
+  };
+  const scheduled = {
+    id: 'steam-marvel-scheduled', platform: 'Steam', name: 'Marvel Rivals Version 20261009 Patch Notes - Season 10.5 Arrives',
+    sourceKind: 'steam-game-news', version: '2026.10.09', releasedAt: '2026-10-09',
+    changelog: ['This update begins on October 9th, 2026, at 09 : 00 : 00 (UTC), with estimated maintenance lasting 2 hours.'],
+    evidence: [{ url: source, releaseType: 'official-game-update', publishedAt: '2026-10-08T09:51:06.000Z' }],
+  };
+  expect(updatesService.__test.isUpdateDisplayable(report)).toBe(false);
+  expect(updatesService.__test.isUpdateDisplayable(scheduled)).toBe(false);
+  expect(updatesService.__test.isUpdateDisplayable({
+    ...scheduled, releasedAt: '2026-10-08', id: 'steam-live-with-future-event',
+  })).toBe(true);
+  const persisted = {
+    ...scheduled, source_kind: scheduled.sourceKind, released_at: scheduled.releasedAt,
+    source_url: source, score: '7.9', known_issues: [], risk_factors: [],
+  };
+  const hydrated = updatesService.__test.rowToUpdate(persisted);
+  expect(hydrated.evidence[0]).toMatchObject({
+    availableAt: '2026-10-09T09:00:00.000Z', releaseTimeBasis: 'publisher-scheduled-utc',
+  });
+  mockIsAvailable.mockReturnValue(true);
+  mockQuery.mockResolvedValue({ rows: [persisted] });
+  await expect(updatesService.getUpdates()).resolves.toEqual([]);
+  await expect(updatesService.getUpdateById(persisted.id)).resolves.toBeNull();
+  jest.setSystemTime(new Date('2026-10-09T09:00:00Z'));
+  expect(updatesService.__test.isUpdateDisplayable(hydrated)).toBe(true);
+  expect(updatesService.__test.isUpdateDisplayable(scheduled)).toBe(true);
+});
+
+test('an existing season row uses the publisher rollout date without inventing an hour', () => {
+  jest.setSystemTime(new Date('2026-09-07T12:00:00Z'));
+  const row = {
+    id: 'steam-delta-season', platform: 'Steam', name: "Delta Force: Version Update: New Season 'Reorientation'",
+    source_kind: 'steam-game-news', version: '2026.09.06', released_at: '2026-09-06', score: '6.7',
+    changelog: ["We're rolling out a no-downtime update for PC, mobile, and console on September 8 to launch our brand-new season: Reorientation!"],
+    evidence: [{ releaseType: 'official-game-update', publishedAt: '2026-09-06T13:00:04Z' }],
+    known_issues: [], risk_factors: [],
+  };
+  const publicUpdate = updatesService.__test.rowToUpdate(row);
+  expect(publicUpdate.releasedAt).toBe('2026-09-08');
+  expect(publicUpdate.evidence[0]).toMatchObject({
+    rolloutDate: '2026-09-08', releaseTimeBasis: 'publisher-scheduled-day',
+  });
+  expect(publicUpdate.evidence[0].availableAt).toBeUndefined();
+  expect(updatesService.__test.isUpdateDisplayable(publicUpdate)).toBe(false);
+  jest.setSystemTime(new Date('2026-09-08T12:00:00Z'));
+  expect(updatesService.__test.isUpdateDisplayable(publicUpdate)).toBe(true);
+});
+
+test('persisted flattened Steam headings become readable without changing patch meaning', () => {
+  const text = 'All-New ContentPath to Doomsday - Avengers: Infinity WarThe Sorcerer Supreme arrives.';
+  const update = updatesService.__test.rowToUpdate({
+    id: 'steam-marvel-flattened', platform: 'Steam', name: 'Marvel Rivals patch', version: '2026.10.09',
+    source_kind: 'steam-game-news', released_at: '2026-10-09', score: '7.9',
+    changelog: [text], known_issues: [], risk_factors: [], evidence: [],
+  });
+  expect(update.changelog[0]).toBe('All-New Content: Path to Doomsday - Avengers: Infinity War: The Sorcerer Supreme arrives.');
+});
+
 test('Windows public titles name every OS servicing lane proven by the KB build list', () => {
   const old = 'Windows 11 25H2 September 22, 2026—KB5124010 (OS Builds 26300.9550, 26200.9550, and 26100.9550) Preview';
   const fixed = publicWindowsReleaseIdentity('Windows', old, 'Windows 11 versions 24H2 and 25H2 / cumulative OS servicing');

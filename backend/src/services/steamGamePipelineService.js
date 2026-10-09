@@ -33,6 +33,7 @@ const {
 } = require('../utils/updateScore');
 const { normaliseReleaseText } = require('../utils/releaseText');
 const { isExplicitlySmallReleaseTitle } = require('../utils/steamReleasePolicy');
+const { isEditorialReportTitle, scheduledSteamReleaseAt, scheduledSteamReleaseDay } = require('../utils/steamAnnouncementPolicy');
 const {
   STRICT_STEAM_GAME_POLICY,
   STEAM_GAME_ELIGIBILITY_AUDIT,
@@ -89,6 +90,9 @@ function stripSteamMarkup(value) {
     .replace(/\b(Changes and Updates|Bug Fixes|Known Issues|Performance and Stability|Performance & Stability|Gameplay|General|Visuals|Audio|Intro)(?=[A-Z][a-z])/g, '\n$1\n')
     .replace(/\b(Aircraft|Locations and Missions|Interface|Graphics|Sound)(?=[A-Z](?:[a-z]|\s))/g, '\n$1\n')
     .replace(/\b(Seasons? system(?: and Season One)?|Seasonal character|Global season modifiers|Global modifiers|Personal season modifiers|Streamer Mode & Privacy)(?:\s*:)?(?=[A-Z][a-z])/g, '\n$1\n')
+    .replace(/\b(All-New Content|New In Store|Fixes and Optimizations)(?=[A-Z][a-z])/g, '\n$1\n')
+    .replace(/\b(Alchemax Headquarters)(?=The Alchemax Headquarters map\b)/g, '$1: ')
+    .replace(/\b(Path to Doomsday - Avengers: Infinity War)(?=The Sorcerer Supreme\b)/g, '$1: ')
     // Do not split camel-cased engine identifiers such as HUDAutoAim. Only
     // known section headings warrant an inferred boundary here.
     .replace(/\b(MATCHMAKING TESTS)(?=[A-Z][a-z])/g, '$1\n')
@@ -244,6 +248,7 @@ function classifyMaterialUpdate(post) {
   const prerelease = PRERELEASE_RE.test(identity) || /\bincoming\b/i.test(title) || DATED_ARRIVAL_RE.test(identity);
   const sizeQualifies = packageSizeBytes !== null && packageSizeBytes >= MIN_EXPLICIT_PACKAGE_BYTES;
   const eligible = official
+    && !isEditorialReportTitle(title)
     && !small
     && !prerelease
     && releaseSignal
@@ -318,18 +323,11 @@ function scheduledReleaseAt(post) {
   // A first-party announcement can contain complete patch notes before the
   // build is actually live. Only trust an explicit UTC activation timestamp;
   // never infer an hour from the post's publication or a title date.
-  const opening = stripSteamMarkup(post?.contents || '').slice(0, 1000);
-  const match = opening.match(/\bupcoming patch drops? on\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2}),?\s+at\s+(\d{1,2})\s*:\s*(\d{2})(?:\s*:\s*(\d{2}))?\s*\(?UTC\)?/i);
-  if (!match) return null;
-  const month = new Date(`${match[1]} 1, 2000 00:00:00 UTC`).getUTCMonth();
-  const day = Number(match[2]);
-  const year = Number(match[3]);
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const second = Number(match[6] || 0);
-  if (day < 1 || day > 31 || hour > 23 || minute > 59 || second > 59) return null;
-  const date = new Date(Date.UTC(year, month, day, hour, minute, second));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month && date.getUTCDate() === day ? date : null;
+  return scheduledSteamReleaseAt(stripSteamMarkup(post?.contents || ''));
+}
+
+function scheduledReleaseDay(post) {
+  return scheduledSteamReleaseDay(stripSteamMarkup(post?.contents || ''), postReleasedAt(post));
 }
 
 function displayVersion(post, releasedAt) {
@@ -485,7 +483,8 @@ function releaseTitle(gameName, postTitle) {
 function toDatabaseUpdate(game, post, classification) {
   const publishedAt = postReleasedAt(post);
   const availableAt = scheduledReleaseAt(post);
-  const releasedAt = availableAt || explicitReleaseDateFromTitle(post?.title) || publishedAt;
+  const rolloutDay = availableAt ? null : scheduledReleaseDay(post);
+  const releasedAt = availableAt || rolloutDay || explicitReleaseDateFromTitle(post?.title) || publishedAt;
   const gid = String(post.gid || '').replace(/\D/g, '');
   const version = `${game.appId}:${gid}`.slice(0, 64);
   const sourceUrl = trustedSteamNewsUrl(post, game.appId);
@@ -506,6 +505,7 @@ function toDatabaseUpdate(game, post, classification) {
     checkedAt,
     publishedAt: publishedAt.toISOString(),
     ...(availableAt ? { availableAt: availableAt.toISOString(), releaseTimeBasis: 'publisher-scheduled-utc' } : {}),
+    ...(rolloutDay ? { rolloutDate: rolloutDay.toISOString().slice(0, 10), releaseTimeBasis: 'publisher-scheduled-day' } : {}),
     steamAppId: game.appId,
     steamNewsGid: gid,
     averagePlayersSnapshot: game.averagePlayers,
@@ -570,10 +570,14 @@ function selectBestMaterialPost(posts, now = Date.now(), lookbackDays = DEFAULT_
     .filter(item => item.releasedAt && item.releasedAt.getTime() >= cutoff && item.releasedAt.getTime() <= now + 48 * 60 * 60 * 1000)
     .filter(item => {
       const activation = scheduledReleaseAt(item.post);
+      const titled = explicitReleaseDateFromTitle(item.post?.title);
+      if (activation && titled && activation.toISOString().slice(0, 10) !== titled.toISOString().slice(0, 10)) return false;
       if (activation && activation.getTime() > now) return false;
+      const rolloutDay = scheduledReleaseDay(item.post);
+      if (rolloutDay && titled && rolloutDay.toISOString().slice(0, 10) !== titled.toISOString().slice(0, 10)) return false;
+      if (rolloutDay && rolloutDay.toISOString().slice(0, 10) > new Date(now).toISOString().slice(0, 10)) return false;
       // A dated patch-notes headline alone does not confirm that tomorrow's
       // build has shipped, even when its article was published today.
-      const titled = explicitReleaseDateFromTitle(item.post?.title);
       return !titled || titled.toISOString().slice(0, 10) <= new Date(now).toISOString().slice(0, 10);
     })
     .filter(item => item.classification.eligible)
@@ -769,6 +773,7 @@ module.exports = {
     displayVersion,
     explicitReleaseDateFromTitle,
     scheduledReleaseAt,
+    scheduledReleaseDay,
     explicitPackageSizeBytes,
     knownIssuesFromNotes,
     releaseNotesFromPost,

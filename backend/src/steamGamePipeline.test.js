@@ -166,6 +166,18 @@ describe('material Steam game update pipeline', () => {
     }).eligible).toBe(false);
   });
 
+  test('an anti-cheat progress report is not an installable patch despite length and gameplay mentions', () => {
+    const report = __test.classifyMaterialUpdate({
+      feedname: 'steam_community_announcements',
+      title: 'An Update from the Anti Cheat Team - 10/08/2026',
+      contents: ('First week of the new anti-cheat. We monitored cheating attempts before they affected gameplay. '
+        + 'This is a report on enforcement and prevention, not downloadable patch notes. ').repeat(55),
+    });
+    expect(report.releaseSignal).toBe(true);
+    expect(report.gameplay).toBe(true);
+    expect(report.eligible).toBe(false);
+  });
+
   test('accepts substantial first-party gameplay and requirement releases', () => {
     const gameplay = __test.classifyMaterialUpdate({
       feedname: 'steam_community_announcements',
@@ -235,6 +247,12 @@ describe('material Steam game update pipeline', () => {
     expect(plain).toContain('MATCHMAKING TESTS\nIn Ranked');
     const notes = __test.releaseNotesFromPost({ contents: plain });
     expect(notes.changelog.some(item => item.startsWith('Welcome to the update.'))).toBe(true);
+  });
+
+  test('restores publisher headings and map labels in flattened season notes', () => {
+    const plain = __test.stripSteamMarkup('All-New ContentPath to Doomsday - Avengers: Infinity WarThe Sorcerer Supreme arrives. Alchemax HeadquartersThe Alchemax Headquarters map has been added.');
+    expect(plain).toContain('All-New Content\nPath to Doomsday - Avengers: Infinity War: The Sorcerer Supreme arrives.');
+    expect(plain).toContain('Alchemax Headquarters: The Alchemax Headquarters map has been added.');
   });
 
   test('preserves decimal versions and removes Steam image placeholders', () => {
@@ -353,6 +371,47 @@ describe('material Steam game update pipeline', () => {
       publishedAt: '2026-09-24T06:54:04.000Z',
       availableAt: '2026-09-24T09:00:00.000Z',
       releaseTimeBasis: 'publisher-scheduled-utc',
+    });
+  });
+
+  test('holds a season patch announced before its stated UTC start rather than treating midnight as live', () => {
+    const post = {
+      gid: '1846018067929018',
+      date: Math.floor(Date.parse('2026-10-08T09:51:06Z') / 1000),
+      feedname: 'steam_community_announcements',
+      title: 'Marvel Rivals Version 20261009 Patch Notes - Season 10.5 Arrives',
+      contents: 'This update begins on October 9th, 2026, at 09 : 00 : 00 (UTC), with estimated maintenance lasting 2 hours. '
+        + list(Array.from({ length: 12 }, (_, i) => `Added a new gameplay mode, map, and combat ability ${i}.`))
+        + ' Detailed changes to maps, modes, and hero abilities. '.repeat(100),
+    };
+    expect(__test.scheduledReleaseAt(post)?.toISOString()).toBe('2026-10-09T09:00:00.000Z');
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-10-09T08:59:59Z'))).toBeNull();
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-10-09T09:00:00Z'))?.post.gid).toBe(post.gid);
+    expect(__test.selectBestMaterialPost([{ ...post, title: 'Marvel Rivals Version 20261008 Patch Notes' }], Date.parse('2026-10-09T10:00:00Z'))).toBeNull();
+    const saved = __test.toDatabaseUpdate({ appId: 2767030, name: 'Marvel Rivals' }, post, __test.classifyMaterialUpdate(post));
+    expect(saved.evidence[0]).toMatchObject({
+      availableAt: '2026-10-09T09:00:00.000Z', releaseTimeBasis: 'publisher-scheduled-utc',
+    });
+  });
+
+  test('a publisher rollout day without an hour is not backdated to its announcement', () => {
+    const post = {
+      gid: '1842846814450684',
+      date: Math.floor(Date.parse('2026-09-06T13:00:04Z') / 1000),
+      feedname: 'steam_community_announcements',
+      title: "Version Update: New Season 'Reorientation' – Events, Rewards & Store",
+      contents: "We're rolling out a no-downtime update for PC, mobile, and console on September 8 to launch our brand-new season. "
+        + list(Array.from({ length: 12 }, (_, i) => `Added a new gameplay mode, map, and combat ability ${i}.`))
+        + ' Detailed changes to maps, modes, and weapons. '.repeat(100),
+    };
+    expect(__test.scheduledReleaseDay(post)?.toISOString()).toBe('2026-09-08T00:00:00.000Z');
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-07T23:59:59Z'))).toBeNull();
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-08T00:00:00Z'))?.post.gid).toBe(post.gid);
+    const saved = __test.toDatabaseUpdate({ appId: 2507950, name: 'Delta Force' }, post, __test.classifyMaterialUpdate(post));
+    expect(saved.releasedAt).toBe('2026-09-08');
+    expect(saved.evidence[0]).toMatchObject({
+      publishedAt: '2026-09-06T13:00:04.000Z', rolloutDate: '2026-09-08',
+      releaseTimeBasis: 'publisher-scheduled-day',
     });
   });
 

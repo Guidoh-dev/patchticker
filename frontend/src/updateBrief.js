@@ -9,6 +9,11 @@ export function preferredReleaseAt(update = {}) {
   if (!fallbackTime) return fallback;
 
   const releaseDay = new Date(fallbackTime).toISOString().slice(0, 10);
+  const scheduled = (Array.isArray(update?.evidence) ? update.evidence : [])
+    .find(item => item?.releaseTimeBasis === 'publisher-scheduled-utc'
+      && timestamp(item?.availableAt)
+      && new Date(timestamp(item.availableAt)).toISOString().slice(0, 10) === releaseDay);
+  if (scheduled) return scheduled.availableAt;
   const timedEvidence = (Array.isArray(update?.evidence) ? update.evidence : [])
     .filter(item => typeof item?.publishedAt === 'string' && /T\d{2}:\d{2}/.test(item.publishedAt))
     .filter(item => timestamp(item.publishedAt) && new Date(timestamp(item.publishedAt)).toISOString().slice(0, 10) === releaseDay);
