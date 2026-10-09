@@ -20,7 +20,18 @@ test('PatchTicker mark appears beside the wordmark and provides a crawlable squa
   const svg = await readFile(resolve(root, 'public/patchticker-mark.svg'), 'utf8');
   const favicon = await readFile(resolve(root, 'public/patchticker-mark-48.png'));
   assert.match(html, /rel="icon"[^>]*sizes="48x48"[^>]*href="\/patchticker-mark-48\.png"/);
+  assert.match(html, /rel="icon"[^>]*sizes="512x512"[^>]*href="\/patchticker-mark-512\.png"/);
   assert.match(html, /rel="apple-touch-icon"[^>]*href="\/patchticker-mark-180\.png"/);
+  const organizationMarkup = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(organizationMarkup, 'homepage declares crawlable organization logo');
+  assert.deepEqual(JSON.parse(organizationMarkup), {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'PatchTicker',
+    legalName: 'Dorn Ventures LLC',
+    url: 'https://patchticker.app/',
+    logo: 'https://patchticker.app/patchticker-mark-512.png',
+  });
   assert.match(mainSource, /class="nav-brand"[\s\S]*?class="brand-mark" src="\/patchticker-mark\.svg"[\s\S]*?class="brand-wordmark"/);
   assert.match(mainSource, /class="site-footer-brand"[\s\S]*?class="brand-mark" src="\/patchticker-mark\.svg"/);
   assert.match(svg, /viewBox="0 0 64 64"/);
