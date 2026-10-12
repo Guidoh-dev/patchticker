@@ -15,6 +15,7 @@ const router  = express.Router();
 
 const { ratingsReadLimiter } = require('../middleware/rateLimiter');
 const requireAuth             = require('../middleware/requireAuth');
+const optionalAuth            = require('../middleware/optionalAuth');
 const { requirePro }          = require('../middleware/requireRole');
 const validate                = require('../middleware/validate');
 const {
@@ -166,6 +167,7 @@ router.post(
 
 router.get(
   '/:id',
+  optionalAuth,
   ratingsReadLimiter,
   validate({ params: GetUpdateByIdParamSchema }),
   async (req, res, next) => {
@@ -187,6 +189,10 @@ router.get(
       };
 
       logger.info(`GET /updates/${req.params.id}`, { hasLiveRatings: !!liveRatings });
+      // This response includes the caller’s vote when signed in. Never share it
+      // through a CDN cache with another visitor.
+      res.set('Cache-Control', 'private, no-store');
+      res.vary('Authorization');
       res.json({ data: enriched });
     } catch (err) { next(err); }
   }

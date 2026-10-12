@@ -2706,14 +2706,12 @@ function renderUpdateCard(u) {
   const packageSize = packageSizeMeta(u);
   const sourceLabel = `${freshness.officialSources} official source${freshness.officialSources === 1 ? '' : 's'}`;
   const methodMeta = analysisMethodMeta(u);
-  const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
+  const ratingValue = validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
-  const limitedScoreEvidence = !rating.votes && methodMeta.tone === 'limited';
-  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Assessment pending' : 'Source-based score';
-  const ratingSource = rating.votes ? 'Live community' : limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
-  const ratingDetail = rating.votes
-    ? `${rating.votes.toLocaleString()} vote${rating.votes === 1 ? '' : 's'}`
-    : limitedScoreEvidence ? 'Build verified · full notes unavailable' : sourceLabel;
+  const limitedScoreEvidence = methodMeta.tone === 'limited' && ratingValue === null;
+  const scoreLabel = limitedScoreEvidence ? 'Assessment pending' : 'Source-based score';
+  const ratingSource = limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
+  const ratingDetail = limitedScoreEvidence ? 'Build verified · full notes unavailable' : sourceLabel;
   const routeId = encodeURIComponent(u.id);
   const compatibilityQuery = u.compatibilitySearchFallback
     ? String(u.compatibilityQuery || '').trim().slice(0, 120)
@@ -2765,6 +2763,7 @@ function renderUpdateCard(u) {
           <div class="decision-card-rating-value"><strong>${H(ratingDisplay)}</strong>${ratingValue === null ? '' : '<span>/10</span>'}</div>
           <em>${H(ratingSource)}</em>
           <small>${H(ratingDetail)}</small>
+          ${rating.votes && rating.score !== null ? `<span class="decision-community-rating">Users ${H(scoreDisplay(rating.score))}/10 · ${H(rating.votes.toLocaleString())} vote${rating.votes === 1 ? '' : 's'}</span>` : ''}
         </aside>
       </a>
     </article>
@@ -2819,11 +2818,11 @@ function renderMiniUpdateCard(u, variant = 'default') {
   const steamAudience = steamAudienceMeta(u);
   const rating = peerRatingMeta(u);
   const methodMeta = analysisMethodMeta(u);
-  const ratingValue = rating.votes && rating.score !== null ? rating.score : validScoreOrNull(u.score);
+  const ratingValue = validScoreOrNull(u.score);
   const ratingDisplay = scoreDisplay(ratingValue);
-  const limitedScoreEvidence = !rating.votes && methodMeta.tone === 'limited';
-  const scoreLabel = rating.votes ? 'User rating' : limitedScoreEvidence ? 'Assessment pending' : 'Source-based score';
-  const ratingSource = rating.votes ? 'Live community' : limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
+  const limitedScoreEvidence = methodMeta.tone === 'limited' && ratingValue === null;
+  const scoreLabel = limitedScoreEvidence ? 'Assessment pending' : 'Source-based score';
+  const ratingSource = limitedScoreEvidence ? 'Limited evidence' : 'PatchTicker';
   return `
     <a class="mini-update-card${tone}" href="#/updates/${H(u.id)}">
       <div class="mini-update-top">
@@ -2839,7 +2838,7 @@ function renderMiniUpdateCard(u, variant = 'default') {
       <dl class="mini-update-facts" aria-label="Update facts">
         <div><dt>${H(updateDateLabel(u))}</dt><dd>${H(formatReleaseDate(u.releasedAt))}</dd></div>
         <div class="${packageSize.available ? '' : 'is-unavailable'}"><dt>Size</dt><dd>${H(packageSize.value)}</dd></div>
-        <div><dt>${H(scoreLabel)}</dt><dd class="${scoreToneClass(ratingValue)}">${H(ratingDisplay)}${ratingValue === null ? '' : '/10'}<small>${H(ratingSource)}</small></dd></div>
+        <div><dt>${H(scoreLabel)}</dt><dd class="${scoreToneClass(ratingValue)}">${H(ratingDisplay)}${ratingValue === null ? '' : '/10'}<small>${H(ratingSource)}</small>${rating.votes && rating.score !== null ? `<small class="mini-community-rating">Users ${H(scoreDisplay(rating.score))}/10 · ${H(rating.votes.toLocaleString())} vote${rating.votes === 1 ? '' : 's'}</small>` : ''}</dd></div>
       </dl>
       <div class="mini-update-freshness freshness-signal freshness-signal--${H(freshness.tone)}"><i aria-hidden="true"></i>${H(freshness.label)} · ${H(freshness.detail)}</div>
       <p class="mini-update-copy">${H(u.verdict || u.affects || 'Recent patch coverage available.')}</p>

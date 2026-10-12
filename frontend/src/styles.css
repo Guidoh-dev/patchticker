@@ -7541,6 +7541,13 @@ body { overflow-x: hidden; }
   font-weight: 700;
   line-height: 1.35;
 }
+.decision-community-rating {
+  margin-top: 8px;
+  color: var(--green-primary);
+  font: 700 10px var(--font-mono);
+  line-height: 1.4;
+}
+.mini-community-rating { color: var(--green-primary); }
 .decision-card--compact:hover .decision-title,
 .decision-card--compact:focus-within .decision-title {
   color: var(--cyan);
@@ -7872,6 +7879,7 @@ body { overflow-x: hidden; }
   .decision-card-rating-value strong { font-size: 30px; }
   .decision-card-rating em { grid-area: source; margin: 0; }
   .decision-card-rating small { grid-area: detail; justify-self: end; margin: 0; text-align: right; }
+  .decision-community-rating { grid-column: 1 / -1; justify-self: start; }
   .decision-one-line { -webkit-line-clamp: 3; }
   .decision-card-trust { gap: 6px 10px; }
   .decision-card-trust > span + span::before { margin-right: 10px; }
@@ -8561,6 +8569,7 @@ html[data-theme="light"] .dash-side-copy { color: var(--text-2); }
   .decision-card-rating-value strong { font-size: 26px; }
   .decision-card-rating em,
   .decision-card-rating small { display: none; }
+  .decision-community-rating { grid-column: 1 / -1; }
 }
 
 /* Mobile scan path: keep the live briefing compact, then offer the three

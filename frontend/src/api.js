@@ -202,7 +202,7 @@ export function openFeedStream(ticket, onMessage, onError) {
 }
 
 export async function fetchUpdateById(id) {
-  const res = await request(`/updates/${encodeURIComponent(id)}`, { skipAuth: true });
+  const res = await request(`/updates/${encodeURIComponent(id)}`);
   return res?.data || res;
 }
 export async function fetchSummary()      { return request('/updates/summary', { skipAuth: true }); }

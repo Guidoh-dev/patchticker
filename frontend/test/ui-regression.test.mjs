@@ -251,8 +251,8 @@ test('update cards organize title, release date, package size, and rating withou
   assert.match(mainSource, /class="decision-card-facts" aria-label="Update facts"/);
   assert.match(mainSource, /<dt>Package size<\/dt>/);
   assert.match(mainSource, /class="decision-card-rating\$\{limitedScoreEvidence \? ' decision-card-rating--limited' : ''\}" aria-label="Patch recommendation and rating"/);
-  assert.match(mainSource, /const scoreLabel = rating\.votes \? 'User rating' : limitedScoreEvidence \? 'Assessment pending' : 'Source-based score'/);
-  assert.match(mainSource, /const ratingSource = rating\.votes \? 'Live community' : limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
+  assert.match(mainSource, /const scoreLabel = limitedScoreEvidence \? 'Assessment pending' : 'Source-based score'/);
+  assert.match(mainSource, /const ratingSource = limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
   assert.match(cssSource, /\.decision-card-facts\s*\{[^}]*grid-template-columns:\s*repeat\(2,/s);
   assert.match(cssSource, /\.decision-card-link:hover,[\s\S]*?text-decoration:\s*none !important/s);
   assert.match(cssSource, /\.decision-card-rating-value strong\s*\{[^}]*font-size:\s*36px/s);
@@ -559,7 +559,7 @@ test('dashboard status, logos, facts, and footer use valid accessible semantics'
   assert.match(mainSource, /class="dash-category-jumps" role="navigation" aria-label="Category jumps"/);
   assert.match(mainSource, /class="dash-source-heartbeats" role="group" aria-label="Platform source heartbeat"/);
   assert.match(mainSource, /id="dash-hero-stats" role="group" aria-label="Current update status totals"/);
-  assert.match(mainSource, /<dd class="\$\{scoreToneClass\(ratingValue\)\}">[\s\S]*?<small>\$\{H\(ratingSource\)\}<\/small><\/dd>/);
+  assert.match(mainSource, /<dd class="\$\{scoreToneClass\(ratingValue\)\}">[\s\S]*?<small>\$\{H\(ratingSource\)\}<\/small>\$\{rating\.votes/);
   assert.match(mainSource, /<dd>\$\{H\(formatReleaseDate\(u\.releasedAt\)\)\}<small>\$\{H\(age\)\}<\/small><\/dd>/);
   assert.match(mainSource, /<dd>\$\{H\(packageSize\.value\)\}<small>\$\{H\(packageSize\.note\)\}<\/small><\/dd>/);
   assert.match(cssSource, /\.mini-update-facts small\s*\{[^}]*display:\s*block;/s);
@@ -695,8 +695,8 @@ test('update cards and detail pages expose compact source freshness signals', ()
   assert.match(mainSource, /detail-source-health/);
   assert.match(mainSource, /official source/);
   assert.match(mainSource, /Official source \+ issue signals/);
-  assert.match(mainSource, /scoreLabel = rating\.votes \? 'User rating' : limitedScoreEvidence \? 'Assessment pending' : 'Source-based score'/);
-  assert.match(mainSource, /ratingSource = rating\.votes \? 'Live community' : limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
+  assert.match(mainSource, /scoreLabel = limitedScoreEvidence \? 'Assessment pending' : 'Source-based score'/);
+  assert.match(mainSource, /ratingSource = limitedScoreEvidence \? 'Limited evidence' : 'PatchTicker'/);
   assert.match(mainSource, /updateDateLabel\(u\)/);
   assert.match(mainSource, /id="dash-coverage-pulse"/);
   assert.match(mainSource, /No demo records shown/);
@@ -1005,4 +1005,20 @@ test('returning visitors receive a truthful live briefing from persisted update 
   assert.match(mainSource, /id="dash-return-headline"/);
   assert.match(cssSource, /\.dash-return-brief\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto/s);
   assert.match(cssSource, /\.dash-return-brief\.has-new\s*\{[^}]*var\(--green-primary\)/s);
+});
+
+test('source verdict cards never substitute community votes for the source score', () => {
+  const cards = mainSource.slice(mainSource.indexOf('function renderUpdateCard(u)'), mainSource.indexOf('function renderRelatedReleaseCard(update)'));
+  assert.equal((cards.match(/const ratingValue = validScoreOrNull\(u\.score\);/g) || []).length, 2);
+  assert.doesNotMatch(cards, /ratingValue = rating\.votes/);
+  assert.match(cards, /decision-community-rating/);
+  assert.match(cards, /mini-community-rating/);
+  assert.match(cards, /rating\.votes && rating\.score !== null/);
+});
+
+test('detail fetch sends the access token so the server can restore the current vote', () => {
+  assert.match(apiSource, /fetchUpdateById\(id\)[\s\S]*?request\(`\/updates\/\$\{encodeURIComponent\(id\)\}`\)/);
+  const detailFetcher = apiSource.slice(apiSource.indexOf('export async function fetchUpdateById(id)'), apiSource.indexOf('export async function fetchSummary()'));
+  assert.doesNotMatch(detailFetcher, /skipAuth: true/);
+  assert.match(mainSource, /const userVote = u\.userVote \|\| null/);
 });
