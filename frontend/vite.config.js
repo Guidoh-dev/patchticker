@@ -69,12 +69,12 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       allowedHosts: ['.trycloudflare.com', '.loca.lt'],
-      proxy: {
-        '/api': {
+      proxy: Object.fromEntries(['/api', '/releases', '/briefing', '/platforms', '/sitemap.xml'].map(path => [
+        path, {
           target:       'http://localhost:4000',
           changeOrigin: true,
         },
-      },
+      ])),
       headers: {
         'Content-Security-Policy': FRONTEND_CSP,
         'X-Frame-Options':         'DENY',

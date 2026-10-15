@@ -13,6 +13,9 @@ const routerSource = await readFile(resolve(root, 'src/router.js'), 'utf8');
 const filterLogicSource = await readFile(resolve(root, 'src/filterLogic.js'), 'utf8');
 const steamCandidatesSource = await readFile(resolve(root, 'src/steamGameCandidates.js'), 'utf8');
 const compatibilitySource = await readFile(resolve(root, 'src/compatibility.js'), 'utf8');
+const setupViewSource = await readFile(resolve(root, 'src/setupView.js'), 'utf8');
+const setupAdvisorSource = await readFile(resolve(root, 'src/setupAdvisor.js'), 'utf8');
+const setupCssSource = await readFile(resolve(root, 'src/setup.css'), 'utf8');
 const updateBriefSource = await readFile(resolve(root, 'src/updateBrief.js'), 'utf8');
 
 test('PatchTicker mark appears beside the wordmark and provides a crawlable square favicon', async () => {
@@ -48,7 +51,6 @@ test('PatchTicker mark appears beside the wordmark and provides a crawlable squa
 });
 
 test('source-updated driver metadata is not presented as a confirmed release date', () => {
-  assert.match(mainSource, /\$\{H\(updateDateLabel\(latest\)\)\} \$\{H\(timeAgo\(preferredReleaseAt\(latest\)\)\)\}/);
   assert.match(mainSource, /\$\{H\(updateDateLabel\(current\)\)\} \$\{H\(formatReleaseDate\(current\.releasedAt\)\)\}/);
   assert.match(mainSource, /Vendor catalog metadata, not a confirmed release date/);
   assert.match(mainSource, /update\?\.dateBasis === 'artifact-published'\) return 'Package updated'/);
@@ -102,7 +104,7 @@ test('application registers canonical navigation directories and aliases', () =>
 
 test('route renders reset stale page scroll before showing the next screen', () => {
   assert.match(mainSource, /function resetPageScroll\(\)\s*\{[\s\S]*?document\.scrollingElement \|\| document\.documentElement[\s\S]*?classList\.add\('route-scroll-reset'\);[\s\S]*?root\.scrollTo\(\{ top: 0, left: 0, behavior: 'auto' \}\);[\s\S]*?app\.scrollTop = 0;[\s\S]*?classList\.remove\('route-scroll-reset'\);/);
-  assert.match(mainSource, /function setHTML\(html\)\s*\{[\s\S]*?document\.body\.classList\.remove\('dashboard-shell-active'\);[\s\S]*?resetPageScroll\(\);[\s\S]*?app\.innerHTML = html;[\s\S]*?resetPageScroll\(\);[\s\S]*?requestAnimationFrame\(resetPageScroll\);/);
+  assert.match(mainSource, /function setHTML\(html\)\s*\{[\s\S]*?document\.body\.classList\.remove\('dashboard-shell-active', 'setup-desk-active'\);[\s\S]*?resetPageScroll\(\);[\s\S]*?app\.innerHTML = html;[\s\S]*?resetPageScroll\(\);[\s\S]*?requestAnimationFrame\(resetPageScroll\);/);
   assert.match(routerSource, /typeof window !== 'undefined'[\s\S]*?window\.history\.scrollRestoration = 'manual'/);
 });
 
@@ -129,7 +131,7 @@ test('registration loads the hCaptcha site key from the runtime backend', () => 
 test('dashboard section links remain inside the hash router', () => {
   assert.doesNotMatch(mainSource, /href=["']#(?:section|category)-/);
   assert.match(mainSource, /data-scroll-target="section-latest"/);
-  assert.match(mainSource, /data-scroll-target="category-/);
+  assert.match(mainSource, /data-scroll-target="section-overview/);
 });
 
 test('Google Chrome is a real tracked browser lane rather than a decorative placeholder', () => {
@@ -154,11 +156,11 @@ test('Microsoft Edge is an active browser lane with its own official asset', () 
   assert.match(cssSource, /--platform-edge:\s*#0bd8b6/);
 });
 
-test('user-facing setup filters no longer use stack terminology', () => {
-  assert.doesNotMatch(mainSource, />[^<]*\bstacks?\b[^<]*</i);
-  assert.match(mainSource, />PC &amp; Steam</);
-  assert.match(mainSource, />Console &amp; handheld</);
-  assert.match(mainSource, />Apple devices</);
+test('setup choices use clear device labels', () => {
+  assert.doesNotMatch(setupViewSource, />[^<]*\bstacks?\b[^<]*</i);
+  assert.match(setupAdvisorSource, /Windows \/ Linux PC/);
+  assert.match(setupAdvisorSource, /Steam Deck/);
+  assert.match(setupAdvisorSource, /Nintendo Switch 2/);
 });
 
 test('dashboard uses a two-column update workspace with no left settings rail', () => {
@@ -172,43 +174,26 @@ test('dashboard uses a two-column update workspace with no left settings rail', 
   assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.detail-meta-grid\s*\{\s*grid-template-columns:\s*1fr;/);
 });
 
-test('dashboard right rail switches between live feed and platforms and can collapse', () => {
-  assert.ok(mainSource.includes('role="tablist" aria-label="Side panel"'));
-  assert.ok(mainSource.includes('data-aside-tab="live"'));
-  assert.ok(mainSource.includes('data-aside-tab="platforms"'));
-  assert.ok(mainSource.includes('function attachDashboardAside()'));
-  assert.ok(mainSource.includes('patchticker.dashboardAsideCollapsed'));
-  assert.ok(mainSource.includes("layout.classList.toggle('is-aside-collapsed', collapsed)"));
-  assert.ok(cssSource.includes('.dash-layout.is-aside-collapsed'));
-  assert.ok(cssSource.includes('.dash-aside.is-collapsed .dash-aside-open'));
-  assert.ok(cssSource.includes('flex-direction: row'));
+test('community and platform coverage are optional drawers after the main catalog', () => {
+  const dashboard = mainSource.slice(mainSource.indexOf('async function renderDashboard'), mainSource.indexOf('  // ── Filter state', mainSource.indexOf('async function renderDashboard')));
+  assert.match(dashboard, /<details class="setup-community">/);
+  assert.match(dashboard, /<details class="setup-coverage"/);
+  assert.ok(dashboard.indexOf('id="updates-list"') < dashboard.indexOf('class="setup-community"'));
+  assert.doesNotMatch(dashboard, /class="dash-aside"|class="service-ticker"/);
 });
 
-test('the top search bar is the single dashboard navigation and filtering surface', () => {
-  assert.match(mainSource, /aria-label="Search and filter update feed"/);
-  assert.match(mainSource, /id="dash-top-search"/);
-  assert.match(mainSource, /id="dash-top-sort"/);
-  assert.match(mainSource, /id="dash-top-apply-filters"/);
-  assert.match(mainSource, /class="topic-nav topic-nav--quickbar"/);
-  assert.match(mainSource, /id="platform-ribbon"/);
-  assert.match(mainSource, /id="status-ribbon"/);
-  assert.match(mainSource, /class="dash-lens-ribbon"/);
+test('one catalog search provides platform, status and sort controls', () => {
+  for (const id of ['dash-top-search', 'dash-platform-select', 'dash-top-sort', 'dash-top-apply-filters', 'status-ribbon']) assert.ok(mainSource.includes(`id="${id}"`));
+  assert.match(mainSource, /aria-label="Filter by platform"/);
   assert.match(mainSource, /topSearchEl\?\.addEventListener\('keydown'[\s\S]*?event\.key !== 'Enter'[\s\S]*?applyButton\.click\(\)/);
-  assert.doesNotMatch(mainSource, /id="dash-search"/);
-  assert.doesNotMatch(mainSource, /id="dash-sort"/);
-  assert.doesNotMatch(mainSource, /id="dash-apply-filters"/);
-  assert.match(cssSource, /@media \(max-width: 640px\)[\s\S]*?\.dash-top-sort\s*\{[^}]*display:\s*block/s);
+  assert.match(mainSource, /getElementById\('dash-platform-select'\)\?\.addEventListener\('change'/);
 });
 
-test('search autofill is live-backed and excludes explicitly removed game suggestions', () => {
-  const suggestionBlock = mainSource.match(/const SEARCH_SUGGESTIONS = \[[\s\S]*?\];/)?.[0] || '';
-  assert.match(mainSource, /list="dash-search-suggestions"/);
-  assert.match(mainSource, /<datalist id="dash-search-suggestions">/);
-  assert.match(mainSource, /function searchSuggestionValues\(updates = \[\]\)/);
-  assert.match(mainSource, /latestUniqueUpdates\(updates, discoveryLaneKey\)/);
-  assert.match(mainSource, /refreshSearchSuggestions\(_allUpdates\)/);
-  assert.match(mainSource, /BLOCKED_SEARCH_AUTOFILL/);
-  assert.doesNotMatch(suggestionBlock, /cs2|counter[ -]?strike|helldivers|hd2/i);
+test('catalog search does not autofill a game or hardware model', () => {
+  const field = mainSource.match(/<input id="dash-top-search"[^>]+>/)?.[0] || '';
+  assert.match(field, /autocomplete="off"/);
+  assert.doesNotMatch(field, /list=|value=/);
+  assert.doesNotMatch(field, /cs2|helldivers|hd2/i);
 });
 
 test('admin pipeline status exposes real source verification and deferred scans', () => {
@@ -258,10 +243,11 @@ test('update cards organize title, release date, package size, and rating withou
   assert.match(cssSource, /\.decision-card-rating-value strong\s*\{[^}]*font-size:\s*36px/s);
 });
 
-test('non-default filters and sorting use the globally ordered result list', () => {
-  assert.match(mainSource, /const keepsPlatformBrowse = sort === 'date_desc' && !status && !search/);
-  assert.match(mainSource, /renderFilteredUpdateResults\(filtered, _filterState\)/);
-  assert.match(mainSource, /updates\.map\(update => renderUpdateCard\(\{/);
+test('the catalog keeps global sorting and reveals more results without another data request', () => {
+  assert.match(mainSource, /renderFilteredUpdateResults\(filtered, _filterState, _catalogLimit\)/);
+  assert.match(mainSource, /updates\.slice\(0, visibleLimit\)\.map\(update => renderUpdateCard/);
+  assert.match(mainSource, /data-load-more-updates/);
+  assert.match(mainSource, /_catalogLimit \+= 12;[\s\S]*?applyFilters\(\)/);
 });
 
 test('typed dashboard searches query the full database with race protection', () => {
@@ -447,7 +433,7 @@ test('sticky update filters retreat on downward scroll and return toward the top
   assert.match(mainSource, /const collapseAtTop = true/);
   assert.match(mainSource, /currentY <= QUICKBAR_TOP_ZONE_PX[\s\S]*?setHidden\(false\)[\s\S]*?setCollapsed\(Date\.now\(\) < manualOpenUntil \? false : collapseAtTop\)/);
   assert.match(mainSource, /const mobileQuery = window\.matchMedia\('\(max-width: 768px\)'\)/);
-  assert.match(mainSource, /const scrollRoot = mobileQuery\.matches \|\| !mainScroller \? window : mainScroller/);
+  assert.match(mainSource, /const scrollRoot = document\.body\.classList\.contains\('setup-desk-active'\) \|\| mobileQuery\.matches \|\| !mainScroller \? window : mainScroller/);
   assert.match(mainSource, /mobileQuery\.addEventListener\('change', attachQuickbarScrollBehavior/);
   assert.match(mainSource, /quickbar\.addEventListener\('patchticker:filters-applied'[\s\S]*?setCollapsed\(true\);[\s\S]*?setHidden\(true\)/);
   assert.match(mainSource, /scrollRoot\.addEventListener\('wheel', onWheel/);
@@ -528,7 +514,7 @@ test('the client applies the same bounded release window as the API', () => {
   assert.match(mainSource, /function isUpdateWithinDisplayWindow\(update/);
   assert.match(mainSource, /releasedAt <= now \+ MAX_PUBLIC_FUTURE_SKEW_MS/);
   assert.match(mainSource, /function hydrateDashboardUpdates\(response\)[\s\S]*?normaliseUpdatesResponse\(response\)[\s\S]*?\.filter\(update => isUpdateWithinDisplayWindow\(update\)\)/);
-  assert.match(mainSource, /hydrateDashboardUpdates\(await fetchUpdates\(\{\}\)\)/);
+  assert.match(mainSource, /const response = await fetchUpdates\(\{\}\);\s*if \(!dashboardRoot\.isConnected\) return;\s*hydrateDashboardUpdates\(response\)/);
   assert.match(mainSource, /if \(diff < -60000\)[\s\S]*?return `in \$\{futureHours\}h`/);
 });
 
@@ -550,20 +536,12 @@ test('auth, feed, and history controls meet the touch target floor', () => {
   assert.match(cssSource, /\.dash-chat-gate a,\s*\.dash-side-copy a\s*\{[^}]*min-height:\s*44px/s);
 });
 
-test('dashboard status, logos, facts, and footer use valid accessible semantics', () => {
+test('catalog controls, logos, facts and footer retain accessible semantics', () => {
   assert.match(mainSource, /<span class="nav-system-status">/);
-  assert.match(mainSource, /<div class="service-ticker" aria-hidden="true">/);
-  assert.doesNotMatch(mainSource, /class="\$\{classes\}" aria-label=/);
-  assert.match(mainSource, /class="dash-lens-ribbon" role="group" aria-label="Setup filters"/);
   assert.match(mainSource, /id="status-ribbon" role="group" aria-label="Status filters"/);
-  assert.match(mainSource, /class="dash-category-jumps" role="navigation" aria-label="Category jumps"/);
-  assert.match(mainSource, /class="dash-source-heartbeats" role="group" aria-label="Platform source heartbeat"/);
-  assert.match(mainSource, /id="dash-hero-stats" role="group" aria-label="Current update status totals"/);
-  assert.match(mainSource, /<dd class="\$\{scoreToneClass\(ratingValue\)\}">[\s\S]*?<small>\$\{H\(ratingSource\)\}<\/small>\$\{rating\.votes/);
   assert.match(mainSource, /<dd>\$\{H\(formatReleaseDate\(u\.releasedAt\)\)\}<small>\$\{H\(age\)\}<\/small><\/dd>/);
   assert.match(mainSource, /<dd>\$\{H\(packageSize\.value\)\}<small>\$\{H\(packageSize\.note\)\}<\/small><\/dd>/);
-  assert.match(cssSource, /\.mini-update-facts small\s*\{[^}]*display:\s*block;/s);
-  assert.match(cssSource, /\.site-footer-status\s*\{[^}]*color:\s*var\(--text-2\)/s);
+  assert.match(setupViewSource, /id="setup-results" aria-labelledby="setup-results-title" hidden/);
   assert.match(cssSource, /\.site-footer-link\s*\{[^}]*color:\s*var\(--text-2\)/s);
 });
 
@@ -594,12 +572,12 @@ test('public community reads use privacy-safe display labels', () => {
   assert.match(mainSource, /First-party release events and member chat · no third-party tracker/);
 });
 
-test('filter controls stage draft state and only update the feed through Apply', () => {
-  assert.match(mainSource, /let _draftFilterState = defaultFilterState\(\)/);
+test('filter edits remain staged until Search or Enter is explicitly used', () => {
+  assert.match(mainSource, /let _draftFilterState = \{ \.\.\._filterState \}/);
   assert.match(mainSource, /function setDraftFilters\(patch\)/);
   assert.match(mainSource, /function applyDraftFilters\(\)/);
   assert.match(mainSource, /_filterState = \{ \.\.\._draftFilterState \}/);
-  assert.match(mainSource, /id="dash-top-apply-filters"[^>]*disabled>Apply/);
+  assert.match(mainSource, /id="dash-top-apply-filters"[^>]*>Search/);
   assert.match(mainSource, /getElementById\('dash-top-apply-filters'\)\?\.addEventListener\('click', applyDraftFilters\)/);
   assert.match(mainSource, /if \(platform\) filtered = filtered\.filter/);
   assert.match(mainSource, /if \(status\)\s+filtered = filtered\.filter/);
@@ -614,12 +592,11 @@ test('setup lenses use ecosystem OR filters instead of impossible all-term searc
   assert.doesNotMatch(mainSource, /data-lens="windows nvidia amd intel/);
 });
 
-test('dashboard uses independent desktop scrollers and native mobile page scroll', () => {
-  assert.match(mainSource, /document\.body\.classList\.add\('dashboard-shell-active'\)/);
-  assert.match(cssSource, /@media \(min-width: 769px\)[\s\S]*?body\.dashboard-shell-active\s*\{[^}]*height:\s*100vh;[^}]*overflow:\s*hidden/s);
-  assert.match(cssSource, /body\.dashboard-shell-active \.dash-main,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*overflow-y:\s*auto/s);
-  assert.match(cssSource, /body\.dashboard-shell-active \.dash-main,[\s\S]*?body\.dashboard-shell-active \.dash-aside\s*\{[^}]*scrollbar-gutter:\s*stable/s);
-  assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*?body\.dashboard-shell-active \.dash-main,[\s\S]*?overflow-y:\s*visible/s);
+test('setup and catalog share native page scrolling on desktop and mobile', () => {
+  assert.match(mainSource, /document\.body\.classList\.add\('setup-desk-active'\)/);
+  assert.doesNotMatch(mainSource, /document\.body\.classList\.add\('dashboard-shell-active'\)/);
+  assert.match(setupCssSource, /\.setup-main \{[^}]*height: auto;[^}]*overflow: visible;/);
+  assert.match(setupCssSource, /@media \(max-width: 768px\)/);
   assert.doesNotMatch(mainSource, /class="dash-sidebar"/);
 });
 
@@ -640,13 +617,11 @@ test('homepage narrative is centered without fixed horizontal offsets', () => {
   assert.match(cssSource, /\.landing-band\s*\{[^}]*flex-direction:\s*column;[^}]*justify-content:\s*center;[^}]*align-items:\s*center/s);
 });
 
-test('newest movement heading is centered across viewports', () => {
-  assert.match(mainSource, /class="dash-panel-head update-tape-heading"/);
-  assert.match(cssSource, /\.update-tape-panel\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*align-items:\s*stretch/s);
-  assert.match(cssSource, /\.update-tape-heading\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(116px, 1fr\) auto minmax\(116px, 1fr\);[^}]*text-align:\s*center/s);
-  assert.match(cssSource, /\.update-tape-heading > div\s*\{[^}]*grid-column:\s*2/s);
-  assert.match(cssSource, /\.update-tape-heading \.dash-panel-badge\s*\{[^}]*position:\s*static;[^}]*grid-column:\s*3;[^}]*justify-self:\s*end/s);
-  assert.match(cssSource, /@media \(max-width: 768px\)[\s\S]*?\.update-tape-heading\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/s);
+test('setup check takes the first screen before the catalog and optional community', () => {
+  const dashboard = mainSource.slice(mainSource.indexOf('async function renderDashboard'));
+  assert.ok(dashboard.indexOf('renderSetupWorkspace()') < dashboard.indexOf('id="section-latest"'));
+  assert.match(setupCssSource, /\.setup-workspace \{[^}]*display: grid;[^}]*grid-template-columns: 1fr 1fr/);
+  assert.match(setupCssSource, /@media \(max-width: 768px\)[\s\S]*?\.setup-workspace \{ grid-template-columns: 1fr/);
 });
 
 test('native live chat uses one-time SSE tickets and completes the composer', () => {
@@ -888,7 +863,7 @@ test('update details expose an evidence-aware compatibility workspace and clear 
   assert.match(mainSource, /data-detail-target="detail-compatibility"/);
   assert.match(mainSource, /const hasCompatibilityMatrix = compatibilityProfile\?\.authoritative === true[\s\S]*?compatibilityProfile\.operatingSystems/);
   assert.match(mainSource, /const compatibilityWorkspaceHTML = hasCompatibilityMatrix \? `/);
-  assert.match(mainSource, /Your hardware entry is not transmitted or stored/);
+  assert.match(mainSource, /Hardware details are not sent to our servers/);
   assert.match(mainSource, /Check hardware compatibility/);
   assert.match(mainSource, /Compatibility result meanings/);
   assert.match(mainSource, /Windows releases newer than the published table/);
@@ -962,7 +937,7 @@ test('an open dashboard revalidates live data without creating a hidden-tab poll
   assert.match(mainSource, /window\.setInterval\(revalidateDashboard, DASHBOARD_REVALIDATE_MS\)/);
   assert.match(mainSource, /document\.addEventListener\('visibilitychange', handleDashboardVisibility\)/);
   assert.match(mainSource, /window\.clearInterval\(dashboardRefreshTimer\)/);
-  assert.match(mainSource, /id="coverage-view-sync">View sync pending/);
+  assert.match(mainSource, /id="coverage-view-sync"/);
 });
 
 test('offline update feeds remain honest instead of reviving demo records', () => {
@@ -971,42 +946,31 @@ test('offline update feeds remain honest instead of reviving demo records', () =
   assert.doesNotMatch(mainSource, /typeof getStaticUpdates === 'function'/);
 });
 
-test('landing page hydrates from verified updates instead of fabricated ratings', () => {
-  assert.match(mainSource, /function hydrateLandingSignals\(\)/);
-  assert.match(mainSource, /Promise\.all\(\[fetchUpdates\(\{ sort: 'date_desc' \}\), fetchSummary\(\)\]\)/);
-  assert.match(mainSource, /latest\.userRating\?\.totalVotes/);
-  assert.match(mainSource, /out of 10 source-based score/);
-  assert.match(mainSource, /No sample score is shown while verified source data is unavailable/);
-  assert.doesNotMatch(mainSource, /Latest user signal/);
-  assert.doesNotMatch(mainSource, /<strong>8\.7<\/strong>/);
-  assert.doesNotMatch(mainSource, /Install 72%/);
-  assert.match(cssSource, /\.landing-meter--10 span\s*\{\s*width:\s*100%/);
-  assert.match(cssSource, /@media \(max-width: 980px\)[\s\S]*?\.landing-copy\s*\{\s*display:\s*contents;[\s\S]*?\.landing-panel\s*\{\s*order:\s*1;[\s\S]*?\.landing-proof\s*\{\s*order:\s*2;/);
+test('root and updates share the setup tool backed by the verified feed', () => {
+  assert.match(mainSource, /function renderLanding\(\) \{\s*return renderDashboard\(\);/);
+  assert.match(mainSource, /const response = await fetchUpdates\(\{\}\);\s*if \(!dashboardRoot\.isConnected\) return;\s*hydrateDashboardUpdates\(response\)/);
+  assert.match(mainSource, /setupAdvisor\.refresh\(\)/);
+  assert.match(mainSource, /Official updates are temporarily unavailable/);
+  assert.doesNotMatch(mainSource, /<strong>8\.7<\/strong>|Install 72%/);
 });
 
-test('first-time visitors get a source-backed decision path before an account pitch', async () => {
+test('first-time visitors can use the setup tool without registration and see its evidence limits', async () => {
   const html = await readFile(resolve(root, 'index.html'), 'utf8');
-  assert.match(html, /class="preboot-landing"[\s\S]*?href="\/briefing"[\s\S]*?href="\/releases"/);
+  assert.match(html, /class="preboot-landing"/);
   assert.match(html, /type="application\/rss\+xml"/);
-  assert.match(mainSource, /href="\/briefing">Read the current brief/);
-  assert.match(mainSource, /id="landing-decision-grid"/);
-  assert.match(mainSource, /\['stable', 'caution', 'avoid'\]\.map\(status => candidates\.find/);
-  assert.match(mainSource, /\(update\.evidence \|\| \[\]\)\.some\(item => item\?\.url\)/);
-  assert.match(mainSource, /A source-based score is a research starting point, not proof/);
-  assert.match(cssSource, /\.landing-decision-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/s);
-  assert.match(cssSource, /@media \(max-width: 600px\) \{ \.landing-decision-grid \{ grid-template-columns: 1fr;/);
+  assert.match(setupViewSource, /id="setup-check-form"/);
+  assert.match(setupViewSource, /No account needed/);
+  assert.match(setupViewSource, /does not run a hardware benchmark or guarantee performance/);
+  assert.match(setupAdvisorSource, /compatibilityProfileFromUpdate/);
 });
 
-test('returning visitors receive a truthful live briefing from persisted update history', () => {
-  assert.match(mainSource, /UPDATE_VISIT_STORAGE_KEY = 'patchticker\.updates\.lastSeenAt'/);
-  assert.match(mainSource, /function updateReturnBrief\(updates = \[\]\)/);
-  assert.match(mainSource, /selectUpdateBrief\(updates, _updateVisitBaseline\)/);
-  assert.match(updateBriefSource, /const releases = \[\.\.\.updates\]\.sort\([\s\S]*?releaseTime\(right\) - releaseTime\(left\)/);
-  assert.match(updateBriefSource, /filter\(update => arrivalTime\(update\) > visitBaseline\)/);
-  assert.match(mainSource, /updateReturnBrief\(_allUpdates\)/);
-  assert.match(mainSource, /id="dash-return-headline"/);
-  assert.match(cssSource, /\.dash-return-brief\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto auto/s);
-  assert.match(cssSource, /\.dash-return-brief\.has-new\s*\{[^}]*var\(--green-primary\)/s);
+test('return navigation restores the setup and applied catalog search', () => {
+  assert.match(mainSource, /_dashboardFilterMemory = \{ \.\.\._filterState \}/);
+  assert.match(mainSource, /const savedSetup = readBrowserSetup\(\)/);
+  assert.match(mainSource, /href="#\/updates\?view=results" class="detail-back"/);
+  assert.match(setupViewSource, /let applied = readBrowserSetup\(\)/);
+  assert.match(setupViewSource, /saveSetup\(profile,/);
+  assert.match(setupViewSource, /clearSavedSetup/);
 });
 
 test('source verdict cards never substitute community votes for the source score', () => {

@@ -20,7 +20,7 @@ const ALLOWED_EVENTS = new Set([
   'filters_applied', 'search_completed', 'watchlist_item_added', 'watchlist_item_removed',
   'notification_preference_changed', 'update_feedback_submitted',
   'signup_completed', 'login_completed', 'subscription_checkout_started',
-  'compatibility_checked',
+  'compatibility_checked', 'setup_checked',
 ]);
 const POSTHOG_INTERNAL_EVENTS = new Set(['$identify', '$pageview', '$pageleave']);
 
@@ -261,7 +261,7 @@ export function applyAnalyticsPrivacyMasks(root = document) {
     '.nav-email', '.account-page', '.auth-card', '.feed-compose',
     '[id*="email" i]', '[name*="email" i]', '[id*="search" i]',
     '[name*="search" i]', '[id*="token" i]', '[name*="token" i]',
-    '[id*="webhook" i]', '[name*="webhook" i]',
+    '[id*="webhook" i]', '[name*="webhook" i]', '.setup-results', '.setup-detail-context',
   ];
   const selector = selectors.join(',');
   if (root instanceof Element && root.matches(selector)) {

@@ -28,6 +28,7 @@ import { SETUP_LENSES, filterUpdatesBySetup, filterSearchResultsByProvenance } f
 import { compatibilityProfileFromUpdate, evaluateCompatibility } from './compatibility.js';
 import { preferredReleaseAt, selectUpdateBrief } from './updateBrief.js';
 import { releaseLaneKey } from './releaseLanes.js';
+import { renderSetupWorkspace, attachSetupWorkspace, readBrowserSetup, renderSetupDetail } from './setupView.js';
 
 // ── Ad system ─────────────────────────────────────────────────────────────────
 //
@@ -170,6 +171,8 @@ let _updateVisitRecorded = false;
 let _quickbarScrollController = null;
 let _liveFeedCleanup = null;
 let _dashboardRefreshCleanup = null;
+let _dashboardFilterMemory = null;
+let _dashboardCatalogLimit = 12;
 
 function isUpdateWithinDisplayWindow(update, now = Date.now()) {
   const releasedAt = Date.parse(update?.releasedAt);
@@ -219,7 +222,7 @@ function setHTML(html) {
   _dashboardRefreshCleanup = null;
   _liveFeedCleanup?.();
   _liveFeedCleanup = null;
-  document.body.classList.remove('dashboard-shell-active');
+  document.body.classList.remove('dashboard-shell-active', 'setup-desk-active');
   resetPageScroll();
   app.innerHTML = html;
   resetPageScroll();
@@ -267,8 +270,8 @@ function renderNav(user) {
         </span>
       </div>
       <div class="nav-right">
-        <a class="nav-link" href="/briefing">Briefing</a>
-        ${user ? `<a class="nav-link nav-link--updates" href="#/updates">Updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>${adminLink}` : `<a class="nav-link nav-link--updates" href="#/updates">Updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>`}
+        <a class="nav-link nav-link--setup" href="#/updates" data-scroll-target="section-overview">Check my setup</a>
+        ${user ? `<a class="nav-link nav-link--updates" href="#/updates?view=results" data-scroll-target="section-latest">All updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>${adminLink}` : `<a class="nav-link nav-link--updates" href="#/updates?view=results" data-scroll-target="section-latest">All updates</a><a class="nav-link nav-link--pricing" href="#/pricing">Pricing</a>`}
         <button class="nav-theme-toggle" id="nav-theme-toggle" type="button" aria-label="Switch to ${theme === 'dark' ? 'light' : 'dark'} theme" title="Switch appearance">${theme === 'dark' ? '☀' : '☾'}</button>
         ${rightLinks}
       </div>
@@ -302,7 +305,7 @@ function attachTopicScrollNav() {
     .map(link => document.getElementById(link.dataset.scrollTarget))
     .filter(Boolean);
 
-  if (!links.length || !sections.length) return;
+  if (!links.length && !jumpLinks.length) return;
 
   const setActive = (id) => {
     links.forEach(link => link.classList.toggle('active', link.dataset.scrollTarget === id));
@@ -313,12 +316,13 @@ function attachTopicScrollNav() {
       const target = document.getElementById(link.dataset.scrollTarget);
       if (!target) return;
       e.preventDefault();
+      if (target.id === 'section-latest') document.querySelector('.dash-quickbar')?.dispatchEvent(new CustomEvent('patchticker:search-requested'));
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       setActive(target.id);
     });
   });
 
-  if (!('IntersectionObserver' in window)) return;
+  if (!sections.length || !('IntersectionObserver' in window)) return;
 
   const observer = new IntersectionObserver((entries) => {
     const visible = entries
@@ -338,7 +342,7 @@ function attachQuickbarScrollBehavior() {
 
   const mainScroller = document.querySelector('.dash-main');
   const mobileQuery = window.matchMedia('(max-width: 768px)');
-  const scrollRoot = mobileQuery.matches || !mainScroller ? window : mainScroller;
+  const scrollRoot = document.body.classList.contains('setup-desk-active') || mobileQuery.matches || !mainScroller ? window : mainScroller;
   // Search is now the single control surface on every viewport. Keep its
   // primary row visible at the top, collapse the deeper filters by default,
   // retreat while reading downward, and return as soon as the user moves up.
@@ -351,6 +355,7 @@ function attachQuickbarScrollBehavior() {
   let lastY = getScrollY();
   let framePending = false;
   let manualOpenUntil = 0;
+  let searchRevealUntil = 0;
   let lastDirection = lastY > QUICKBAR_TOP_ZONE_PX ? 'down' : 'idle';
   let directionLockedUntil = 0;
   let settleTimer = null;
@@ -390,7 +395,7 @@ function attachQuickbarScrollBehavior() {
       lastDirection = 'idle';
       setHidden(false);
       setCollapsed(Date.now() < manualOpenUntil ? false : collapseAtTop);
-    } else if (Date.now() < manualOpenUntil) {
+    } else if (Date.now() < manualOpenUntil || Date.now() < searchRevealUntil) {
       setHidden(false);
     } else if (direction === 'up') {
       lastDirection = 'up';
@@ -419,7 +424,7 @@ function attachQuickbarScrollBehavior() {
       // Trackpads and browser-driven jumps can coalesce several scroll events
       // into one frame. Ensure the final resting state still retreats below the
       // header unless the user was deliberately moving back toward the top.
-      if (Date.now() >= manualOpenUntil && lastDirection !== 'up') {
+      if (Date.now() >= manualOpenUntil && Date.now() >= searchRevealUntil && lastDirection !== 'up') {
         if (document.activeElement === search) search.blur();
         setCollapsed(true);
         setHidden(true);
@@ -466,10 +471,17 @@ function attachQuickbarScrollBehavior() {
   }, { signal });
   quickbar.addEventListener('patchticker:filters-applied', () => {
     manualOpenUntil = 0;
+    searchRevealUntil = 0;
     lockDirection('down', 1200);
     if (document.activeElement === search) search.blur();
     setCollapsed(true);
     setHidden(true);
+  }, { signal });
+  quickbar.addEventListener('patchticker:search-requested', event => {
+    searchRevealUntil = Date.now() + 2200;
+    setHidden(false);
+    setCollapsed(true);
+    if (event.detail?.focus !== false) search?.focus({ preventScroll: true });
   }, { signal });
   search?.addEventListener('focus', () => setHidden(false), { signal });
   scrollRoot.addEventListener('wheel', onWheel, { passive: true, signal });
@@ -1161,169 +1173,7 @@ function renderPricing() {
 
 // ── LANDING ───────────────────────────────────────────────────────────────────
 function renderLanding() {
-  const user = getUser();
-
-  setHTML(`
-    ${renderNav(user)}
-    <main class="landing-page">
-      <section class="landing-hero">
-        <div class="landing-copy">
-          <div class="landing-intro">
-            <p class="landing-kicker">Know before you update</p>
-            <h1 class="landing-title">Is this update worth installing?</h1>
-            <p class="landing-subtitle">The answer should take seconds, not ten tabs. Compare documented fixes, known issues, and source-based guidance for the exact patch in front of you.</p>
-            <div class="landing-actions">
-              <a class="btn btn--primary" href="/briefing">Read the current brief</a>
-              <a class="btn btn--outline" href="#/updates">Search your update</a>
-            </div>
-          </div>
-          <div class="landing-proof">
-            <span id="landing-live-coverage">Checking live coverage</span>
-            <span>Official sources linked</span>
-            <span>Ratings are source-based, not lab tests</span>
-            <span>No account needed to browse</span>
-          </div>
-          <div class="landing-scroll-map" aria-label="PatchTicker workflow">
-            <span>Find your patch</span>
-            <span>Read the changes</span>
-            <span>Check your device</span>
-            <span>Decide with context</span>
-          </div>
-        </div>
-
-        <div class="landing-panel">
-          <div class="landing-card-head">
-            <span>Latest verified patch</span>
-            <span class="landing-live" id="landing-live-state">CONNECTING</span>
-          </div>
-          <div class="landing-score-row">
-            <div class="landing-score-value">
-              <strong id="landing-live-score">—</strong>
-              <small>Source-based score /10</small>
-            </div>
-            <div>
-              <span class="status-badge caution" id="landing-live-status">CHECKING</span>
-              <p id="landing-live-name">Loading the newest official release…</p>
-            </div>
-          </div>
-          <div class="landing-meter landing-meter--0" id="landing-live-meter"><span></span></div>
-          <p class="landing-verdict" id="landing-live-verdict">Connecting to PatchTicker’s verified source desk.</p>
-          <div class="landing-votes" id="landing-live-meta">
-            <span>Source check pending</span>
-          </div>
-          <a class="landing-signal-link hidden" id="landing-live-link" href="#/updates">Open patch notes →</a>
-        </div>
-      </section>
-
-      <section class="landing-briefing" aria-labelledby="landing-briefing-title">
-        <div class="landing-briefing-head"><div><p class="landing-kicker">THE DECISION DESK</p><h2 id="landing-briefing-title">Patches worth a closer look</h2><p>Real releases. Vendor sources one click away. No empty community ratings.</p></div><a href="/briefing">See the full brief →</a></div>
-        <div class="landing-decision-grid" id="landing-decision-grid" aria-live="polite"><p class="landing-decision-loading">Checking the latest verified releases…</p></div>
-        <p class="landing-briefing-caveat">A source-based score is a research starting point, not proof a patch works on your hardware.</p>
-      </section>
-
-      <section class="landing-band">
-        <div>
-          <p class="landing-kicker">Built for everyday install decisions</p>
-          <h2>Want the next update without checking back?</h2>
-        </div>
-        <a class="btn btn--primary" href="/releases.xml">Follow the free RSS feed</a>
-      </section>
-    </main>
-    ${renderFooter()}
-  `);
-  attachNavHandlers(user);
-  hydrateLandingSignals();
-}
-
-async function hydrateLandingSignals() {
-  const coverage = document.getElementById('landing-live-coverage');
-  try {
-    const [updatesResponse, summaryResponse] = await Promise.all([fetchUpdates({ sort: 'date_desc' }), fetchSummary()]);
-    const updates = normaliseUpdatesResponse(updatesResponse)
-      .filter(update => isUpdateWithinDisplayWindow(update))
-      .sort((a, b) => Date.parse(preferredReleaseAt(b)) - Date.parse(preferredReleaseAt(a)));
-    const latest = updates[0];
-    const summary = summaryResponse?.data || summaryResponse;
-
-    if (coverage && summary) {
-      coverage.textContent = `${summary.platformsTracked ?? 0} live source lane${summary.platformsTracked === 1 ? '' : 's'}`;
-    }
-    if (!latest) throw new Error('No verified updates available');
-
-    const decisionGrid = document.getElementById('landing-decision-grid');
-    if (decisionGrid) {
-      const seen = new Set();
-      const candidates = updates.filter(update => {
-        const releaseTime = Date.parse(preferredReleaseAt(update));
-        if (seen.has(update.platform) || validScoreOrNull(update.score) === null ||
-            !['stable', 'caution', 'avoid'].includes(update.status) ||
-            ['official-version', 'official-artifact'].includes(update.sourceKind) ||
-            !Number.isFinite(releaseTime) || releaseTime > Date.now() + 24 * 60 * 60 * 1000 ||
-            Date.now() - releaseTime > 30 * 24 * 60 * 60 * 1000 ||
-            !(update.changelog || []).length || !(update.evidence || []).some(item => item?.url)) return false;
-        seen.add(update.platform);
-        return true;
-      });
-      const picks = ['stable', 'caution', 'avoid'].map(status => candidates.find(update => update.status === status)).filter(Boolean);
-      decisionGrid.innerHTML = picks.map(update => `
-        <a class="landing-decision landing-decision--${update.status}" href="#/updates/${encodeURIComponent(update.id)}">
-          <span class="landing-decision-top"><span>${H(platformLabel(update.platform))}</span><span>${H(updateDateLabel(update))} ${H(formatReleaseDate(preferredReleaseAt(update)))}</span></span>
-          <strong>${H(update.name)}</strong>
-          <span class="landing-decision-read"><b>${H(update.status.toUpperCase())} · ${H(scoreDisplay(validScoreOrNull(update.score)))}/10</b><span>Open verified notes →</span></span>
-        </a>`).join('') || '<p class="landing-decision-loading">No scored, source-backed releases are available right now. Browse the full feed for unscored version checks.</p>';
-    }
-
-    const score = validScoreOrNull(latest.score);
-    const scoreBucket = score === null ? null : Math.round(score);
-    const status = ['stable', 'caution', 'avoid'].includes(latest.status) ? latest.status : 'unscored';
-    const state = document.getElementById('landing-live-state');
-    const scoreEl = document.getElementById('landing-live-score');
-    const statusEl = document.getElementById('landing-live-status');
-    const name = document.getElementById('landing-live-name');
-    const meter = document.getElementById('landing-live-meter');
-    const verdict = document.getElementById('landing-live-verdict');
-    const meta = document.getElementById('landing-live-meta');
-    const link = document.getElementById('landing-live-link');
-
-    if (state) state.textContent = 'LIVE';
-    if (scoreEl) {
-      scoreEl.textContent = scoreDisplay(score);
-      scoreEl.setAttribute('aria-label', score === null ? 'Source-based score unavailable' : `${score.toFixed(1)} out of 10 source-based score`);
-    }
-    if (statusEl) {
-      statusEl.className = `status-badge ${status}`;
-      statusEl.textContent = status === 'unscored' ? 'REVIEW' : status.toUpperCase();
-    }
-    if (name) {
-      const updateName = String(latest.name || platformLabel(latest.platform));
-      const version = String(latest.version || '');
-      name.textContent = version && !updateName.toLowerCase().includes(version.toLowerCase())
-        ? `${updateName} · ${version}`
-        : updateName;
-    }
-    if (meter) meter.className = scoreBucket === null ? 'landing-meter landing-meter--unscored' : `landing-meter landing-meter--${scoreBucket}`;
-    if (verdict) verdict.textContent = latest.verdict || latest.reasoning || 'Open the verified release notes for the current install read.';
-    if (meta) {
-      const liveVotes = Number(latest.userRating?.totalVotes || 0);
-      meta.innerHTML = liveVotes > 0
-        ? `<span>${H(String(liveVotes))} verified vote${liveVotes === 1 ? '' : 's'}</span><span>Install ${H(String(latest.userRating.breakdown?.install ?? 0))}%</span><span>Wait ${H(String(latest.userRating.breakdown?.wait ?? 0))}%</span><span>Avoid ${H(String(latest.userRating.breakdown?.avoid ?? 0))}%</span>`
-        : `<span>${H(platformLabel(latest.platform))}</span><span>${H(updateDateLabel(latest))} ${H(timeAgo(preferredReleaseAt(latest)))}</span><span>Source checked ${H(timeAgo(latest.lastCheckedAt))}</span>`;
-    }
-    if (link) {
-      link.href = `#/updates/${encodeURIComponent(latest.id)}`;
-      link.classList.remove('hidden');
-    }
-  } catch {
-    if (coverage) coverage.textContent = 'Verified sources reconnecting';
-    const state = document.getElementById('landing-live-state');
-    const name = document.getElementById('landing-live-name');
-    const verdict = document.getElementById('landing-live-verdict');
-    if (state) state.textContent = 'RECONNECTING';
-    if (name) name.textContent = 'Live patch desk temporarily unavailable';
-    if (verdict) verdict.textContent = 'No sample score is shown while verified source data is unavailable.';
-    const decisionGrid = document.getElementById('landing-decision-grid');
-    if (decisionGrid) decisionGrid.innerHTML = '<p class="landing-decision-loading">The source desk is reconnecting. Open the release archive for the last verified notes.</p><a href="/releases">Open release notes →</a>';
-  }
+  return renderDashboard();
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
@@ -3003,7 +2853,7 @@ function renderGroupedUpdateSections(updates, watchedSet = new Set()) {
   }).join('');
 }
 
-function renderFilteredUpdateResults(updates, { platform, status, sort, search }) {
+function renderFilteredUpdateResults(updates, { platform, status, sort, search }, visibleLimit = Infinity) {
   const labels = [];
   if (platform) labels.push(platformLabel(platform));
   if (status) labels.push(status[0].toUpperCase() + status.slice(1));
@@ -3080,11 +2930,12 @@ function renderFilteredUpdateResults(updates, { platform, status, sort, search }
         <time>${latestCheck ? `Matching records verified ${H(timeAgo(latestCheck))}` : 'Record verification time unavailable'}</time>
       </div>
       ${facets}
-      <div class="filtered-update-cards">${updates.map(update => renderUpdateCard({
+      <div class="filtered-update-cards">${updates.slice(0, visibleLimit).map(update => renderUpdateCard({
         ...update,
         matchReason: search ? searchMatchReason(update, search, platform) : null,
         compatibilityQuery: update.compatibilitySearchFallback ? search : null,
       })).join('')}</div>
+      ${updates.length > visibleLimit ? `<button class="btn btn--outline catalog-more" type="button" data-load-more-updates>Show more updates (${H(String(updates.length - visibleLimit))} remaining)</button>` : ''}
     </section>
   `;
 }
@@ -3120,176 +2971,39 @@ function renderSubscriptionBanner(billingData) {
   `;
 }
 
-async function renderDashboard({ focusId = null } = {}) {
+async function renderDashboard({ focusId = null, initialSearch = '' } = {}) {
   const user = getUser();
   const isAuthed = !!user;
   const canChat = isAuthed && user?.emailVerified === true;
 
   setHTML(`
     ${renderNav(user)}
-
-    <div class="dash-wrap dash-wrap--simple dash-wrap--triad">
+    <div class="setup-mobile-nav" aria-label="Quick navigation"><a href="#/updates" data-scroll-target="section-overview">Check my setup</a><a href="#/updates" data-scroll-target="section-latest">All updates</a><a href="/briefing">Daily brief ↗</a></div>
+    <div class="dash-wrap setup-desk">
       <div id="sub-banner-slot" class="dash-sub-banner-slot"></div>
-
-      <div class="service-ticker" aria-hidden="true">
-        <div class="service-ticker-track">
-          ${[...TICKER_SERVICES, ...TICKER_SERVICES].map(service => `
-            ${renderServiceTickerItem(service)}
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="dash-layout">
-        <main class="dash-main" aria-label="PatchTicker dashboard">
+      <div class="dash-layout setup-layout"><main class="dash-main setup-main" aria-label="Find updates for your setup">
+        ${renderSetupWorkspace()}
+        <section class="setup-catalog" id="section-latest" aria-labelledby="catalog-title">
+          <header class="setup-catalog-head"><div><p class="setup-eyebrow">EVERY TRACKED PLATFORM</p><h2 id="catalog-title">Find your update.</h2><p>Search a service, game, device, or exact version. Open any release for the notes and sources.</p></div><a href="/releases">Release archive ↗</a></header>
           <section class="dash-quickbar is-collapsed" aria-label="Search and filter update feed" data-collapsed="true">
             <div class="dash-quickbar-primary">
-              <div class="dash-quickbar-search">
-                <label for="dash-top-search"><span>Search updates</span><small>Service, device, game, or version</small></label>
-                <div class="dash-quickbar-input-wrap">
-                  <input id="dash-top-search" type="search" list="dash-search-suggestions" placeholder="Try “SteamOS”, “Windows 11”, or a game…" autocomplete="off" />
-                  <datalist id="dash-search-suggestions">
-                    ${searchSuggestionValues().map(value => `<option value="${H(value)}"></option>`).join('')}
-                  </datalist>
-                  <button class="dash-search-clear hidden" id="dash-search-clear" type="button" aria-label="Clear update search">×</button>
-                </div>
-              </div>
-              <select class="dash-top-sort" id="dash-top-sort" aria-label="Sort patch desk">
-                <option value="date_desc">Newest first</option>
-                <option value="relevance">Best match</option>
-                <option value="date_asc">Oldest first</option>
-                <option value="score_desc">Highest score</option>
-                <option value="score_asc">Lowest score</option>
-              </select>
-              <button class="btn btn--primary dash-top-apply" id="dash-top-apply-filters" type="button" disabled>Apply</button>
-              <button class="dash-quickbar-toggle" id="dash-quickbar-toggle" type="button" aria-controls="dash-quickbar-details" aria-expanded="false" aria-label="Show update filters"><span>Show filters</span><b aria-hidden="true">↓</b></button>
+              <div class="dash-quickbar-search"><label class="sr-only" for="dash-top-search">Search all updates</label><div class="dash-quickbar-input-wrap"><input id="dash-top-search" type="search" aria-label="Search all updates" placeholder="Search Windows, a game, KB number, or version…" autocomplete="off" /><button class="dash-search-clear hidden" id="dash-search-clear" type="button" aria-label="Clear update search">×</button></div></div>
+              <select id="dash-platform-select" aria-label="Filter by platform"><option value="">All platforms</option>${TRACKED_PLATFORMS.map(p => `<option value="${H(p)}">${H(platformLabel(p))}</option>`).join('')}</select>
+              <button class="btn btn--primary dash-top-apply" id="dash-top-apply-filters" type="button">Search</button>
+              <button class="dash-quickbar-toggle" id="dash-quickbar-toggle" type="button" aria-controls="dash-quickbar-details" aria-expanded="false" aria-label="Show update filters"><span>Filters</span><b aria-hidden="true">↓</b></button>
             </div>
-            <div class="dash-quickbar-feedback hidden" id="dash-quickbar-feedback">
-              <div class="dash-search-status" id="dash-search-status" aria-live="polite"></div>
-              <div class="dash-active-filters hidden" id="dash-active-filters"><span id="dash-filter-summary"></span></div>
-              <span class="dash-filter-pending hidden" id="dash-filter-pending" aria-live="polite"></span>
-            </div>
+            <div class="dash-quickbar-feedback hidden" id="dash-quickbar-feedback"><div class="dash-search-status" id="dash-search-status" aria-live="polite"></div><div class="dash-active-filters hidden" id="dash-active-filters"><span id="dash-filter-summary"></span></div><span class="dash-filter-pending hidden" id="dash-filter-pending" aria-live="polite"></span></div>
             <div class="dash-quickbar-details" id="dash-quickbar-details">
-              <div class="dash-quickbar-nav-row">
-                <nav class="topic-nav topic-nav--quickbar" aria-label="PatchTicker sections">
-                  <a class="topic-nav-link active" href="#/updates" data-scroll-target="section-overview">Overview</a>
-                  <a class="topic-nav-link" href="#/updates" data-scroll-target="section-tape">Live tape</a>
-                  <a class="topic-nav-link" href="#/updates" data-scroll-target="section-latest">Patch desk</a>
-                  <a class="topic-nav-link" href="#/updates" data-scroll-target="section-services">Services</a>
-                  ${hasRole('pro') || user?.role === 'admin' ? '<a class="topic-nav-link" href="#/updates" data-scroll-target="section-games">My games</a>' : ''}
-                </nav>
-                <button class="link-btn dash-clear-link" id="dash-clear-all" type="button">Reset filters</button>
-              </div>
-              <div class="dash-quickbar-filter-group">
-                <span class="dash-quickbar-filter-label">Setup</span>
-                <div class="dash-lens-ribbon" role="group" aria-label="Setup filters">
-                  <button class="setup-lens active" type="button" data-setup="">Everything</button>
-                  <button class="setup-lens" type="button" data-setup="pc">PC &amp; Steam</button>
-                  <button class="setup-lens" type="button" data-setup="console">Console &amp; handheld</button>
-                  <button class="setup-lens" type="button" data-setup="apple">Apple devices</button>
-                </div>
-              </div>
-              <div class="dash-quickbar-filter-group">
-                <span class="dash-quickbar-filter-label">Platform</span>
-                <div class="dash-ribbon" id="platform-ribbon">
-                  <button class="chip active" type="button" data-platform="">All platforms</button>
-                  ${TRACKED_PLATFORMS.map(p => `<button class="chip platform--${platformSuffix(p)}" type="button" data-platform="${H(p)}">${H(platformLabel(p))}</button>`).join('')}
-                </div>
-              </div>
-              <div class="dash-quickbar-filter-group dash-quickbar-filter-group--split">
-                <span class="dash-quickbar-filter-label">Status</span>
-                <div class="dash-status-ribbon" id="status-ribbon" role="group" aria-label="Status filters">
-                  <button class="chip active" type="button" data-status="">All status</button>
-                  <button class="chip" type="button" data-status="stable">Stable</button>
-                  <button class="chip" type="button" data-status="caution">Caution</button>
-                  <button class="chip" type="button" data-status="avoid">Avoid</button>
-                </div>
-              </div>
-              <div class="dash-quickbar-filter-group">
-                <span class="dash-quickbar-filter-label">Jump to</span>
-                <div class="dash-category-jumps" role="navigation" aria-label="Category jumps">
-                  ${PLATFORM_CATEGORY_ORDER.map(key => `<a href="#/updates" data-scroll-target="category-${H(key)}">${H(PLATFORM_CATEGORY_META[key].title)}</a>`).join('')}
-                </div>
-              </div>
+              <div class="setup-extra-filters"><label>Sort<select class="dash-top-sort" id="dash-top-sort"><option value="date_desc">Newest first</option><option value="relevance">Best match</option><option value="date_asc">Oldest first</option><option value="score_desc">Highest source score</option><option value="score_asc">Lowest source score</option></select></label>
+              <div><span class="setup-filter-label">Release status</span><div class="dash-status-ribbon" id="status-ribbon" role="group" aria-label="Status filters"><button class="chip active" type="button" data-status="">All statuses</button><button class="chip" type="button" data-status="stable">Stable</button><button class="chip" type="button" data-status="caution">Caution</button><button class="chip" type="button" data-status="avoid">Avoid</button></div></div>
+              <button class="link-btn" id="dash-clear-all" type="button">Clear filters</button></div>
             </div>
           </section>
-          <section class="dash-command-hero topic-section" id="section-overview">
-            <div class="dash-command-copy">
-              <p class="dash-hero-kicker">Live update status</p>
-              <h1 class="dash-command-title">Decide what belongs on your machine today.</h1>
-              <p class="dash-command-sub">PatchTicker brings vendor release notes, known issues, and user votes where available into one source-backed update brief. Check the evidence before you install.</p>
-              <div class="dash-hero-actions">
-                <a class="btn btn--primary topic-jump" href="#/updates" data-scroll-target="section-latest">Open the patch desk</a>
-                ${isAuthed
-                  ? '<a class="btn btn--secondary" href="#/account">Manage watchlist</a>'
-                  : '<a class="btn btn--outline" href="#/register">Create free account</a>'}
-              </div>
-              <button class="dash-return-brief" id="dash-return-brief" type="button">
-                <span class="dash-return-copy">
-                  <small id="dash-return-label">Your live briefing</small>
-                  <strong id="dash-return-headline">Checking what changed…</strong>
-                  <em id="dash-return-detail">Comparing verified release history</em>
-                </span>
-                <span class="dash-return-platforms" id="dash-return-platforms" aria-hidden="true"></span>
-                <b aria-hidden="true">→</b>
-              </button>
-              <div class="dash-coverage-pulse" id="dash-coverage-pulse" aria-live="polite">
-                <span class="freshness-signal freshness-signal--snapshot" id="coverage-mode"><i aria-hidden="true"></i>Connecting sources</span>
-                <strong id="coverage-sources">Checking source coverage…</strong>
-                <span id="coverage-fresh">Lane freshness pending</span>
-                <span id="coverage-health">Health check pending</span>
-                <span id="coverage-last">Last sweep pending</span>
-                <span id="coverage-view-sync">View sync pending</span>
-              </div>
-              <div class="dash-source-heartbeats" role="group" aria-label="Platform source heartbeat">
-                <span>Source heartbeat</span>
-                <div class="dash-source-heartbeat-track" id="coverage-heartbeats">
-                  <em>Checking platform lanes…</em>
-                </div>
-              </div>
-            </div>
-            <div class="dash-command-stats" id="dash-hero-stats" role="group" aria-label="Current update status totals">
-              <div class="dash-command-stat"><span class="dash-stat-val" id="stat-stable">—</span><small>Stable</small></div>
-              <div class="dash-command-stat"><span class="dash-stat-val dash-stat-val--caution" id="stat-caution">—</span><small>Caution</small></div>
-              <div class="dash-command-stat"><span class="dash-stat-val dash-stat-val--avoid" id="stat-avoid">—</span><small>Avoid</small></div>
-            </div>
-          </section>
-
-          <section class="dash-panel update-tape-panel topic-section" id="section-tape" aria-label="Live update tape">
-            <div class="dash-panel-head update-tape-heading">
-              <div><p class="dash-section-kicker">Live tape</p><h2>Newest movement</h2></div>
-              <span class="dash-panel-badge">Right to left</span>
-            </div>
-            <div class="update-tape-window">
-              <div class="update-tape-track" id="update-tape-track">${spinner()}</div>
-            </div>
-          </section>
-
-          <section class="dash-panel topic-section" id="section-latest">
-            <div class="dash-panel-head">
-              <div><p class="dash-section-kicker">Patch desk</p><h2>Recent patches worth opening</h2></div>
-              <p class="dash-panel-copy">Every row opens into a dedicated update page with notes, sources, and ratings when real votes exist.</p>
-            </div>
-            <div class="dash-feature-grid latest-decisions-grid" id="dash-feature-grid">
-              ${spinner()}
-            </div>
-            <div class="updates-list updates-list--desk" id="updates-list">
-              ${spinner()}
-            </div>
-          </section>
-        </main>
-
-        <aside class="dash-aside" aria-label="Live signals and tracked platforms" data-active-tab="live">
-          <button class="dash-aside-open" id="dash-aside-open" type="button" aria-expanded="true" aria-controls="dash-aside-content" aria-label="Open side panel" hidden>
-            <span aria-hidden="true">←</span><b>Live feed</b>
-          </button>
-          <div class="dash-aside-toolbar" id="dash-aside-content">
-            <div class="dash-aside-tabs" role="tablist" aria-label="Side panel">
-              <button class="dash-aside-tab active" id="dash-aside-tab-live" type="button" role="tab" aria-selected="true" aria-controls="dash-aside-pane-live" data-aside-tab="live">Live feed</button>
-              <button class="dash-aside-tab" id="dash-aside-tab-platforms" type="button" role="tab" aria-selected="false" aria-controls="dash-aside-pane-platforms" data-aside-tab="platforms" tabindex="-1">Platforms</button>
-            </div>
-            <button class="dash-aside-collapse" id="dash-aside-collapse" type="button" aria-expanded="true" aria-controls="dash-aside-content" aria-label="Hide side panel"><span aria-hidden="true">→</span></button>
-          </div>
-          <div class="dash-aside-pane" id="dash-aside-pane-live" role="tabpanel" aria-labelledby="dash-aside-tab-live" data-aside-pane="live">
+          <div class="setup-catalog-meta"><span id="catalog-results-count" aria-live="polite">Loading official releases…</span><a href="/releases.xml">Follow the free RSS feed ↗</a></div>
+          <div class="updates-list updates-list--desk" id="updates-list">${spinner()}</div>
+        </section>
+        <details class="setup-coverage" id="section-services"><summary><span>Source coverage</span><strong id="coverage-sources">Connecting to official sources…</strong></summary><div class="setup-coverage-body"><div class="dash-coverage-pulse" id="dash-coverage-pulse"><span id="coverage-mode">Connecting sources</span><span id="coverage-fresh"></span><span id="coverage-health"></span><span id="coverage-last"></span><span id="coverage-view-sync"></span></div><div class="dash-source-heartbeat-track" id="coverage-heartbeats"></div><div class="setup-platform-directory">${TRACKED_PLATFORMS.map(p => `<a href="#/platform/${H(p)}">${renderPlatformLogo(p, 'setup-directory-logo')}${H(platformLabel(p))} ↗</a>`).join('')}</div></div></details>
+        <details class="setup-community"><summary><span>Community &amp; follows</span><small>Release wire, member chat, and your followed games</small></summary><div class="setup-community-body">
           <section class="dash-panel dash-live-feed">
             <div class="dash-panel-head dash-panel-head--compact">
               <div><p class="dash-section-kicker">Live feed</p><h2>Release wire + chat</h2></div>
@@ -3312,25 +3026,6 @@ async function renderDashboard({ focusId = null } = {}) {
                 <button class="feed-send" id="feed-send" type="button">Send</button>
               </div>
             ` : `<p class="dash-side-copy">Public reading stays open. ${isAuthed ? '<a href="#/verify-email">Verify your email</a>' : '<a href="#/login">Sign in</a>'} to join the chat.</p>`}
-          </section>
-          </div>
-
-          <div class="dash-aside-pane" id="dash-aside-pane-platforms" role="tabpanel" aria-labelledby="dash-aside-tab-platforms" data-aside-pane="platforms" hidden>
-          <section class="dash-panel topic-section" id="section-services">
-            <div class="dash-panel-head dash-panel-head--compact">
-              <div><p class="dash-section-kicker">Tracked services</p><h2>Coverage</h2></div>
-            </div>
-            <p class="dash-side-copy">More platforms and device-specific lanes are coming soon as reliable official sources are added.</p>
-            <div class="dash-platform-strip dash-platform-strip--vertical">
-              ${TRACKED_PLATFORMS.map(p => {
-                const suffix = PLATFORM_CLASS[p] || 'default';
-                const short  = PLATFORM_SHORT[p] || p.slice(0,3).toUpperCase();
-                return `<a class="platform-pill platform--${suffix}" href="#/platform/${H(p)}" title="${H(platformLabel(p))}">
-                  ${renderPlatformLogo(p, 'platform-pill-icon')}
-                  <span class="platform-pill-name">${H(platformLabel(p))}</span>
-                </a>`;
-              }).join('')}
-            </div>
           </section>
 
           ${hasRole('pro') || user?.role === 'admin' ? `
@@ -3358,22 +3053,21 @@ async function renderDashboard({ focusId = null } = {}) {
           </section>
           `}
 
-          <div id="ad-slot-dashboard" class="ad-slot ad-slot--dashboard"></div>
-          </div>
-        </aside>
-      </div>
-    </div><!-- /.dash-wrap -->
+        <div id="ad-slot-dashboard" class="ad-slot ad-slot--dashboard"></div></div></details>
+      </main></div>
+    </div>
     ${renderFooter()}
   `);
-  document.body.classList.add('dashboard-shell-active');
+  document.body.classList.add('setup-desk-active');
+  const dashboardRoot = document.querySelector('.setup-desk');
   attachNavHandlers(user);
   attachTopicScrollNav();
   attachQuickbarScrollBehavior();
-  attachDashboardAside();
   refreshMotionEffects();
   if (focusId) {
     requestAnimationFrame(() => {
       document.getElementById(focusId)?.scrollIntoView({ block: 'start' });
+      if (focusId === 'section-latest') dashboardRoot.querySelector('.dash-quickbar')?.dispatchEvent(new CustomEvent('patchticker:search-requested', { detail: { focus: false } }));
     });
   }
 
@@ -3381,10 +3075,12 @@ async function renderDashboard({ focusId = null } = {}) {
   injectAd('ad-slot-dashboard', 'auto');
 
   // Load billing status
-  if (isAuthed) {
+  if (isAuthed) (async () => {
     try {
       const billing = await getBillingStatus();
-      document.getElementById('sub-banner-slot').innerHTML = renderSubscriptionBanner(billing);
+      const billingSlot = document.getElementById('sub-banner-slot');
+      if (!billingSlot || !dashboardRoot.isConnected || getUser()?.id !== user.id) return;
+      billingSlot.innerHTML = renderSubscriptionBanner(billing);
       const manageBtn = document.getElementById('manage-sub-btn');
       if (manageBtn) {
         manageBtn.addEventListener('click', async () => {
@@ -3399,22 +3095,32 @@ async function renderDashboard({ focusId = null } = {}) {
         });
       }
     } catch {
-      document.getElementById('sub-banner-slot').innerHTML = '';
+      if (!dashboardRoot.isConnected) return;
+      const billingSlot = document.getElementById('sub-banner-slot');
+      if (billingSlot) billingSlot.innerHTML = '';
     }
-  }
+  })();
 
   // ── Filter state ─────────────────────────────────────────────────────────────
   // Controls edit a draft state. The feed changes only after an explicit Apply
   // action, preventing a sequence of selections from moving the results under
   // the user before they finish choosing.
   let _allUpdates  = [];   // full dataset from last fetch
+  let _catalogLimit = _dashboardCatalogLimit;
+  const setupAdvisor = attachSetupWorkspace({
+    getUpdates: () => _allUpdates, logo: renderPlatformLogo, label: platformLabel,
+    onCheck: props => captureAnalytics('setup_checked', props),
+    onRetry: () => loadUpdates(),
+  });
   const defaultFilterState = () => ({
     platform: '', setup: '', status: '', sort: 'date_desc', search: '', searchDisplay: '', searchMode: 'local',
   });
-  let _filterState = defaultFilterState();
-  let _draftFilterState = defaultFilterState();
+  let _filterState = initialSearch
+    ? { ...defaultFilterState(), search: initialSearch, searchDisplay: initialSearch, searchMode: 'server', sort: 'relevance' }
+    : { ...defaultFilterState(), ...(_dashboardFilterMemory || {}) };
+  let _draftFilterState = { ..._filterState };
   let _serverSearchResults = null;
-  let _searchMode = 'local';
+  let _searchMode = _filterState.searchMode;
   let _searchLoading = false;
   let _searchError = '';
   let _searchRequestId = 0;
@@ -3458,17 +3164,19 @@ async function renderDashboard({ focusId = null } = {}) {
     if (topSearchEl && topSearchEl.value !== visibleSearch) topSearchEl.value = visibleSearch;
     document.getElementById('dash-search-clear')?.classList.toggle('hidden', !visibleSearch);
 
+    const platformSelect = document.getElementById('dash-platform-select');
+    if (platformSelect) platformSelect.value = _draftFilterState.platform;
     const topSortEl = document.getElementById('dash-top-sort');
     if (topSortEl) topSortEl.value = _draftFilterState.sort;
 
     const dirty = filtersAreDirty();
     document.querySelectorAll('#dash-top-apply-filters, #search-result-apply').forEach(button => {
-      button.disabled = !dirty;
+      button.disabled = button.id === 'search-result-apply' && !dirty;
       button.classList.toggle('has-pending', dirty);
     });
     const pendingEl = document.getElementById('dash-filter-pending');
     if (pendingEl) {
-      pendingEl.textContent = dirty ? 'Changes ready · press Apply' : '';
+      pendingEl.textContent = dirty ? 'Changes ready · press Search to apply' : '';
       pendingEl.classList.toggle('is-pending', dirty);
       pendingEl.classList.toggle('hidden', !dirty);
     }
@@ -3550,7 +3258,7 @@ async function renderDashboard({ focusId = null } = {}) {
     if (sorters[sort] && !(serverResultsReady && sort === 'relevance')) filtered = [...filtered].sort(sorters[sort]);
 
     const listEl = document.getElementById('updates-list');
-    if (!listEl) return filtered.length;
+    if (!dashboardRoot.isConnected || !listEl) return filtered.length;
 
     if (!filtered.length) {
       const hasFilters = platform || setup || status || search;
@@ -3571,12 +3279,11 @@ async function renderDashboard({ focusId = null } = {}) {
         : '<p class="empty-state">No updates found.</p>';
       document.getElementById('clear-inline')?.addEventListener('click', clearAllFilters);
     } else {
-      const keepsPlatformBrowse = sort === 'date_desc' && !status && !search;
-      listEl.innerHTML = keepsPlatformBrowse
-        ? renderGroupedUpdateSections(filtered, _watchedPlatforms)
-        : renderFilteredUpdateResults(filtered, _filterState);
+      listEl.innerHTML = renderFilteredUpdateResults(filtered, _filterState, _catalogLimit);
     }
 
+    const countNode = document.getElementById('catalog-results-count');
+    if (countNode) countNode.textContent = `${filtered.length} ${filtered.length === 1 ? 'release' : 'releases'}${platform || status || search ? ' matching your search' : ' across all tracked platforms'}`;
     refreshMotionEffects(listEl);
     updateFilterSummary();
     updateSearchStatus(filtered.length);
@@ -3587,7 +3294,7 @@ async function renderDashboard({ focusId = null } = {}) {
     const el = document.getElementById('dash-search-status');
     if (!el) return;
     if (filtersAreDirty()) {
-      el.textContent = 'Ready to update · press Apply filters';
+      el.textContent = 'Ready · press Search to apply your filters';
       el.className = 'dash-search-status is-pending';
       return;
     }
@@ -3713,6 +3420,8 @@ async function renderDashboard({ focusId = null } = {}) {
     const preservedSort = _draftFilterState.sort || _filterState.sort;
     _filterState = { ...defaultFilterState(), sort: preservedSort };
     _draftFilterState = { ..._filterState };
+    _dashboardFilterMemory = { ..._filterState };
+    _catalogLimit = _dashboardCatalogLimit = 12;
     syncDraftFilterControls();
     applyFilters();
   }
@@ -3745,7 +3454,9 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   async function applyDraftFilters() {
+    _catalogLimit = _dashboardCatalogLimit = 12;
     _filterState = { ..._draftFilterState };
+    _dashboardFilterMemory = { ..._filterState };
     syncDraftFilterControls();
     captureAnalytics('filters_applied', {
       platform: _filterState.platform || 'all',
@@ -3779,6 +3490,13 @@ async function renderDashboard({ focusId = null } = {}) {
   }
 
   document.getElementById('updates-list')?.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-retry-updates]')) { await loadUpdates(); return; }
+    if (e.target.closest('[data-load-more-updates]')) {
+      _catalogLimit += 12;
+      _dashboardCatalogLimit = _catalogLimit;
+      applyFilters();
+      return;
+    }
     if (e.target.closest('[data-apply-result-facets]')) {
       await applyDraftFilters();
       return;
@@ -3962,10 +3680,12 @@ async function renderDashboard({ focusId = null } = {}) {
 
   // ── Initial data load ─────────────────────────────────────────────────────
   function hydrateDashboardUpdates(response) {
+    if (!dashboardRoot.isConnected) return;
     _allUpdates = annotateReleasePositions(
       normaliseUpdatesResponse(response)
         .filter(update => isUpdateWithinDisplayWindow(update))
     );
+    setupAdvisor.refresh();
     refreshSearchSuggestions(_allUpdates);
     updateReturnBrief(_allUpdates);
     renderTapeAndLatest(_allUpdates);
@@ -3975,12 +3695,28 @@ async function renderDashboard({ focusId = null } = {}) {
 
   async function loadUpdates() {
     try {
-      hydrateDashboardUpdates(await fetchUpdates({}));
-      applyFilters();
+      const response = await fetchUpdates({});
+      if (!dashboardRoot.isConnected) return;
+      hydrateDashboardUpdates(response);
+      if (_filterState.search && _filterState.searchMode === 'server') await runAuthoritativeSearch(_filterState.search);
+      else applyFilters();
+      refreshDashboardSummary();
+      if (focusId) {
+        document.getElementById(focusId)?.scrollIntoView({ block: 'start', behavior: 'auto' });
+        if (focusId === 'section-latest') dashboardRoot.querySelector('.dash-quickbar')?.dispatchEvent(new CustomEvent('patchticker:search-requested', { detail: { focus: false } }));
+      }
       const syncEl = document.getElementById('coverage-view-sync');
       if (syncEl) syncEl.textContent = 'View synced just now';
     } catch (err) {
+      if (!dashboardRoot.isConnected) return;
       renderOfflineRails(`Live patch feed is reconnecting: ${err.message}`);
+      setupAdvisor.refresh();
+      const countNode = document.getElementById('catalog-results-count');
+      if (countNode) countNode.textContent = 'Source connection unavailable';
+      const coverageNode = document.getElementById('coverage-sources');
+      if (coverageNode) coverageNode.textContent = 'Sources temporarily unavailable';
+      const list = document.getElementById('updates-list');
+      if (list) list.innerHTML = '<div class="setup-empty"><h3>Official updates are temporarily unavailable.</h3><p>Reconnect to the source feed to try again. No sample ratings are shown.</p><button class="btn btn--outline" type="button" data-retry-updates>Retry connection</button></div>';
     }
   }
 
@@ -3991,6 +3727,7 @@ async function renderDashboard({ focusId = null } = {}) {
   // ── Hero stats from summary ───────────────────────────────────────────────
   function refreshDashboardSummary() {
     return fetchSummary().then(res => {
+    if (!dashboardRoot.isConnected) return;
     const d = res?.data || res;
     if (!d) return;
     const stable  = document.getElementById('stat-stable');
@@ -4034,8 +3771,6 @@ async function renderDashboard({ focusId = null } = {}) {
     }).catch(() => {});
   }
 
-  refreshDashboardSummary();
-
   // ── Setup lens buttons ─────────────────────────────────────────────────────
   document.querySelectorAll('.setup-lens').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -4045,6 +3780,8 @@ async function renderDashboard({ focusId = null } = {}) {
       });
     });
   });
+
+  document.getElementById('dash-platform-select')?.addEventListener('change', event => setPlatformFilter(event.target.value));
 
   // ── Platform chip buttons ─────────────────────────────────────────────────
   document.querySelectorAll('#platform-ribbon .chip').forEach(btn => {
@@ -4190,6 +3927,7 @@ async function renderDashboard({ focusId = null } = {}) {
   let dashboardRefreshPending = false;
 
   async function revalidateDashboard() {
+    if (!dashboardRoot.isConnected) return;
     if (document.hidden || dashboardRefreshPending || _searchLoading) return;
     if (!document.getElementById('updates-list')) return;
     dashboardRefreshPending = true;
@@ -4207,7 +3945,7 @@ async function renderDashboard({ focusId = null } = {}) {
         fetchUpdates({}),
         activeSearch ? fetchUpdates(activeSearch).catch(() => null) : Promise.resolve(null),
       ]);
-      if (!document.getElementById('updates-list')) return;
+      if (!dashboardRoot.isConnected || !document.getElementById('updates-list')) return;
       hydrateDashboardUpdates(allResponse);
       const currentSearchKey = _filterState.search && _searchMode === 'server'
         ? JSON.stringify({
@@ -4229,6 +3967,7 @@ async function renderDashboard({ focusId = null } = {}) {
       if (syncEl) syncEl.textContent = 'View synced just now';
       refreshDashboardSummary();
     } catch {
+      if (!dashboardRoot.isConnected) return;
       const syncEl = document.getElementById('coverage-view-sync');
       if (syncEl) syncEl.textContent = 'View refresh pending';
     } finally {
@@ -4491,7 +4230,8 @@ async function renderDashboard({ focusId = null } = {}) {
 // ── UPDATE DETAIL PAGE ────────────────────────────────────────────────────────
 async function renderUpdateDetail(id, { hardware = '' } = {}) {
   const user = getUser(); // null for guests — page is public
-  const requestedHardware = String(hardware || '').trim().slice(0, 120);
+  const savedSetup = readBrowserSetup();
+  const requestedHardware = String(hardware || savedSetup?.hardware || '').trim().slice(0, 120);
 
   setHTML(`
     ${renderNav(user)}
@@ -4808,10 +4548,12 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
             ? '<input id="compatibility-os" type="hidden" value="not-sure" />'
             : `<select id="compatibility-os" class="field-input" aria-label="Operating system">
                 <option value="not-sure">OS: Not sure</option>
+                <option value="windows-11-26h2">Windows 11 26H2</option>
                 <option value="windows-11-26h1">Windows 11 26H1</option>
                 <option value="windows-11-25h2">Windows 11 25H2</option>
                 <option value="windows-11-24h2">Windows 11 24H2</option>
                 <option value="windows-11-23h2">Windows 11 23H2</option>
+                <option value="windows-11">Windows 11 · version unknown</option>
                 <option value="windows-10-22h2">Windows 10 22H2</option>
                 <option value="windows-10-21h2">Windows 10 21H2</option>
                 <option value="other">macOS, Linux, or other</option>
@@ -4825,7 +4567,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
             ? 'Choose Apple menu → About This Mac and enter the model, year, or Apple chip shown there. PatchTicker checks only Apple’s linked compatibility list.'
             : 'On Windows, open Device Manager → Display adapters and copy the full graphics name. For laptops and prebuilt PCs, also check the manufacturer’s driver page before replacing its customized driver.'}</p>
         </details>
-        <p class="detail-compatibility-privacy">Runs locally in your browser. Your hardware entry is not transmitted or stored.</p>
+        <p class="detail-compatibility-privacy">Runs locally in your browser. Hardware details are not sent to our servers; a remembered setup stays on this device.</p>
       </form>
       <aside class="detail-compatibility-proof is-verified">
         <span>Verified support table loaded</span>
@@ -4909,13 +4651,14 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
 
       <!-- Breadcrumb -->
       <div class="detail-breadcrumb">
-        <a href="#/updates" class="detail-back">← Back to Full Ticker</a>
+        <a href="#/updates?view=results" class="detail-back">← Back to results</a>
         <span class="detail-breadcrumb-sep">/</span>
         <span class="text-platform--${pSuffix}">${H(platformLabel(u.platform))}</span>
         <span class="detail-breadcrumb-sep">/</span>
         <span>${H(u.name)}</span>
       </div>
 
+      ${renderSetupDetail(u)}
       <!-- Hero -->
       <div class="detail-hero detail-hero--brief" id="detail-overview">
         <div class="detail-hero-left">
@@ -5168,6 +4911,8 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
   });
 
   const compatibilityForm = document.getElementById('compatibility-form');
+  const compatibilityOs = document.getElementById('compatibility-os');
+  if (compatibilityOs && savedSetup?.device === 'pc') compatibilityOs.value = savedSetup.operatingSystem;
   compatibilityForm?.addEventListener('submit', event => {
     event.preventDefault();
     const hardware = document.getElementById('compatibility-hardware')?.value || '';
@@ -5192,7 +4937,7 @@ async function renderUpdateDetail(id, { hardware = '' } = {}) {
   });
   if (requestedHardware && compatibilityForm) {
     compatibilityForm.requestSubmit();
-    requestAnimationFrame(() => {
+    if (hardware) requestAnimationFrame(() => {
       document.getElementById('detail-compatibility')?.scrollIntoView({ behavior: 'auto', block: 'start' });
       document.getElementById('compatibility-hardware')?.focus({ preventScroll: true });
     });
@@ -6232,7 +5977,7 @@ async function boot() {
 
   // Register routes
   route('/', () => renderLanding());
-  route('/updates', () => renderDashboard());
+  route('/updates', ({ view }) => renderDashboard({ focusId: view === 'results' ? 'section-latest' : null }));
   route('/updates/:id', ({ id, hardware }) => renderUpdateDetail(id, { hardware }));
   route('/update/:id', ({ id, hardware }) => renderUpdateDetail(id, { hardware })); // legacy permalink alias
   route('/login', () => isLoggedIn() ? navigate('/updates') : renderLogin());
@@ -6244,7 +5989,7 @@ async function boot() {
 
   route('/account',          () => renderAccount());
   route('/settings',         () => navigate('/account'));
-  route('/games',            () => renderDashboard({ focusId: 'category-gaming' }));
+  route('/games',            () => renderDashboard({ focusId: 'section-latest', initialSearch: 'steam games' }));
   route('/categories',       () => renderDashboard({ focusId: 'section-latest' }));
   route('/admin',            () => renderAdmin());
   route('/platform/:name',   ({ name }) => renderPlatformPage(name));

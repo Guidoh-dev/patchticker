@@ -50,7 +50,7 @@ function shell({ title, description, path, body, noindex = false, type = 'websit
     '<link rel="alternate" type="application/rss+xml" title="PatchTicker release feed" href="' + esc(SITE + rssPath) + '">' +
     '<link rel="stylesheet" href="/discovery.css"></head><body>' +
     '<header class="discovery-header"><a class="discovery-brand" href="/"><img class="discovery-brand-mark" src="/patchticker-mark.svg" width="28" height="28" alt="" aria-hidden="true"><span class="discovery-brand-wordmark"><span>Patch</span>Ticker</span></a>' +
-    '<nav aria-label="Main navigation"><a href="/briefing">Update brief</a><a href="/releases">Release notes</a><a href="/#/updates">Live dashboard</a><a href="/#/pricing">Pricing</a></nav></header>' +
+    '<nav aria-label="Main navigation"><a href="/#/updates">Check my setup</a><a href="/releases">All updates</a><a href="/briefing">Update brief</a><a href="/#/pricing">Pricing</a></nav></header>' +
     '<main id="main">' + body + '</main><footer class="discovery-footer"><span>PatchTicker · Know before you update.</span>' +
     '<a href="/releases.xml">RSS feed</a><a href="/#/about">About</a><a href="/#/privacy">Privacy</a><a href="/#/terms">Terms</a></footer></body></html>';
 }

@@ -69,7 +69,8 @@ test('the current brief selects distinct platforms and never promotes version-on
   const picks = briefingPicks([fresh, cautious, duplicate, { ...versionOnly, releasedAt: fresh.releasedAt }]);
   expect(picks.map(item => item.id)).toEqual(['nvidia-599-10', 'amd-1']);
   const html = renderBriefing([fresh, cautious, duplicate, versionOnly]);
-  expect(html).toContain('What is worth updating right now?');
+  expect(html).toContain('Which updates deserve a closer look?');
+  expect(html).toContain('href="/#/updates">Check my setup</a>');
   expect(html).toContain('6.1/10 source-based');
   expect(html).not.toContain('GOG Galaxy 2.1');
   expect(html).toContain('/releases.xml');
