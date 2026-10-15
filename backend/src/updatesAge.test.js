@@ -100,7 +100,32 @@ test('an existing season row uses the publisher rollout date without inventing a
   expect(publicUpdate.evidence[0].availableAt).toBeUndefined();
   expect(updatesService.__test.isUpdateDisplayable(publicUpdate)).toBe(false);
   jest.setSystemTime(new Date('2026-09-08T12:00:00Z'));
+  expect(updatesService.__test.isUpdateDisplayable(publicUpdate)).toBe(false);
+  jest.setSystemTime(new Date('2026-09-09T00:00:00Z'));
   expect(updatesService.__test.isUpdateDisplayable(publicUpdate)).toBe(true);
+});
+
+test('persisted publisher feedback and future season notes do not expose install ratings', () => {
+  jest.setSystemTime(new Date('2026-10-14T23:00:00Z'));
+  const feedback = {
+    id: 'steam-aniimo-feedback', platform: 'Steam', sourceKind: 'steam-game-news',
+    name: 'Aniimo: Dev Feedback | Oct 13', releasedAt: '2026-10-13', evidence: [],
+  };
+  expect(updatesService.__test.isUpdateDisplayable(feedback)).toBe(false);
+  const row = {
+    id: 'steam-wardogs-season', platform: 'Steam', source_kind: 'steam-game-news',
+    name: 'WARDOGS | Season 02 Patch Notes', version: '1867240:1846651706674560',
+    released_at: '2026-10-14', score: '7.7', known_issues: [], risk_factors: [],
+    changelog: ['WARDOGS Early Access Season 2 drops on October 15th. Scheduled maintenance runs from 08:00 to 09:30 UTC.'],
+    evidence: [{ releaseType: 'official-game-update', publishedAt: '2026-10-14T14:59:37Z' }],
+  };
+  const update = updatesService.__test.rowToUpdate(row);
+  expect(update.evidence[0]).toMatchObject({ rolloutDate: '2026-10-15', releaseTimeBasis: 'publisher-scheduled-day' });
+  expect(updatesService.__test.isUpdateDisplayable(update)).toBe(false);
+  jest.setSystemTime(new Date('2026-10-15T12:00:00Z'));
+  expect(updatesService.__test.isUpdateDisplayable(update)).toBe(false);
+  jest.setSystemTime(new Date('2026-10-16T00:00:00Z'));
+  expect(updatesService.__test.isUpdateDisplayable(update)).toBe(true);
 });
 
 test('persisted flattened Steam headings become readable without changing patch meaning', () => {

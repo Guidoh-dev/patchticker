@@ -766,9 +766,12 @@ function isUpdateDisplayable(update) {
       ? inferredAt.getTime() : null);
     if (Number.isFinite(availableAt) && availableAt > Date.now()) return false;
     const publication = evidence.find(item => item?.publishedAt)?.publishedAt || update.releasedAt;
-    const rolloutDay = evidence.find(item => item?.releaseTimeBasis === 'publisher-scheduled-day')?.rolloutDate
-      || scheduledSteamReleaseDay(jsonArray(update?.changelog).join(' '), publication)?.toISOString().slice(0, 10);
-    if (rolloutDay && rolloutDay > new Date().toISOString().slice(0, 10)) return false;
+    const rolloutDay = Number.isFinite(availableAt) ? null
+      : evidence.find(item => item?.releaseTimeBasis === 'publisher-scheduled-day')?.rolloutDate
+        || scheduledSteamReleaseDay(jsonArray(update?.changelog).join(' '), publication)?.toISOString().slice(0, 10);
+    // Existing persisted rows must obey the same conservative day-only gate
+    // as new scans; otherwise their old stored scores leak into the feed.
+    if (rolloutDay && rolloutDay >= new Date().toISOString().slice(0, 10)) return false;
   }
   const steamMonthPlaceholder = update?.platform === 'Steam'
     && new RegExp(`^(?:${MONTH_NAMES})\\s+\\d{4}$`, 'i').test(String(update?.version || '').trim())

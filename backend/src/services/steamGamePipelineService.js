@@ -573,9 +573,11 @@ function selectBestMaterialPost(posts, now = Date.now(), lookbackDays = DEFAULT_
       const titled = explicitReleaseDateFromTitle(item.post?.title);
       if (activation && titled && activation.toISOString().slice(0, 10) !== titled.toISOString().slice(0, 10)) return false;
       if (activation && activation.getTime() > now) return false;
-      const rolloutDay = scheduledReleaseDay(item.post);
+      const rolloutDay = activation ? null : scheduledReleaseDay(item.post);
       if (rolloutDay && titled && rolloutDay.toISOString().slice(0, 10) !== titled.toISOString().slice(0, 10)) return false;
-      if (rolloutDay && rolloutDay.toISOString().slice(0, 10) > new Date(now).toISOString().slice(0, 10)) return false;
+      // A day-only schedule is not proof of availability at 00:00 UTC. Keep
+      // the announcement out of the rated feed through that calendar day.
+      if (rolloutDay && now < rolloutDay.getTime() + 24 * 60 * 60 * 1000) return false;
       // A dated patch-notes headline alone does not confirm that tomorrow's
       // build has shipped, even when its article was published today.
       return !titled || titled.toISOString().slice(0, 10) <= new Date(now).toISOString().slice(0, 10);

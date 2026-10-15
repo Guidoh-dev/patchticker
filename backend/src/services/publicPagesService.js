@@ -111,11 +111,11 @@ function renderBriefing(updates) {
       '<a class="discovery-card-more" href="' + esc(releasePath(update)) + '">Why this assessment? →</a></article>';
   };
   return shell({
-    title: 'Current update brief — what to install, wait on, or avoid',
+    title: 'Current update brief — source-backed release status',
     description: 'A concise, source-linked read on recent software updates. See documented changes, known issues, and install guidance before deciding.',
     path: '/briefing', noindex: !picks.length,
     body: '<div class="discovery-hero discovery-brief-hero"><p class="discovery-kicker">THE CURRENT UPDATE BRIEF</p>' +
-      '<h1>What is worth updating right now?</h1><p>A concise selection of recent releases across different platforms. Start with the decision, then check the actual notes and source before installing.</p>' +
+      '<h1>Which updates deserve a closer look?</h1><p>A concise selection of recent releases across different platforms. Start with the source evidence, then check the full notes before installing.</p>' +
       '<div class="discovery-actions"><a class="discovery-cta" href="/#/updates">Search your setup →</a><a href="/releases.xml">Subscribe to the free RSS feed ↗</a></div></div>' +
       '<p class="discovery-caveat">Scores summarize published evidence, not hands-on testing or a guarantee of compatibility. A source check is not the same as a new release.</p>' +
       section('Recent releases to check', picks.length ? '<div class="discovery-brief-grid">' + picks.map(decision).join('') + '</div>' :

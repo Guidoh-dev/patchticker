@@ -178,6 +178,16 @@ describe('material Steam game update pipeline', () => {
     expect(report.eligible).toBe(false);
   });
 
+  test('developer feedback discussing future gameplay is not an installable patch', () => {
+    const report = __test.classifyMaterialUpdate({
+      feedname: 'steam_community_announcements',
+      title: 'Dev Feedback | Oct 13',
+      contents: 'We have new gameplay coming in the second half of the season. '
+        + 'We will introduce new maps, combat changes, and progression systems. '.repeat(100),
+    });
+    expect(report.eligible).toBe(false);
+  });
+
   test('accepts substantial first-party gameplay and requirement releases', () => {
     const gameplay = __test.classifyMaterialUpdate({
       feedname: 'steam_community_announcements',
@@ -406,13 +416,31 @@ describe('material Steam game update pipeline', () => {
     };
     expect(__test.scheduledReleaseDay(post)?.toISOString()).toBe('2026-09-08T00:00:00.000Z');
     expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-07T23:59:59Z'))).toBeNull();
-    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-08T00:00:00Z'))?.post.gid).toBe(post.gid);
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-08T12:00:00Z'))).toBeNull();
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-09-09T00:00:00Z'))?.post.gid).toBe(post.gid);
     const saved = __test.toDatabaseUpdate({ appId: 2507950, name: 'Delta Force' }, post, __test.classifyMaterialUpdate(post));
     expect(saved.releasedAt).toBe('2026-09-08');
     expect(saved.evidence[0]).toMatchObject({
       publishedAt: '2026-09-06T13:00:04.000Z', rolloutDate: '2026-09-08',
       releaseTimeBasis: 'publisher-scheduled-day',
     });
+  });
+
+  test('season notes published before the announced rollout stay unrated through release day', () => {
+    const post = {
+      gid: '1846651706674560',
+      date: Math.floor(Date.parse('2026-10-14T14:59:37Z') / 1000),
+      feedname: 'steam_community_announcements',
+      title: 'WARDOGS | Season 02 Patch Notes',
+      contents: 'WARDOGS Early Access Season 2 drops on October 15th. '
+        + 'There will be a scheduled maintenance window on October 15th between 08:00 and 09:30 UTC. '
+        + list(Array.from({ length: 12 }, (_, i) => `Added a new gameplay weapon and map ${i}.`))
+        + ' Detailed combat balance changes. '.repeat(100),
+    };
+    expect(__test.scheduledReleaseDay(post)?.toISOString()).toBe('2026-10-15T00:00:00.000Z');
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-10-14T23:00:00Z'))).toBeNull();
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-10-15T12:00:00Z'))).toBeNull();
+    expect(__test.selectBestMaterialPost([post], Date.parse('2026-10-16T00:00:00Z'))?.post.gid).toBe(post.gid);
   });
 
   test('date-only release headlines cannot enter the feed before their named date', () => {

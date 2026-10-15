@@ -6,7 +6,8 @@
 function isEditorialReportTitle(value) {
   const title = String(value || '');
   return /(?:^|:\s*)(?:an?\s+)?update from (?:the|our) [\w -]{1,48} team\b/i.test(title)
-    || /(?:^|:\s*)competitive integrity update\b/i.test(title);
+    || /(?:^|:\s*)competitive integrity update\b/i.test(title)
+    || /(?:^|:\s*)(?:dev(?:eloper)?|community) feedback\b/i.test(title);
 }
 
 // Identify two *different articles* about the same installable game release:
@@ -57,10 +58,17 @@ function scheduledSteamReleaseDay(value, publishedAt) {
   const text = String(value || '').replace(/\s+/g, ' ').slice(0, 1600);
   const publication = new Date(publishedAt);
   if (!Number.isFinite(publication.getTime())) return null;
-  const match = text.match(new RegExp(
+  const rollout = text.match(new RegExp(
     `\\b(?:rolling out|plan to launch|planning to launch|will launch)\\b.{0,160}\\b(?:update|patch)\\b.{0,160}\\bon\\s+` +
     `(${MONTHS})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(20\\d{2}))?\\b`, 'i'
   ));
+  // Full notes are sometimes posted a day before the build. “Season 2 drops
+  // on October 15th” is a schedule, not evidence of an October 14 install.
+  const scheduledLaunch = text.match(new RegExp(
+    `\\b(?:season|update|patch)\\b[^.!?]{0,90}\\b(?:drops?|releases?|launches?|arrives?|goes live)\\s+(?:on\\s+)?` +
+    `(${MONTHS})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(20\\d{2}))?\\b`, 'i'
+  ));
+  const match = rollout || scheduledLaunch;
   if (!match) return null;
   const month = new Date(`${match[1]} 1, 2000 00:00:00 UTC`).getUTCMonth();
   const day = Number(match[2]);

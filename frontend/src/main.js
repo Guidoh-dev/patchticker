@@ -2596,7 +2596,9 @@ function decisionForUpdate(u) {
   if (score === null) return { label: 'Review official notes', cls: 'unscored', action: 'REVIEW' };
   if (score < 5) return { label: 'Avoid for now', cls: 'avoid', action: 'AVOID' };
   if (score < 7.5) return { label: 'Wait and watch', cls: 'caution', action: 'WAIT' };
-  return { label: 'Safe to install', cls: 'stable', action: 'INSTALL' };
+  // Source evidence is not a hands-on compatibility test or an instruction
+  // to install. Keep the favorable score without a categorical command.
+  return { label: 'Favorable source signals', cls: 'stable', action: 'STABLE' };
 }
 
 function primaryRiskText(u) {
@@ -3214,7 +3216,7 @@ async function renderDashboard({ focusId = null } = {}) {
             <div class="dash-command-copy">
               <p class="dash-hero-kicker">Live update status</p>
               <h1 class="dash-command-title">Decide what belongs on your machine today.</h1>
-              <p class="dash-command-sub">PatchTicker turns vendor release notes, stability signals, security context, and user votes where available into a clear install / wait / avoid read.</p>
+              <p class="dash-command-sub">PatchTicker brings vendor release notes, known issues, and user votes where available into one source-backed update brief. Check the evidence before you install.</p>
               <div class="dash-hero-actions">
                 <a class="btn btn--primary topic-jump" href="#/updates" data-scroll-target="section-latest">Open the patch desk</a>
                 ${isAuthed
